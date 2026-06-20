@@ -17,7 +17,8 @@ import {
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { useOutletContext } from "react-router-dom";
-import { MONO_FONT } from "../theme.js";
+import { MONO_FONT, getStatAccents } from "../theme.js";
+import { avatarStyles } from "../lib/surfaces.js";
 import { PESO } from "../components/ProductCard.jsx";
 import { CardIcon, SearchIcon, SparkleIcon, UserIcon } from "../components/icons.jsx";
 import { CUSTOMERS } from "../data/mockData.js";
@@ -50,6 +51,7 @@ function StatCard({ panelSx, icon, label, value, accent }) {
 
 export default function CustomersPage() {
   const theme = useTheme();
+  const accents = getStatAccents(theme);
   const { surfaces } = useOutletContext();
   const { panelSx } = surfaces;
   const [filter, setFilter] = useState("all");
@@ -112,10 +114,10 @@ export default function CustomersPage() {
       </Stack>
 
       <Grid container spacing={2.5}>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={UserIcon} label="Customers" value={stats.total} accent="#7c3aed" /></Grid>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={SparkleIcon} label="Marketing opt-in" value={`${stats.optIn} (${stats.optInPct}%)`} accent="#06b6d4" /></Grid>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Lifetime value" value={PESO.format(stats.ltv)} accent="#22c55e" /></Grid>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Avg. spend" value={PESO.format(Math.round(stats.ltv / stats.total))} accent="#f59e0b" /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={UserIcon} label="Customers" value={stats.total} accent={accents[0]} /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={SparkleIcon} label="Marketing opt-in" value={`${stats.optIn} (${stats.optInPct}%)`} accent={accents[1]} /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Lifetime value" value={PESO.format(stats.ltv)} accent={theme.palette.success.main} /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Avg. spend" value={PESO.format(Math.round(stats.ltv / stats.total))} accent={accents[3]} /></Grid>
       </Grid>
 
       <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
@@ -154,7 +156,7 @@ export default function CustomersPage() {
                 <TableRow key={customer.id} hover>
                   <TableCell>
                     <Stack direction="row" spacing={1.5} alignItems="center">
-                      <Box sx={{ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, background: `linear-gradient(135deg, ${theme.palette.primary.main}, #06b6d4)` }}>
+                      <Box sx={{ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, ...avatarStyles(theme) }}>
                         {customer.name.charAt(0)}
                       </Box>
                       <Box>

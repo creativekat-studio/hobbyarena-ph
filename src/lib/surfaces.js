@@ -1,30 +1,18 @@
 import { alpha } from "@mui/material/styles";
 import { BORDER_RADIUS } from "../theme.js";
+import { getDesignProposal } from "../themes/index.js";
+import { OFF_WHITE } from "./colors.js";
 
-// Shared surface + background styling so every page (Home, Account, Inventory)
-// looks consistent. Gaming style, light-first.
-export function getSurfaces(theme, isDarkMode) {
-  const primary = theme.palette.primary.main;
-
-  const pageBackground = isDarkMode
-    ? `radial-gradient(circle at 12% -5%, ${alpha(primary, 0.28)} 0%, transparent 36%), radial-gradient(circle at 88% 0%, ${alpha("#06b6d4", 0.22)} 0%, transparent 32%), radial-gradient(circle at 60% 120%, ${alpha("#f43f5e", 0.16)} 0%, transparent 40%), linear-gradient(180deg, #0b0b14 0%, #0e0e1a 55%, #14141f 100%)`
-    : `radial-gradient(circle at 10% -5%, ${alpha(primary, 0.16)} 0%, transparent 34%), radial-gradient(circle at 92% 0%, ${alpha("#06b6d4", 0.14)} 0%, transparent 30%), radial-gradient(circle at 55% 120%, ${alpha("#f43f5e", 0.1)} 0%, transparent 40%), linear-gradient(180deg, #eef0fb 0%, #f4f5fb 45%, #ffffff 100%)`;
-
-  const surfaceBorderColor = isDarkMode
-    ? alpha(theme.palette.common.white, 0.1)
-    : alpha(theme.palette.common.black, 0.07);
-
-  const surfaceBackground = isDarkMode
-    ? alpha(theme.palette.background.paper, 0.82)
-    : alpha("#ffffff", 0.92);
-
-  const surfaceShadow = isDarkMode
-    ? "0 24px 70px rgba(0,0,0,0.5)"
-    : "0 20px 50px rgba(86, 64, 160, 0.1)";
-
-  const navbarBackground = isDarkMode
-    ? alpha(theme.palette.background.default, 0.78)
-    : alpha("#ffffff", 0.82);
+// Shared surface + background styling per design proposal.
+export function getSurfaces(theme, isDarkMode, proposalId = theme.ha?.proposalId ?? 2) {
+  const proposal = getDesignProposal(proposalId);
+  const {
+    pageBackground,
+    surfaceBorderColor,
+    surfaceBackground,
+    surfaceShadow,
+    navbarBackground,
+  } = proposal.createSurfaces(theme, isDarkMode);
 
   const panelSx = {
     borderRadius: `${BORDER_RADIUS}px`,
@@ -42,5 +30,91 @@ export function getSurfaces(theme, isDarkMode) {
     surfaceShadow,
     navbarBackground,
     panelSx,
+  };
+}
+
+/** Avatar / profile circle gradient using active brand tokens. */
+export function avatarGradient(theme) {
+  const brand = theme.ha?.brand;
+  if (brand?.avatarGradient) {
+    return brand.avatarGradient(theme.palette.primary.main);
+  }
+  return `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`;
+}
+
+/** Avatar circle background + initial color. */
+export function avatarStyles(theme) {
+  const brand = theme.ha?.brand ?? {};
+  return {
+    background: avatarGradient(theme),
+    color: brand.avatarColor ?? theme.palette.primary.contrastText,
+  };
+}
+
+/** CMS preview banner gradient. */
+export function cmsPreviewGradient(theme) {
+  const primary = theme.palette.primary.main;
+  const secondary = theme.palette.secondary.main;
+  return `linear-gradient(140deg, ${alpha(primary, 0.16)}, ${alpha(secondary, 0.12)})`;
+}
+
+/** Hero headline sx based on active design proposal. */
+export function heroHeadlineSx(theme) {
+  const brand = theme.ha?.brand;
+  const style = brand?.headlineStyle ?? "gradient";
+
+  if (style === "gold") {
+    return {
+      fontSize: { xs: "2.5rem", md: "4.2rem" },
+      lineHeight: 1.02,
+      backgroundImage: brand.heroGradient,
+      backgroundSize: "100% 100%",
+      WebkitBackgroundClip: "text",
+      backgroundClip: "text",
+      color: "transparent",
+      textShadow: "none",
+      filter: `drop-shadow(0 2px 12px ${alpha("#F5C518", 0.25)})`,
+    };
+  }
+
+  if (style === "navy") {
+    return {
+      fontSize: { xs: "2.5rem", md: "3.9rem" },
+      lineHeight: 1.03,
+      backgroundImage: brand.heroGradient,
+      WebkitBackgroundClip: "text",
+      backgroundClip: "text",
+      color: "transparent",
+    };
+  }
+
+  return {
+    fontSize: { xs: "2.5rem", md: "3.9rem" },
+    lineHeight: 1.03,
+    backgroundImage: brand?.heroGradient,
+    backgroundSize: "200% 200%",
+    WebkitBackgroundClip: "text",
+    backgroundClip: "text",
+    color: "transparent",
+    animation: "gradientShift 6s ease-in-out infinite",
+  };
+}
+
+/** Section titles — same moving gradient, smaller type scale. */
+export function sectionHeadlineSx(theme) {
+  return {
+    ...heroHeadlineSx(theme),
+    fontSize: { xs: "1.85rem", md: "2.35rem" },
+    lineHeight: 1.15,
+  };
+}
+
+/** Announcement bar colors from brand tokens. */
+export function announcementBarColors(theme) {
+  const brand = theme.ha?.brand;
+  const primary = theme.palette.primary.main;
+  return {
+    bgcolor: brand?.announcementBg?.(primary) ?? primary,
+    color: brand?.announcementColor ?? OFF_WHITE.textBright,
   };
 }

@@ -9,6 +9,7 @@ import {
 } from "@mui/material";
 import { useOutletContext, useSearchParams } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
+import { wider } from "../lib/layout.js";
 import ProductCard from "../components/ProductCard.jsx";
 import { BoxIcon, SparkleIcon } from "../components/icons.jsx";
 import { ALL_PRODUCTS, PREORDER_PRODUCTS, SEALED_PRODUCTS } from "../data/mockData.js";
@@ -104,7 +105,7 @@ export default function ShopPage() {
           <Typography variant="h3" sx={{ fontWeight: 800, fontSize: { xs: "1.85rem", md: "2.35rem" } }}>
             {copy.title}
           </Typography>
-          <Typography color="text.secondary" sx={{ mt: 1, maxWidth: 560 }}>
+          <Typography color="text.secondary" sx={{ mt: 1, maxWidth: wider(560) }}>
             {copy.subtitle}
           </Typography>
         </Box>

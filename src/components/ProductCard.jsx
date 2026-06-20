@@ -6,12 +6,22 @@ import { useAuth } from "../auth/AuthProvider.jsx";
 import { useCart } from "../lib/cartStore.jsx";
 import { useWishlist } from "../lib/wishlistStore.jsx";
 import { CardIcon, HeartIcon, PokeballIcon } from "./icons.jsx";
+import { OFF_WHITE } from "../lib/colors.js";
 
 export const PESO = new Intl.NumberFormat("en-PH", {
   style: "currency",
   currency: "PHP",
   maximumFractionDigits: 0,
 });
+
+function resolveProductAccent(product, theme) {
+  if (theme.ha?.proposalId === 2) {
+    if (product.line.startsWith("Pokémon")) return theme.palette.secondary.main;
+    if (product.line.startsWith("One Piece")) return theme.ha?.brand?.accentRose ?? theme.palette.error.main;
+    return theme.palette.primary.main;
+  }
+  return product.accent || theme.palette.primary.main;
+}
 
 export default function ProductCard({ product, panelSx, isDarkMode }) {
   const theme = useTheme();
@@ -21,7 +31,8 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
   const [added, setAdded] = useState(false);
   const [wishlisted, setWishlisted] = useState(() => isWishlisted(product.id));
   const resetTimer = useRef(null);
-  const accent = product.accent || theme.palette.primary.main;
+  const accent = resolveProductAccent(product, theme);
+  const hoverAccent = theme.palette.secondary.main;
   const isPokemon = product.line.startsWith("Pokémon");
   const Glyph = isPokemon ? PokeballIcon : CardIcon;
   const isPreorder = product.tag === "Pre-order";
@@ -67,10 +78,10 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
         transition: "transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease",
         "&:hover": {
           transform: { md: "translateY(-6px)" },
-          borderColor: alpha(accent, 0.55),
+          borderColor: alpha(hoverAccent, 0.55),
           boxShadow: isDarkMode
-            ? `0 28px 60px rgba(0,0,0,0.55), 0 0 26px ${alpha(accent, 0.4)}`
-            : `0 26px 54px ${alpha(accent, 0.22)}`,
+            ? `0 28px 60px rgba(0,0,0,0.55), 0 0 26px ${alpha(hoverAccent, 0.4)}`
+            : `0 26px 54px ${alpha(hoverAccent, 0.22)}`,
         },
       }}
     >
@@ -88,11 +99,28 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
             position: "absolute",
             inset: 0,
             background:
-              "radial-gradient(circle at 30% 18%, rgba(255,255,255,0.45) 0%, transparent 55%)",
+              `radial-gradient(circle at 30% 18%, ${alpha(OFF_WHITE.textBright, 0.45)} 0%, transparent 55%)`,
           },
         }}
       >
-        <Glyph sx={{ fontSize: 66, color: "rgba(255,255,255,0.92)", position: "relative", zIndex: 1 }} />
+        {product.image ? (
+          <Box
+            component="img"
+            src={product.image}
+            alt={product.name}
+            loading="lazy"
+            sx={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              zIndex: 1,
+            }}
+          />
+        ) : (
+          <Glyph sx={{ fontSize: 66, color: OFF_WHITE.glyph, position: "relative", zIndex: 1 }} />
+        )}
         {isCustomer && canWishlist ? (
           <Tooltip title={wishlisted ? "Remove from wishlist" : "Add to wishlist"}>
             <IconButton
@@ -105,7 +133,7 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
                 right: 8,
                 zIndex: 3,
                 bgcolor: "rgba(0,0,0,0.45)",
-                color: wishlisted ? "#f43f5e" : "#fff",
+                color: wishlisted ? theme.palette.error.main : OFF_WHITE.textBright,
                 backdropFilter: "blur(4px)",
                 "&:hover": { bgcolor: "rgba(0,0,0,0.6)" },
               }}
@@ -122,7 +150,7 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
             top: 10,
             left: 10,
             bgcolor: "rgba(0,0,0,0.5)",
-            color: "#fff",
+            color: OFF_WHITE.textBright,
             fontFamily: MONO_FONT,
             fontSize: "0.6rem",
             letterSpacing: 1,
@@ -141,7 +169,7 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
               zIndex: 2,
             }}
           >
-            <Typography sx={{ color: "#fff", fontFamily: MONO_FONT, fontWeight: 700, letterSpacing: 1 }}>
+            <Typography sx={{ color: OFF_WHITE.textBright, fontFamily: MONO_FONT, fontWeight: 700, letterSpacing: 1 }}>
               OUT OF STOCK
             </Typography>
           </Box>

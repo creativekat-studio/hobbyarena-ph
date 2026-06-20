@@ -36,14 +36,14 @@ export const TOP_PRODUCTS = [
   { name: "Mega Charizard X ex UPC", units: 86, revenue: 1548000 },
   { name: "OP-15 Booster Box", units: 142, revenue: 681600 },
   { name: "Ascended Heroes ETB", units: 38, revenue: 456000 },
-  { name: "Pokémon 151 Bundle", units: 96, revenue: 264000 },
-  { name: "Pitch Black Booster Box", units: 73, revenue: 189435 },
+  { name: "Phantasmal Flames ETB", units: 52, revenue: 416000 },
+  { name: "One Piece Treasure Chest Vol. 2", units: 73, revenue: 89790 },
 ];
 
 export const RECENT_ORDERS = [
   { id: "HA-10428", customer: "Ash K.", total: 18000, status: "Processing", date: "2026-06-15" },
   { id: "HA-10427", customer: "Misty W.", total: 4800, status: "Paid", date: "2026-06-15" },
   { id: "HA-10426", customer: "Brock H.", total: 9600, status: "Shipped", date: "2026-06-14" },
-  { id: "HA-10425", customer: "Nami O.", total: 2340, status: "Pre-order", date: "2026-06-14" },
+  { id: "HA-10425", customer: "Nami O.", total: 3300, status: "Pre-order", date: "2026-06-14" },
   { id: "HA-10424", customer: "Gary O.", total: 12000, status: "Paid", date: "2026-06-13" },
 ];

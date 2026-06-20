@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   Box,
   Button,
@@ -78,7 +79,7 @@ function ChartCard({ panelSx, title, subtitle, children, minHeight = 280 }) {
   );
 }
 
-function SalesByLineCard({ panelSx, tooltipStyle }) {
+function SalesByLineCard({ panelSx, tooltipStyle, salesByLine }) {
   return (
     <Box sx={{ ...panelSx, p: { xs: 2, md: 3 }, height: "100%", display: "flex", flexDirection: "column" }}>
       <Stack spacing={0.25} sx={{ mb: 1 }}>
@@ -88,8 +89,8 @@ function SalesByLineCard({ panelSx, tooltipStyle }) {
       <Box sx={{ position: "relative", flex: 1, minHeight: 200 }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <Pie data={SALES_BY_LINE} dataKey="value" nameKey="name" innerRadius="64%" outerRadius="94%" paddingAngle={3} stroke="none">
-              {SALES_BY_LINE.map((entry) => (
+            <Pie data={salesByLine} dataKey="value" nameKey="name" innerRadius="64%" outerRadius="94%" paddingAngle={3} stroke="none">
+              {salesByLine.map((entry) => (
                 <Cell key={entry.name} fill={entry.color} />
               ))}
             </Pie>
@@ -104,7 +105,7 @@ function SalesByLineCard({ panelSx, tooltipStyle }) {
         </Box>
       </Box>
       <Stack spacing={1} sx={{ mt: 1.5 }}>
-        {SALES_BY_LINE.map((entry) => (
+        {salesByLine.map((entry) => (
           <Stack key={entry.name} direction="row" alignItems="center" spacing={1}>
             <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: entry.color }} />
             <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, flexGrow: 1 }}>{entry.name}</Typography>
@@ -126,6 +127,21 @@ export default function DashboardPage() {
   const secondary = theme.palette.secondary.main;
   const gridColor = alpha(theme.palette.text.primary, 0.1);
   const axisColor = theme.palette.text.secondary;
+  const chartColors = theme.ha?.chartColors ?? {};
+
+  const salesByLine = useMemo(
+    () =>
+      SALES_BY_LINE.map((entry) => ({
+        ...entry,
+        color:
+          entry.name.includes("Pokémon")
+            ? chartColors.pokemon ?? entry.color
+            : entry.name.includes("One Piece")
+              ? chartColors.onePiece ?? entry.color
+              : chartColors.accessories ?? entry.color,
+      })),
+    [chartColors.pokemon, chartColors.onePiece, chartColors.accessories],
+  );
 
   const tooltipStyle = {
     background: theme.palette.background.paper,
@@ -169,7 +185,7 @@ export default function DashboardPage() {
           </ChartCard>
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
-          <SalesByLineCard panelSx={panelSx} tooltipStyle={tooltipStyle} />
+          <SalesByLineCard panelSx={panelSx} tooltipStyle={tooltipStyle} salesByLine={salesByLine} />
         </Grid>
       </Grid>
 

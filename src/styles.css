@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Sora:wght@600;700;800&family=JetBrains+Mono:wght@500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Sora:wght@600;700;800&family=JetBrains+Mono:wght@500;700&family=Bebas+Neue&family=Exo+2:wght@600;700;800&display=swap");
 
 * {
   box-sizing: border-box;
@@ -23,5 +23,10 @@ a {
 }
 
 ::selection {
-  background: rgba(124, 58, 237, 0.26);
+  background: var(--ha-selection-bg, rgba(124, 58, 237, 0.26));
+}
+
+@keyframes gradientShift {
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
 }

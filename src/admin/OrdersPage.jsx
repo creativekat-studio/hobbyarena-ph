@@ -19,7 +19,7 @@ import {
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { useLocation, useOutletContext } from "react-router-dom";
-import { MONO_FONT } from "../theme.js";
+import { MONO_FONT, getStatAccents } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
 import { BoxIcon, CardIcon, SearchIcon, SparkleIcon, TruckIcon } from "../components/icons.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
@@ -52,6 +52,8 @@ function StatCard({ panelSx, icon, label, value, accent }) {
 }
 
 export default function OrdersPage() {
+  const theme = useTheme();
+  const accents = getStatAccents(theme);
   const location = useLocation();
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
@@ -111,10 +113,10 @@ export default function OrdersPage() {
       </Box>
 
       <Grid container spacing={2.5}>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Total orders" value={stats.total} accent="#7c3aed" /></Grid>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={SparkleIcon} label="Pre-orders" value={stats.preorders} accent="#06b6d4" /></Grid>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={BoxIcon} label="Awaiting payment" value={stats.awaiting} accent="#f59e0b" /></Grid>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={TruckIcon} label="Paid revenue" value={PESO.format(stats.revenue)} accent="#22c55e" /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Total orders" value={stats.total} accent={accents[0]} /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={SparkleIcon} label="Pre-orders" value={stats.preorders} accent={accents[1]} /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={BoxIcon} label="Awaiting payment" value={stats.awaiting} accent={accents[2]} /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={TruckIcon} label="Paid revenue" value={PESO.format(stats.revenue)} accent={theme.palette.success.main} /></Grid>
       </Grid>
 
       <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>

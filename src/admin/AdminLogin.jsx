@@ -14,7 +14,8 @@ import { MONO_FONT } from "../theme.js";
 import { getSurfaces } from "../lib/surfaces.js";
 import { useColorMode } from "../lib/colorMode.jsx";
 import { useAuth, ADMIN_HINT } from "../auth/AuthProvider.jsx";
-import { BrandMark, ShieldIcon } from "../components/icons.jsx";
+import { ShieldIcon } from "../components/icons.jsx";
+import BrandLogo from "../components/BrandLogo.jsx";
 
 export default function AdminLogin() {
   const theme = useTheme();
@@ -54,7 +55,7 @@ export default function AdminLogin() {
       <Container maxWidth="sm">
         <Stack spacing={3} alignItems="center">
           <Stack spacing={1} alignItems="center" textAlign="center">
-            <BrandMark sx={{ fontSize: 44, color: "primary.main", filter: `drop-shadow(0 0 14px ${alpha(theme.palette.primary.main, 0.5)})` }} />
+            <BrandLogo sx={{ fontSize: 44, color: "primary.main", filter: theme.ha?.useImageLogo ? undefined : `drop-shadow(0 0 14px ${alpha(theme.palette.primary.main, 0.5)})` }} imageSx={{ height: 72 }} />
             <Typography variant="h3">Admin portal</Typography>
             <Stack direction="row" spacing={0.75} alignItems="center" sx={{ color: "text.secondary" }}>
               <ShieldIcon sx={{ fontSize: 18 }} />

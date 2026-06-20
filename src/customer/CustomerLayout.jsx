@@ -6,6 +6,7 @@ import { getSurfaces } from "../lib/surfaces.js";
 import { useColorMode } from "../lib/colorMode.jsx";
 import CustomerNavbar from "./CustomerNavbar.jsx";
 import CartDrawer from "./CartDrawer.jsx";
+import DesignProposalSwitcher from "../components/DesignProposalSwitcher.jsx";
 
 export default function CustomerLayout() {
   const theme = useTheme();
@@ -26,6 +27,7 @@ export default function CustomerLayout() {
     >
       <CustomerNavbar surfaces={surfaces} onOpenCart={() => setCartOpen(true)} />
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} surfaceBorderColor={surfaces.surfaceBorderColor} />
+      <DesignProposalSwitcher surfaces={surfaces} />
       <Outlet context={{ surfaces, isDarkMode }} />
     </Box>
   );

@@ -1,12 +1,13 @@
 import { useEffect, useRef } from "react";
-
-const COLORS = ["#7c3aed", "#06b6d4", "#f43f5e", "#f59e0b", "#22c55e", "#a78bfa", "#fcd34d"];
+import { useTheme } from "@mui/material/styles";
 
 function randomBetween(min, max) {
   return Math.random() * (max - min) + min;
 }
 
 export default function ConfettiBurst({ duration = 3200, particleCount = 120 }) {
+  const theme = useTheme();
+  const colors = theme.ha?.confettiColors ?? ["#7c3aed", "#06b6d4", "#f43f5e", "#f59e0b", "#22c55e"];
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -30,7 +31,7 @@ export default function ConfettiBurst({ duration = 3200, particleCount = 120 }) 
       y: randomBetween(-canvas.height * 0.2, -20),
       w: randomBetween(6, 11),
       h: randomBetween(10, 18),
-      color: COLORS[Math.floor(Math.random() * COLORS.length)],
+      color: colors[Math.floor(Math.random() * colors.length)],
       rotation: randomBetween(0, 360),
       spin: randomBetween(-8, 8),
       vx: randomBetween(-2.5, 2.5),
@@ -81,7 +82,7 @@ export default function ConfettiBurst({ duration = 3200, particleCount = 120 }) 
       cancelAnimationFrame(frameId);
       window.removeEventListener("resize", resize);
     };
-  }, [duration, particleCount]);
+  }, [duration, particleCount, colors]);
 
   return (
     <canvas

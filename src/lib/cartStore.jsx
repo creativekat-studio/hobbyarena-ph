@@ -63,6 +63,7 @@ export function CartProvider({ children }) {
             price: product.price,
             tag: product.tag,
             accent: product.accent,
+            image: product.image,
             maxQuantity: limit,
             quantity: 1,
           },

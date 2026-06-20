@@ -104,7 +104,7 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
           variant="contained"
           size="large"
           onClick={() => onContinue({ name: user.displayName, email: user.email, guest: false })}
-          sx={{ mt: 3, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", boxShadow: `0 12px 36px ${alpha(theme.palette.primary.main, 0.45)}` }}
+          sx={{ mt: 3, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}
         >
           Continue to details
         </Button>
@@ -197,7 +197,7 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
           variant="contained"
           size="large"
           onClick={handleGuestContinue}
-          sx={{ mt: 3, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", boxShadow: `0 12px 36px ${alpha(theme.palette.primary.main, 0.45)}` }}
+          sx={{ mt: 3, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}
         >
           Continue as guest
         </Button>
@@ -335,7 +335,7 @@ function DetailsStep({ panelSx, surfaceBorderColor, details, setDetails, onBack,
 
       <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
         <Button variant="outlined" color="inherit" onClick={onBack} sx={{ borderColor: surfaceBorderColor }}>Back</Button>
-        <Button type="submit" variant="contained" sx={{ flexGrow: 1, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", boxShadow: `0 12px 36px ${alpha(theme.palette.primary.main, 0.45)}` }}>
+        <Button type="submit" variant="contained" sx={{ flexGrow: 1, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
           Continue to payment
         </Button>
       </Stack>
@@ -412,7 +412,7 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
           variant="contained"
           disabled={busy || !proofFile || !confirmedTransfer}
           onClick={onPlaceOrder}
-          sx={{ flexGrow: 1, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", boxShadow: `0 12px 36px ${alpha(theme.palette.primary.main, 0.45)}` }}
+          sx={{ flexGrow: 1, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}
         >
           {busy ? "Placing order…" : "Place order"}
         </Button>

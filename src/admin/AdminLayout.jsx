@@ -17,15 +17,10 @@ import {
 import { alpha, useTheme } from "@mui/material/styles";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
-import { getSurfaces } from "../lib/surfaces.js";
-import { useColorMode } from "../lib/colorMode.jsx";
-import { useInquiries } from "../lib/inquiriesStore.jsx";
-import { useOrders } from "../lib/ordersStore.jsx";
-import { useAuth } from "../auth/AuthProvider.jsx";
-import AdminNotificationBell from "./AdminNotificationBell.jsx";
+import { avatarStyles } from "../lib/surfaces.js";
+import BrandLogo from "../components/BrandLogo.jsx";
 import {
   BoxIcon,
-  BrandMark,
   CardIcon,
   InventoryIcon,
   MailIcon,
@@ -34,6 +29,12 @@ import {
   SunIcon,
   UserIcon,
 } from "../components/icons.jsx";
+import { getSurfaces } from "../lib/surfaces.js";
+import { useColorMode } from "../lib/colorMode.jsx";
+import { useInquiries } from "../lib/inquiriesStore.jsx";
+import { useOrders } from "../lib/ordersStore.jsx";
+import { useAuth } from "../auth/AuthProvider.jsx";
+import AdminNotificationBell from "./AdminNotificationBell.jsx";
 
 const DRAWER_WIDTH = 248;
 
@@ -65,13 +66,19 @@ export default function AdminLayout() {
   const drawerContent = (
     <Box sx={{ height: "100%", display: "flex", flexDirection: "column", p: 2 }}>
       <Stack direction="row" spacing={1.25} alignItems="center" sx={{ px: 1, py: 1.5, mb: 1 }}>
-        <BrandMark sx={{ fontSize: 32, color: "primary.main" }} />
-        <Box>
-          <Typography sx={{ fontWeight: 800, lineHeight: 1, fontFamily: theme.typography.h5.fontFamily }}>Hobby Arena</Typography>
+        <BrandLogo sx={{ fontSize: 32, color: "primary.main" }} imageSx={{ height: 40 }} />
+        {!theme.ha?.useImageLogo ? (
+          <Box>
+            <Typography sx={{ fontWeight: 800, lineHeight: 1, fontFamily: theme.typography.h5.fontFamily }}>Hobby Arena</Typography>
+            <Typography variant="caption" sx={{ color: "text.secondary", fontFamily: MONO_FONT, letterSpacing: 1, fontSize: "0.58rem" }}>
+              ADMIN PORTAL
+            </Typography>
+          </Box>
+        ) : (
           <Typography variant="caption" sx={{ color: "text.secondary", fontFamily: MONO_FONT, letterSpacing: 1, fontSize: "0.58rem" }}>
             ADMIN PORTAL
           </Typography>
-        </Box>
+        )}
       </Stack>
 
       <List sx={{ flexGrow: 1 }}>
@@ -110,7 +117,7 @@ export default function AdminLayout() {
 
       <Box sx={{ ...surfaces.panelSx, p: 1.5 }}>
         <Stack direction="row" spacing={1} alignItems="center">
-          <Box sx={{ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, background: `linear-gradient(135deg, ${theme.palette.primary.main}, #06b6d4)` }}>
+          <Box sx={{ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, ...avatarStyles(theme) }}>
             {user?.displayName?.charAt(0) || "A"}
           </Box>
           <Box sx={{ minWidth: 0, flexGrow: 1 }}>

@@ -24,7 +24,9 @@ import {
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { useOutletContext } from "react-router-dom";
-import { MONO_FONT } from "../theme.js";
+import { MONO_FONT, getStatAccents, getBrand } from "../theme.js";
+import { avatarStyles } from "../lib/surfaces.js";
+import { wider } from "../lib/layout.js";
 import { PESO } from "../components/ProductCard.jsx";
 import { BoltIcon, CardIcon, HeartIcon, SparkleIcon, UserIcon } from "../components/icons.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
@@ -71,7 +73,7 @@ function AuthCard({ panelSx }) {
   }
 
   return (
-    <Box sx={{ ...panelSx, p: { xs: 3, md: 5 }, maxWidth: 460, width: "100%" }} component="form" onSubmit={handleSubmit}>
+    <Box sx={{ ...panelSx, p: { xs: 3, md: 5 }, maxWidth: wider(460), width: "100%" }} component="form" onSubmit={handleSubmit}>
       <Stack spacing={2.5}>
         <Stack spacing={0.5}>
           <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2, fontFamily: MONO_FONT }}>
@@ -112,7 +114,7 @@ function AuthCard({ panelSx }) {
           </Stack>
         ) : null}
 
-        <Button type="submit" variant="contained" color="primary" size="large" disabled={busy} sx={{ py: 1.3, fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase", boxShadow: `0 12px 36px ${alpha(theme.palette.primary.main, 0.45)}` }}>
+        <Button type="submit" variant="contained" color="primary" size="large" disabled={busy} sx={{ py: 1.3, fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase" }}>
           {busy ? "Please wait…" : mode === "signin" ? "▶ Sign in" : "▶ Create account"}
         </Button>
 
@@ -153,6 +155,8 @@ function StatCard({ panelSx, icon, label, value, accent }) {
 
 function Dashboard({ panelSx, surfaceBorderColor }) {
   const theme = useTheme();
+  const accents = getStatAccents(theme);
+  const heroGlow = getBrand(theme).heroGlowColor ?? theme.palette.primary.main;
   const { user, signOut } = useAuth();
   const { orders: allOrders } = useOrders();
   const { items: wishlistItems, remove: removeFromWishlist } = useWishlist();
@@ -170,10 +174,10 @@ function Dashboard({ panelSx, surfaceBorderColor }) {
   return (
     <Stack spacing={3}>
       <Box sx={{ ...panelSx, p: { xs: 3, md: 4 }, position: "relative", overflow: "hidden" }}>
-        <Box aria-hidden sx={{ position: "absolute", top: -80, right: -60, width: 240, height: 240, borderRadius: "50%", background: `radial-gradient(circle, ${alpha(theme.palette.primary.main, 0.25)} 0%, transparent 65%)`, pointerEvents: "none" }} />
+        <Box aria-hidden sx={{ position: "absolute", top: -80, right: -60, width: 240, height: 240, borderRadius: "50%", background: `radial-gradient(circle, ${alpha(heroGlow, 0.25)} 0%, transparent 65%)`, pointerEvents: "none" }} />
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2.5} alignItems={{ xs: "flex-start", sm: "center" }} justifyContent="space-between">
           <Stack direction="row" spacing={2} alignItems="center">
-            <Box sx={{ width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: "1.5rem", background: `linear-gradient(135deg, ${theme.palette.primary.main}, #06b6d4)` }}>
+            <Box sx={{ width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1.5rem", ...avatarStyles(theme) }}>
               {displayName.charAt(0).toUpperCase()}
             </Box>
             <Box>
@@ -188,16 +192,16 @@ function Dashboard({ panelSx, surfaceBorderColor }) {
 
       <Grid container spacing={2.5}>
         <Grid size={{ xs: 6, sm: 3 }}>
-          <StatCard panelSx={panelSx} icon={SparkleIcon} label="Store credit" value={PESO.format(ACCOUNT.storeCredit)} accent="#06b6d4" />
+          <StatCard panelSx={panelSx} icon={SparkleIcon} label="Store credit" value={PESO.format(ACCOUNT.storeCredit)} accent={accents[1]} />
         </Grid>
         <Grid size={{ xs: 6, sm: 3 }}>
-          <StatCard panelSx={panelSx} icon={BoltIcon} label="Loyalty points" value={ACCOUNT.loyaltyPoints.toLocaleString()} accent="#f59e0b" />
+          <StatCard panelSx={panelSx} icon={BoltIcon} label="Loyalty points" value={ACCOUNT.loyaltyPoints.toLocaleString()} accent={accents[2]} />
         </Grid>
         <Grid size={{ xs: 6, sm: 3 }}>
-          <StatCard panelSx={panelSx} icon={CardIcon} label="Total orders" value={customerOrders.length} accent="#7c3aed" />
+          <StatCard panelSx={panelSx} icon={CardIcon} label="Total orders" value={customerOrders.length} accent={accents[0]} />
         </Grid>
         <Grid size={{ xs: 6, sm: 3 }}>
-          <StatCard panelSx={panelSx} icon={HeartIcon} label="Wishlist" value={wishlistItems.length} accent="#f43f5e" />
+          <StatCard panelSx={panelSx} icon={HeartIcon} label="Wishlist" value={wishlistItems.length} accent={accents[3]} />
         </Grid>
       </Grid>
 
@@ -299,7 +303,7 @@ export default function AccountPage() {
           <Stack spacing={1} alignItems="center" textAlign="center">
             <UserIcon sx={{ fontSize: 40, color: "primary.main" }} />
             <Typography variant="h3">Your account</Typography>
-            <Typography color="text.secondary" sx={{ maxWidth: 460 }}>
+            <Typography color="text.secondary" sx={{ maxWidth: wider(460) }}>
               Sign in to manage orders, pre-orders, store credit, and your wishlist.
             </Typography>
           </Stack>

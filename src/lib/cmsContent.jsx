@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { BRAND } from "../data/mockData.js";
+import { ALL_PRODUCTS, BRAND } from "../data/mockData.js";
 
 /**
  * Lightweight CMS content store.
@@ -26,7 +26,7 @@ const DEFAULT_CONTENT = {
       subtitle: "Sealed Pokémon & One Piece — restocked weekly.",
       ctaLabel: "Shop sealed",
       link: "sealed",
-      color: "#7c3aed",
+      color: "#2563EB",
       active: true,
     },
     {
@@ -35,7 +35,23 @@ const DEFAULT_CONTENT = {
       subtitle: "Lock in upcoming sets with a small deposit.",
       ctaLabel: "View pre-orders",
       link: "preorders",
-      color: "#06b6d4",
+      color: "#C9A227",
+      active: true,
+    },
+  ],
+  featureDrops: [
+    {
+      id: "fd1",
+      productId: "pkm-ascended-etb",
+      badge: "FEATURED DROP",
+      tier: "SEALED DROP",
+      active: true,
+    },
+    {
+      id: "fd2",
+      productId: "pkm-charizard-upc",
+      badge: "FEATURED DROP",
+      tier: "ULTRA-PREMIUM",
       active: true,
     },
   ],
@@ -72,7 +88,12 @@ function loadContent() {
       hero: { ...DEFAULT_CONTENT.hero, ...parsed.hero },
       social: { ...DEFAULT_CONTENT.social, ...parsed.social },
       contact: { ...DEFAULT_CONTENT.contact, ...parsed.contact },
-      banners: parsed.banners || DEFAULT_CONTENT.banners,
+      banners: (parsed.banners || DEFAULT_CONTENT.banners).map((banner) => {
+        const fallback = DEFAULT_CONTENT.banners.find((b) => b.id === banner.id);
+        const { image: _image, ...rest } = banner;
+        return { ...fallback, ...rest };
+      }),
+      featureDrops: parsed.featureDrops || DEFAULT_CONTENT.featureDrops,
       announcements: parsed.announcements || DEFAULT_CONTENT.announcements,
     };
   } catch {
@@ -95,11 +116,34 @@ export function CmsProvider({ children }) {
     const setContact = (contact) => setContent((c) => ({ ...c, contact: { ...c.contact, ...contact } }));
 
     const addBanner = (banner) =>
-      setContent((c) => ({ ...c, banners: [...c.banners, { id: `b_${Date.now()}`, active: true, color: "#7c3aed", link: "sealed", ...banner }] }));
+      setContent((c) => ({ ...c, banners: [...c.banners, { id: `b_${Date.now()}`, active: true, color: "#2563EB", link: "sealed", ...banner }] }));
     const updateBanner = (id, patch) =>
       setContent((c) => ({ ...c, banners: c.banners.map((b) => (b.id === id ? { ...b, ...patch } : b)) }));
     const removeBanner = (id) =>
       setContent((c) => ({ ...c, banners: c.banners.filter((b) => b.id !== id) }));
+
+    const addFeatureDrop = (drop) =>
+      setContent((c) => ({
+        ...c,
+        featureDrops: [
+          ...c.featureDrops,
+          {
+            id: `fd_${Date.now()}`,
+            productId: ALL_PRODUCTS[0]?.id ?? "",
+            badge: "FEATURED DROP",
+            tier: "ULTRA-PREMIUM",
+            active: true,
+            ...drop,
+          },
+        ],
+      }));
+    const updateFeatureDrop = (id, patch) =>
+      setContent((c) => ({
+        ...c,
+        featureDrops: c.featureDrops.map((d) => (d.id === id ? { ...d, ...patch } : d)),
+      }));
+    const removeFeatureDrop = (id) =>
+      setContent((c) => ({ ...c, featureDrops: c.featureDrops.filter((d) => d.id !== id) }));
 
     const addAnnouncement = (text) =>
       setContent((c) => ({ ...c, announcements: [...c.announcements, { id: `a_${Date.now()}`, text, active: true }] }));
@@ -117,6 +161,9 @@ export function CmsProvider({ children }) {
       addBanner,
       updateBanner,
       removeBanner,
+      addFeatureDrop,
+      updateFeatureDrop,
+      removeFeatureDrop,
       addAnnouncement,
       updateAnnouncement,
       removeAnnouncement,

@@ -17,7 +17,7 @@ import {
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { useOutletContext } from "react-router-dom";
-import { MONO_FONT } from "../theme.js";
+import { MONO_FONT, getStatAccents } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
 import { BoxIcon, InventoryIcon, SearchIcon, ShieldIcon, SparkleIcon } from "../components/icons.jsx";
 import { INVENTORY } from "../data/mockData.js";
@@ -58,6 +58,7 @@ function StatCard({ panelSx, icon, label, value, accent }) {
 
 export default function InventoryPage() {
   const theme = useTheme();
+  const accents = getStatAccents(theme);
   const { surfaces } = useOutletContext();
   const { panelSx } = surfaces;
   const [filter, setFilter] = useState("all");
@@ -106,10 +107,10 @@ export default function InventoryPage() {
       </Stack>
 
       <Grid container spacing={2.5}>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={InventoryIcon} label="Total SKUs" value={stats.skus} accent="#7c3aed" /></Grid>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={BoxIcon} label="Units in stock" value={stats.totalUnits} accent="#06b6d4" /></Grid>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={ShieldIcon} label="Out of stock" value={stats.outOfStock} accent="#f43f5e" /></Grid>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={SparkleIcon} label="Stock value (cost)" value={PESO.format(stats.value)} accent="#f59e0b" /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={InventoryIcon} label="Total SKUs" value={stats.skus} accent={accents[0]} /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={BoxIcon} label="Units in stock" value={stats.totalUnits} accent={accents[1]} /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={ShieldIcon} label="Out of stock" value={stats.outOfStock} accent={accents[2]} /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={SparkleIcon} label="Stock value (cost)" value={PESO.format(stats.value)} accent={accents[3]} /></Grid>
       </Grid>
 
       <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>

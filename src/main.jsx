@@ -5,6 +5,7 @@ import {
   RouterProvider,
   createBrowserRouter,
 } from "react-router-dom";
+import { DesignProposalProvider } from "./lib/designProposal.jsx";
 import { ColorModeProvider } from "./lib/colorMode.jsx";
 import { CmsProvider } from "./lib/cmsContent.jsx";
 import { InquiriesProvider } from "./lib/inquiriesStore.jsx";
@@ -66,20 +67,22 @@ const router = createBrowserRouter([
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <ColorModeProvider>
-      <CmsProvider>
-        <InquiriesProvider>
-          <CartProvider>
-            <OrdersProvider>
-              <AuthProvider>
-                <WishlistProvider>
-                  <RouterProvider router={router} />
-                </WishlistProvider>
-              </AuthProvider>
-            </OrdersProvider>
-          </CartProvider>
-        </InquiriesProvider>
-      </CmsProvider>
-    </ColorModeProvider>
+    <DesignProposalProvider>
+      <ColorModeProvider>
+        <CmsProvider>
+          <InquiriesProvider>
+            <CartProvider>
+              <OrdersProvider>
+                <AuthProvider>
+                  <WishlistProvider>
+                    <RouterProvider router={router} />
+                  </WishlistProvider>
+                </AuthProvider>
+              </OrdersProvider>
+            </CartProvider>
+          </InquiriesProvider>
+        </CmsProvider>
+      </ColorModeProvider>
+    </DesignProposalProvider>
   </React.StrictMode>,
 );

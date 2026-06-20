@@ -14,12 +14,12 @@ import {
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { useLocation, useNavigate } from "react-router-dom";
-import { MONO_FONT } from "../theme.js";
+import { MONO_FONT, getBrand } from "../theme.js";
 import { useColorMode } from "../lib/colorMode.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { useCart } from "../lib/cartStore.jsx";
+import BrandLogo from "../components/BrandLogo.jsx";
 import {
-  BrandMark,
   CartIcon,
   MoonIcon,
   SearchIcon,
@@ -43,6 +43,8 @@ export default function CustomerNavbar({ surfaces, onOpenCart }) {
   const { itemCount } = useCart();
   const isDarkMode = mode === "dark";
   const { navbarBackground, surfaceBorderColor } = surfaces;
+  const useImageLogo = theme.ha?.useImageLogo;
+  const brand = getBrand(theme);
 
   function handleNav(item) {
     if (item.section) {
@@ -66,7 +68,7 @@ export default function CustomerNavbar({ surfaces, onOpenCart }) {
         bgcolor: navbarBackground,
         backdropFilter: "blur(20px)",
         borderBottom: "1px solid",
-        borderColor: surfaceBorderColor,
+        borderColor: brand.navbarBorder ?? surfaceBorderColor,
       }}
     >
       <Container maxWidth="lg">
@@ -78,15 +80,27 @@ export default function CustomerNavbar({ surfaces, onOpenCart }) {
             onClick={() => handleNav({ to: "/" })}
             sx={{ minWidth: 0, cursor: "pointer" }}
           >
-            <BrandMark sx={{ fontSize: { xs: 30, md: 36 }, color: "primary.main", filter: `drop-shadow(0 0 12px ${alpha(theme.palette.primary.main, 0.5)})` }} />
-            <Stack sx={{ minWidth: 0 }}>
-              <Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1, letterSpacing: "-0.02em" }}>
-                Hobby Arena
-              </Typography>
-              <Typography variant="caption" sx={{ color: "text.secondary", fontFamily: MONO_FONT, letterSpacing: 1.2, textTransform: "uppercase", fontSize: "0.6rem" }}>
+            <BrandLogo
+              sx={{
+                fontSize: { xs: 30, md: 36 },
+                color: "primary.main",
+                filter: useImageLogo ? undefined : `drop-shadow(0 0 12px ${alpha(theme.palette.primary.main, 0.5)})`,
+              }}
+            />
+            {!useImageLogo ? (
+              <Stack sx={{ minWidth: 0 }}>
+                <Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1, letterSpacing: "-0.02em" }}>
+                  Hobby Arena
+                </Typography>
+                <Typography variant="caption" sx={{ color: "text.secondary", fontFamily: MONO_FONT, letterSpacing: 1.2, textTransform: "uppercase", fontSize: "0.6rem" }}>
+                  Premium TCG
+                </Typography>
+              </Stack>
+            ) : (
+              <Typography variant="caption" sx={{ color: "text.secondary", fontFamily: MONO_FONT, letterSpacing: 1.2, textTransform: "uppercase", fontSize: "0.6rem", display: { xs: "none", sm: "block" } }}>
                 Premium TCG
               </Typography>
-            </Stack>
+            )}
           </Stack>
 
           <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: 2, display: { xs: "none", md: "flex" } }}>

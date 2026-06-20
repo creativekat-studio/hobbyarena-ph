@@ -12,6 +12,7 @@ import { useNavigate } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { CardIcon, PokeballIcon } from "../components/icons.jsx";
 import { PESO } from "../components/ProductCard.jsx";
+import { OFF_WHITE } from "../lib/colors.js";
 import { useCart } from "../lib/cartStore.jsx";
 
 function CloseIcon(props) {
@@ -38,10 +39,17 @@ function CartLineItem({ item, onQuantityChange, onRemove, surfaceBorderColor }) 
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: `linear-gradient(150deg, ${alpha(accent, 0.95)} 0%, ${alpha(accent, 0.4)} 100%)`,
+          overflow: "hidden",
+          background: item.image
+            ? alpha(theme.palette.background.default, 0.4)
+            : `linear-gradient(150deg, ${alpha(accent, 0.95)} 0%, ${alpha(accent, 0.4)} 100%)`,
         }}
       >
-        <Glyph sx={{ fontSize: 28, color: "rgba(255,255,255,0.92)" }} />
+        {item.image ? (
+          <Box component="img" src={item.image} alt="" sx={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        ) : (
+          <Glyph sx={{ fontSize: 28, color: OFF_WHITE.glyph }} />
+        )}
       </Box>
 
       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
@@ -152,7 +160,6 @@ export default function CartDrawer({ open, onClose, surfaceBorderColor }) {
                 fontFamily: MONO_FONT,
                 letterSpacing: 0.5,
                 textTransform: "uppercase",
-                boxShadow: `0 12px 36px ${alpha(theme.palette.primary.main, 0.45)}`,
               }}
             >
               Checkout

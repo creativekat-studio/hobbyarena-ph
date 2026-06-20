@@ -1,6 +1,8 @@
 // Mock data only — no backend yet. Prices in PHP.
 // Modeled on the real Hobby Arena (hobbyarena.ph): a premium TCG store.
 
+import { productImage } from "./mediaAssets.js";
+
 export const BRAND = {
   name: "Hobby Arena",
   legalName: "Hobby Arena Marketing Corporation",
@@ -31,6 +33,7 @@ export const SEALED_PRODUCTS = [
     stock: 0,
     accent: "#f43f5e",
     tag: "Sealed",
+    image: productImage("pkm-phantasmal-etb"),
   },
   {
     id: "pkm-ascended-etb",
@@ -42,6 +45,7 @@ export const SEALED_PRODUCTS = [
     stock: 4,
     accent: "#7c3aed",
     tag: "Sealed",
+    image: productImage("pkm-ascended-etb"),
   },
   {
     id: "pkm-first-partner",
@@ -53,6 +57,7 @@ export const SEALED_PRODUCTS = [
     stock: 9,
     accent: "#06b6d4",
     tag: "Sealed",
+    image: productImage("pkm-first-partner"),
   },
   {
     id: "pkm-charizard-upc",
@@ -64,6 +69,7 @@ export const SEALED_PRODUCTS = [
     stock: 0,
     accent: "#f59e0b",
     tag: "Grail",
+    image: productImage("pkm-charizard-upc"),
   },
   {
     id: "op-15-booster",
@@ -75,6 +81,7 @@ export const SEALED_PRODUCTS = [
     stock: 12,
     accent: "#ef4444",
     tag: "Sealed",
+    image: productImage("op-15-booster"),
   },
 ];
 
@@ -89,6 +96,7 @@ export const PREORDER_PRODUCTS = [
     stock: 0,
     accent: "#ef4444",
     tag: "Pre-order",
+    image: productImage("op-jp-3rd-anni-en"),
   },
   {
     id: "op-jp-3rd-anni-cn",
@@ -100,6 +108,7 @@ export const PREORDER_PRODUCTS = [
     stock: 0,
     accent: "#ef4444",
     tag: "Pre-order",
+    image: productImage("op-jp-3rd-anni-cn"),
   },
   {
     id: "op-treasure-chest-2",
@@ -111,6 +120,7 @@ export const PREORDER_PRODUCTS = [
     stock: 0,
     accent: "#06b6d4",
     tag: "Pre-order",
+    image: productImage("op-treasure-chest-2"),
   },
   {
     id: "op-spc-01",
@@ -122,6 +132,7 @@ export const PREORDER_PRODUCTS = [
     stock: 0,
     accent: "#7c3aed",
     tag: "Pre-order",
+    image: productImage("op-spc-01"),
   },
   {
     id: "op-mini-tin-4",
@@ -133,39 +144,7 @@ export const PREORDER_PRODUCTS = [
     stock: 0,
     accent: "#06b6d4",
     tag: "Pre-order",
-  },
-  {
-    id: "op-eb-05",
-    name: "One Piece (English) Extra Booster [EB-05]",
-    line: "One Piece Card Game",
-    price: 2340,
-    rating: 4.8,
-    reviews: 22,
-    stock: 0,
-    accent: "#ef4444",
-    tag: "Pre-order",
-  },
-  {
-    id: "pkm-pitch-black-bb",
-    name: "Mega Evolution — Pitch Black Booster Box (36 packs)",
-    line: "Pokémon TCG",
-    price: 2595,
-    rating: 4.9,
-    reviews: 40,
-    stock: 0,
-    accent: "#7c3aed",
-    tag: "Pre-order",
-  },
-  {
-    id: "pkm-pitch-black-etb",
-    name: "Mega Evolution — Pitch Black Elite Trainer Box",
-    line: "Pokémon TCG",
-    price: 1080,
-    rating: 4.8,
-    reviews: 29,
-    stock: 0,
-    accent: "#f59e0b",
-    tag: "Pre-order",
+    image: productImage("op-mini-tin-4"),
   },
 ];
 
@@ -225,8 +204,8 @@ export const ACCOUNT = {
     {
       id: "HA-10299",
       date: "2026-04-12",
-      items: "Pitch Black ETB (Pre-order)",
-      total: 1080,
+      items: "One Piece Treasure Chest Vol. 2 [TC-02]",
+      total: 1230,
       status: "Delivered",
     },
   ],
@@ -280,9 +259,9 @@ export const ORDERS = [
     customer: "Nami Oda",
     email: "nami@example.com",
     type: "Pre-order",
-    items: "One Piece (English) Extra Booster [EB-05]",
+    items: "One Piece Super Premium Collection Vol. 1 [SPC-01]",
     qty: 1,
-    total: 2340,
+    total: 3300,
     payment: "Deposit",
     status: "Awaiting stock",
     date: "2026-06-14",
@@ -304,9 +283,9 @@ export const ORDERS = [
     customer: "May Maple",
     email: "may@example.com",
     type: "Pre-order",
-    items: "Pitch Black Booster Box (36 packs)",
+    items: "One Piece (Japanese) English 3rd Anniversary Set",
     qty: 1,
-    total: 2595,
+    total: 2880,
     payment: "Deposit",
     status: "Awaiting stock",
     date: "2026-06-12",
