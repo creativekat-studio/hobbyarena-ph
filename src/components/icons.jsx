@@ -117,6 +117,41 @@ export function HeartIcon(props) {
   );
 }
 
+export function EditIcon(props) {
+  return (
+    <SvgIcon viewBox="0 0 24 24" {...props}>
+      <path
+        d="M4 20h4l10.5-10.5a1.8 1.8 0 0 0 0-2.5L16 4.5a1.8 1.8 0 0 0-2.5 0L4 14v6Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path d="m13.5 6.5 4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </SvgIcon>
+  );
+}
+
+export function ViewTableIcon(props) {
+  return (
+    <SvgIcon viewBox="0 0 24 24" {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M3 9h18M3 14h18M9 9v11" fill="none" stroke="currentColor" strokeWidth="1.5" />
+    </SvgIcon>
+  );
+}
+
+export function ViewGridIcon(props) {
+  return (
+    <SvgIcon viewBox="0 0 24 24" {...props}>
+      <rect x="3" y="3" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="13" y="3" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="3" y="13" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="13" y="13" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+    </SvgIcon>
+  );
+}
+
 export function SearchIcon(props) {
   return (
     <SvgIcon viewBox="0 0 24 24" {...props}>

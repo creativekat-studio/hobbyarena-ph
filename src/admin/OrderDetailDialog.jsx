@@ -16,6 +16,7 @@ import {
 import { alpha } from "@mui/material/styles";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
+import { fulfillmentLabel } from "../data/checkoutSettings.js";
 
 const PAYMENT_OPTIONS = [
   "Pending Verification",
@@ -142,7 +143,7 @@ export default function OrderDetailDialog({ order, open, onClose, panelSx, surfa
                 <Typography sx={{ fontWeight: 800, fontSize: "1.4rem", color: "primary.main" }}>{PESO.format(order.total)}</Typography>
                 {order.subtotal != null ? (
                   <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-                    Subtotal {PESO.format(order.subtotal)} · Shipping {order.shippingFee === 0 ? "Free" : PESO.format(order.shippingFee)}
+                    Subtotal {PESO.format(order.subtotal)} · Shipping {order.fulfillment === "pickup" ? "Free" : "At buyer's expense"}
                   </Typography>
                 ) : null}
               </Box>
@@ -189,8 +190,7 @@ export default function OrderDetailDialog({ order, open, onClose, panelSx, surfa
               <Box sx={{ ...panelSx, p: 2 }}>
                 <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", mb: 1 }}>Fulfillment</Typography>
                 <Typography sx={{ fontSize: "0.88rem" }}>
-                  {order.fulfillment === "pickup" ? "Store pickup" : "Delivery"}
-                  {order.region ? ` · ${order.region === "provincial" ? "Provincial" : "Metro Manila"}` : ""}
+                  {fulfillmentLabel(order.fulfillment)}
                 </Typography>
                 {address ? <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{address}</Typography> : null}
                 {order.phone ? <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{order.phone}</Typography> : null}

@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { Box, Button, Chip, IconButton, Rating, Stack, Tooltip, Typography } from "@mui/material";
+import { Link as RouterLink } from "react-router-dom";
+import { Box, Button, Chip, IconButton, Stack, Tooltip, Typography } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
+import ProductRating from "./ProductRating.jsx";
+import PreorderCountdown from "./PreorderCountdown.jsx";
+import PreorderPricing from "./PreorderPricing.jsx";
 import { MONO_FONT } from "../theme.js";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { useCart } from "../lib/cartStore.jsx";
 import { useWishlist } from "../lib/wishlistStore.jsx";
 import { CardIcon, HeartIcon, PokeballIcon } from "./icons.jsx";
 import { OFF_WHITE } from "../lib/colors.js";
+import { productMediaSurface } from "../lib/surfaces.js";
+import { getCountdownParts } from "../lib/preorder.js";
 
 export const PESO = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -14,7 +20,7 @@ export const PESO = new Intl.NumberFormat("en-PH", {
   maximumFractionDigits: 0,
 });
 
-function resolveProductAccent(product, theme) {
+export function resolveProductAccent(product, theme) {
   if (theme.ha?.proposalId === 2) {
     if (product.line.startsWith("Pokémon")) return theme.palette.secondary.main;
     if (product.line.startsWith("One Piece")) return theme.ha?.brand?.accentRose ?? theme.palette.error.main;
@@ -37,6 +43,7 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
   const Glyph = isPokemon ? PokeballIcon : CardIcon;
   const isPreorder = product.tag === "Pre-order";
   const soldOut = !isPreorder && product.stock <= 0;
+  const preorderClosed = isPreorder && getCountdownParts(product.preorderEndsAt)?.expired;
 
   let actionLabel = "Add to cart";
   if (isPreorder) actionLabel = "Pre-order";
@@ -56,7 +63,7 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
   }
 
   function handleAction() {
-    if (soldOut) return;
+    if (soldOut || preorderClosed) return;
     const ok = addItem(product);
     if (!ok) return;
     setAdded(true);
@@ -86,21 +93,14 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
       }}
     >
       <Box
+        component={RouterLink}
+        to={`/shop/${product.id}`}
         sx={{
-          position: "relative",
+          ...productMediaSurface(isDarkMode),
           aspectRatio: "4 / 3",
-          background: `linear-gradient(150deg, ${alpha(accent, 0.95)} 0%, ${alpha(accent, 0.4)} 100%)`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          overflow: "hidden",
-          "&::before": {
-            content: '""',
-            position: "absolute",
-            inset: 0,
-            background:
-              `radial-gradient(circle at 30% 18%, ${alpha(OFF_WHITE.textBright, 0.45)} 0%, transparent 55%)`,
-          },
+          display: "block",
+          textDecoration: "none",
+          color: "inherit",
         }}
       >
         {product.image ? (
@@ -157,7 +157,7 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
             backdropFilter: "blur(4px)",
           }}
         />
-        {soldOut ? (
+        {soldOut || preorderClosed ? (
           <Box
             sx={{
               position: "absolute",
@@ -170,7 +170,7 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
             }}
           >
             <Typography sx={{ color: OFF_WHITE.textBright, fontFamily: MONO_FONT, fontWeight: 700, letterSpacing: 1 }}>
-              OUT OF STOCK
+              {preorderClosed ? "PRE-ORDER CLOSED" : "OUT OF STOCK"}
             </Typography>
           </Box>
         ) : null}
@@ -180,34 +180,45 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
         <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", color: accent, letterSpacing: 1, fontWeight: 700 }}>
           {product.line.toUpperCase()}
         </Typography>
-        <Typography sx={{ fontWeight: 700, lineHeight: 1.25, flexGrow: 1, fontSize: "0.95rem" }}>
+        <Typography
+          component={RouterLink}
+          to={`/shop/${product.id}`}
+          sx={{
+            fontWeight: 700,
+            lineHeight: 1.25,
+            flexGrow: 1,
+            fontSize: "0.95rem",
+            color: "inherit",
+            textDecoration: "none",
+            "&:hover": { color: "primary.main" },
+          }}
+        >
           {product.name}
         </Typography>
-        <Stack direction="row" spacing={0.5} alignItems="center">
-          <Rating value={product.rating} precision={0.1} size="small" readOnly />
-          <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>
-            ({product.reviews})
-          </Typography>
-        </Stack>
-        <Stack direction="row" alignItems="baseline" justifyContent="space-between">
-          <Typography sx={{ fontWeight: 800, fontSize: "1.15rem", color: "primary.main" }}>
-            {PESO.format(product.price)}
-          </Typography>
-          {!isPreorder ? (
+        <ProductRating product={product} />
+        {isPreorder && product.preorderEndsAt ? (
+          <PreorderCountdown endsAt={product.preorderEndsAt} compact />
+        ) : null}
+        {isPreorder ? (
+          <PreorderPricing product={product} compact />
+        ) : (
+          <Stack direction="row" alignItems="baseline" justifyContent="space-between">
+            <Typography sx={{ fontWeight: 800, fontSize: "1.15rem", color: "primary.main" }}>
+              {PESO.format(product.price)}
+            </Typography>
             <Typography sx={{ fontSize: "0.7rem", color: soldOut ? "error.main" : "success.main", fontWeight: 700, fontFamily: MONO_FONT }}>
               {soldOut ? "0 LEFT" : `${product.stock} LEFT`}
             </Typography>
-          ) : (
-            <Typography sx={{ fontSize: "0.7rem", color: "warning.main", fontWeight: 700, fontFamily: MONO_FONT }}>
-              PRE-ORDER
-            </Typography>
-          )}
-        </Stack>
+          </Stack>
+        )}
         <Button
-          variant={soldOut ? "outlined" : added ? "outlined" : "contained"}
+          variant={soldOut || preorderClosed ? "outlined" : added ? "outlined" : "contained"}
           color={added ? "success" : "primary"}
-          disabled={soldOut}
-          onClick={handleAction}
+          disabled={soldOut || preorderClosed}
+          onClick={(event) => {
+            event.stopPropagation();
+            handleAction();
+          }}
           sx={{ mt: 0.5 }}
         >
           {buttonLabel}

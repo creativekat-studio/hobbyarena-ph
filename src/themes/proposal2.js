@@ -75,7 +75,7 @@ export const PROPOSAL_2 = {
     const navy = isDarkMode ? "#070E24" : "#EEF2FA";
     const pageBackground = isDarkMode
       ? `radial-gradient(circle at 15% -8%, ${alpha("#2563EB", 0.22)} 0%, transparent 38%), radial-gradient(circle at 50% 110%, ${alpha("#1E3A8A", 0.35)} 0%, transparent 45%), linear-gradient(180deg, #070E24 0%, #0B1538 50%, #0F1D42 100%)`
-      : `radial-gradient(circle at 12% -5%, ${alpha("#2563EB", 0.08)} 0%, transparent 36%), linear-gradient(180deg, #EBE8E0 0%, ${OFF_WHITE.paperSoft} 55%, ${OFF_WHITE.paper} 100%)`;
+      : `linear-gradient(180deg, #EBE8E0 0%, ${OFF_WHITE.paperSoft} 55%, ${OFF_WHITE.paper} 100%)`;
     const surfaceBorderColor = isDarkMode
       ? alpha(gold, 0.14)
       : alpha("#1E3A8A", 0.1);

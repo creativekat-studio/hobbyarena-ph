@@ -12,7 +12,7 @@ export const BRAND = {
   email: "hello@hobbyarena.ph",
   hours: "Order processing Monday to Friday, 8:00am – 8:00pm",
   socials: ["Instagram", "Facebook", "TikTok"],
-  handle: "@hobbyarenaph",
+  handle: "@hobbyarena.ph",
 };
 
 export const STATS = [
@@ -34,6 +34,31 @@ export const SEALED_PRODUCTS = [
     accent: "#f43f5e",
     tag: "Sealed",
     image: productImage("pkm-phantasmal-etb"),
+    descriptionSections: [
+      {
+        title: "What's in the box",
+        specs: [
+          { label: "Booster packs", value: "9 × Phantasmal Flames" },
+          { label: "Promo card", value: "Charcadet (full-art foil)" },
+          { label: "Card sleeves", value: "65" },
+        ],
+      },
+      {
+        title: "Accessories",
+        specs: [
+          { label: "Energy cards", value: "40" },
+          { label: "Player's guide", value: "Phantasmal Flames expansion" },
+          { label: "Damage-counter dice", value: "6" },
+          { label: "Coin-flip die", value: "1 (competition-legal)" },
+          { label: "Plastic coin", value: "1" },
+          { label: "Storage", value: "Collector's box + 6 dividers" },
+        ],
+      },
+      {
+        title: "Digital",
+        specs: [{ label: "Pokémon TCG Live", value: "Code card included" }],
+      },
+    ],
   },
   {
     id: "pkm-ascended-etb",
@@ -46,6 +71,31 @@ export const SEALED_PRODUCTS = [
     accent: "#7c3aed",
     tag: "Sealed",
     image: productImage("pkm-ascended-etb"),
+    descriptionSections: [
+      {
+        title: "What's in the box",
+        specs: [
+          { label: "Booster packs", value: "9 × Ascended Heroes" },
+          { label: "Promo card", value: "1 full-art foil" },
+          { label: "Card sleeves", value: "65 (Ascended Heroes art)" },
+        ],
+      },
+      {
+        title: "Accessories",
+        specs: [
+          { label: "Energy cards", value: "40" },
+          { label: "Player's guide", value: "Ascended Heroes expansion" },
+          { label: "Damage-counter dice", value: "6" },
+          { label: "Coin-flip die", value: "1 (competition-legal)" },
+          { label: "Plastic coin", value: "1" },
+          { label: "Storage", value: "Collector's box + dividers" },
+        ],
+      },
+      {
+        title: "Digital",
+        specs: [{ label: "Pokémon TCG Live", value: "Code card included" }],
+      },
+    ],
   },
   {
     id: "pkm-first-partner",
@@ -58,6 +108,24 @@ export const SEALED_PRODUCTS = [
     accent: "#06b6d4",
     tag: "Sealed",
     image: productImage("pkm-first-partner"),
+    descriptionSections: [
+      {
+        title: "Collection overview",
+        intro: "Illustration collection featuring partner Pokémon across generations in premium foil treatments.",
+        specs: [
+          { label: "Format", value: "Illustration collection box" },
+          { label: "Language", value: "English" },
+          { label: "Condition", value: "Factory sealed" },
+        ],
+      },
+      {
+        title: "Good to know",
+        bullets: [
+          "Ideal for collectors building a display set or gifting to new trainers.",
+          "Sourced from official distributors.",
+        ],
+      },
+    ],
   },
   {
     id: "pkm-charizard-upc",
@@ -70,6 +138,24 @@ export const SEALED_PRODUCTS = [
     accent: "#f59e0b",
     tag: "Grail",
     image: productImage("pkm-charizard-upc"),
+    descriptionSections: [
+      {
+        title: "What's in the box",
+        specs: [
+          { label: "Featured Pokémon", value: "Mega Charizard X ex" },
+          { label: "Product type", value: "Ultra-Premium Collection" },
+          { label: "Presentation", value: "Deluxe collector box" },
+        ],
+      },
+      {
+        title: "Highlights",
+        bullets: [
+          "Includes booster packs and exclusive promo cards in premium packaging.",
+          "Highly sought-after grail sealed product.",
+          "Ships double-boxed with collector-grade padding.",
+        ],
+      },
+    ],
   },
   {
     id: "op-15-booster",
@@ -82,8 +168,34 @@ export const SEALED_PRODUCTS = [
     accent: "#ef4444",
     tag: "Sealed",
     image: productImage("op-15-booster"),
+    descriptionSections: [
+      {
+        title: "Box contents",
+        specs: [
+          { label: "Booster packs", value: "24" },
+          { label: "Set", value: "OP-15 — Island of God" },
+          { label: "Language", value: "English" },
+          { label: "Condition", value: "Factory sealed" },
+        ],
+      },
+      {
+        title: "Good to know",
+        bullets: [
+          "Main expansion booster box for the One Piece Card Game.",
+          "Ready to rip or hold sealed.",
+        ],
+      },
+    ],
   },
 ];
+
+const PREORDER_DEADLINES = {
+  "op-jp-3rd-anni-en": "2026-07-18T23:59:59+08:00",
+  "op-jp-3rd-anni-cn": "2026-07-22T23:59:59+08:00",
+  "op-treasure-chest-2": "2026-08-05T23:59:59+08:00",
+  "op-spc-01": "2026-08-12T23:59:59+08:00",
+  "op-mini-tin-4": "2026-07-30T23:59:59+08:00",
+};
 
 export const PREORDER_PRODUCTS = [
   {
@@ -91,60 +203,157 @@ export const PREORDER_PRODUCTS = [
     name: "One Piece (Japanese) English 3rd Anniversary Set",
     line: "One Piece Card Game",
     price: 2880,
+    preorderEndsAt: PREORDER_DEADLINES["op-jp-3rd-anni-en"],
+    depositPercent: 30,
     rating: 4.8,
     reviews: 12,
     stock: 0,
     accent: "#ef4444",
     tag: "Pre-order",
     image: productImage("op-jp-3rd-anni-en"),
+    descriptionSections: [
+      {
+        title: "Set details",
+        specs: [
+          { label: "Product", value: "JP 3rd Anniversary Set" },
+          { label: "Packaging", value: "English" },
+          { label: "Status", value: "Pre-order" },
+        ],
+      },
+      {
+        title: "Pre-order terms",
+        bullets: [
+          "Reserve your slot now — balance due before release.",
+          "Limited allocation; orders confirmed in the order received.",
+        ],
+        note: "We'll email you when your unit is ready to ship or pay.",
+      },
+    ],
   },
   {
     id: "op-jp-3rd-anni-cn",
     name: "One Piece (Japanese) China 3rd Anniversary Set",
     line: "One Piece Card Game",
     price: 2160,
+    preorderEndsAt: PREORDER_DEADLINES["op-jp-3rd-anni-cn"],
+    depositPercent: 30,
     rating: 4.7,
     reviews: 9,
     stock: 0,
     accent: "#ef4444",
     tag: "Pre-order",
     image: productImage("op-jp-3rd-anni-cn"),
+    descriptionSections: [
+      {
+        title: "Set details",
+        specs: [
+          { label: "Product", value: "JP 3rd Anniversary Set" },
+          { label: "Edition", value: "China market" },
+          { label: "Status", value: "Pre-order" },
+        ],
+      },
+      {
+        title: "Pre-order terms",
+        bullets: [
+          "Small deposit locks your slot until stock arrives.",
+          "Authentic sealed product via official channels.",
+        ],
+      },
+    ],
   },
   {
     id: "op-treasure-chest-2",
     name: "One Piece Treasure Chest Vol. 2 [TC-02]",
     line: "One Piece Card Game",
     price: 1230,
+    preorderEndsAt: PREORDER_DEADLINES["op-treasure-chest-2"],
+    depositPercent: 30,
     rating: 4.6,
     reviews: 17,
     stock: 0,
     accent: "#06b6d4",
     tag: "Pre-order",
     image: productImage("op-treasure-chest-2"),
+    descriptionSections: [
+      {
+        title: "Set details",
+        specs: [
+          { label: "Product", value: "Treasure Chest Vol. 2 [TC-02]" },
+          { label: "Game", value: "One Piece Card Game" },
+          { label: "Status", value: "Pre-order" },
+        ],
+      },
+      {
+        title: "Why pre-order",
+        bullets: [
+          "Curated collection box with exclusive promo treatments.",
+          "Secure your copy before general release sells out.",
+        ],
+      },
+    ],
   },
   {
     id: "op-spc-01",
     name: "One Piece Super Premium Collection Vol. 1 [SPC-01]",
     line: "One Piece Card Game",
     price: 3300,
+    preorderEndsAt: PREORDER_DEADLINES["op-spc-01"],
+    depositPercent: 30,
     rating: 4.9,
     reviews: 14,
     stock: 0,
     accent: "#7c3aed",
     tag: "Pre-order",
     image: productImage("op-spc-01"),
+    descriptionSections: [
+      {
+        title: "Set details",
+        specs: [
+          { label: "Product", value: "Super Premium Collection Vol. 1 [SPC-01]" },
+          { label: "Language", value: "English" },
+          { label: "Status", value: "Pre-order" },
+        ],
+      },
+      {
+        title: "Pre-order terms",
+        bullets: [
+          "Deposit locks your slot until stock lands at Hobby Arena.",
+          "Premium packaging with exclusive card treatments.",
+        ],
+      },
+    ],
   },
   {
     id: "op-mini-tin-4",
     name: "One Piece Mini Tin Pack Set Vol. 4 [TS-04]",
     line: "One Piece Card Game",
     price: 300,
+    preorderEndsAt: PREORDER_DEADLINES["op-mini-tin-4"],
+    depositPercent: 30,
     rating: 4.5,
     reviews: 31,
     stock: 0,
     accent: "#06b6d4",
     tag: "Pre-order",
     image: productImage("op-mini-tin-4"),
+    descriptionSections: [
+      {
+        title: "Set details",
+        specs: [
+          { label: "Product", value: "Mini Tin Pack Set Vol. 4 [TS-04]" },
+          { label: "Format", value: "Mini tins + booster packs" },
+          { label: "Status", value: "Pre-order" },
+        ],
+      },
+      {
+        title: "Good to know",
+        bullets: [
+          "Compact gift-ready sealed product.",
+          "Great entry point for new One Piece players.",
+        ],
+        note: "Ships when stock arrives at our warehouse.",
+      },
+    ],
   },
 ];
 
@@ -371,5 +580,11 @@ export const INVENTORY = ALL_PRODUCTS.map((product, index) => {
     cost,
     stock: product.stock,
     reorderAt: 3,
+    ...(type === "Pre-order"
+      ? {
+          preorderEndsAt: product.preorderEndsAt ?? null,
+          depositPercent: product.depositPercent ?? 30,
+        }
+      : {}),
   };
 });

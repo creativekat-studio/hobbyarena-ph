@@ -4,7 +4,6 @@ import { alpha, useTheme } from "@mui/material/styles";
 import { keyframes } from "@mui/system";
 import { MONO_FONT } from "../theme.js";
 import { avatarStyles } from "../lib/surfaces.js";
-import { TESTIMONIALS } from "../data/mockData.js";
 
 const marqueeSlide = keyframes`
   0%   { transform: translateX(0); }
@@ -140,18 +139,19 @@ function TestimonialCard({ item, panelSx, isDarkMode, surfaceBorderColor }) {
   );
 }
 
-export default function TestimonialsShowcase({ panelSx, isDarkMode, surfaceBorderColor }) {
+export default function TestimonialsShowcase({ panelSx, isDarkMode, surfaceBorderColor, items = [], overline = "Loved by collectors", title = "The thrill of the pull." }) {
   const theme = useTheme();
   const [paused, setPaused] = useState(false);
-  const loop = [...TESTIMONIALS, ...TESTIMONIALS];
+  if (!items.length) return null;
+  const loop = [...items, ...items];
 
   return (
     <Box>
       <Stack spacing={1} alignItems="center" textAlign="center" sx={{ mb: 4 }}>
         <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2 }}>
-          Loved by collectors
+          {overline}
         </Typography>
-        <Typography variant="h4">The thrill of the pull.</Typography>
+        <Typography variant="h4">{title}</Typography>
         <Typography color="text.secondary" sx={{ fontSize: "0.88rem", mt: 0.5 }}>
           Hover to pause · swipe on mobile
         </Typography>
@@ -197,7 +197,7 @@ export default function TestimonialsShowcase({ panelSx, isDarkMode, surfaceBorde
             "&::-webkit-scrollbar": { display: "none" },
           }}
         >
-          {TESTIMONIALS.map((item) => (
+          {items.map((item) => (
             <TestimonialCard
               key={item.name}
               item={item}

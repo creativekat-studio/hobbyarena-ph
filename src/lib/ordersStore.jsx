@@ -16,7 +16,9 @@ function loadOrders() {
   if (typeof window === "undefined") return SEED_ORDERS;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : SEED_ORDERS;
+    if (!raw) return SEED_ORDERS;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : SEED_ORDERS;
   } catch {
     return SEED_ORDERS;
   }
@@ -75,6 +77,8 @@ export function OrdersProvider({ children }) {
           subtotal: payload.subtotal,
           shippingFee: payload.shippingFee,
           total: payload.total,
+          fullSubtotal: payload.fullSubtotal ?? payload.subtotal,
+          balanceDue: payload.balanceDue ?? 0,
           payment: "Pending Verification",
           status: "Pending Verification",
           fulfillment: payload.fulfillment,

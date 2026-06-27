@@ -4,7 +4,7 @@ import { useTheme } from "@mui/material/styles";
 import { Outlet } from "react-router-dom";
 import { getSurfaces } from "../lib/surfaces.js";
 import { useColorMode } from "../lib/colorMode.jsx";
-import CustomerNavbar from "./CustomerNavbar.jsx";
+import StorefrontNavbar from "../components/StorefrontNavbar.jsx";
 import CartDrawer from "./CartDrawer.jsx";
 import DesignProposalSwitcher from "../components/DesignProposalSwitcher.jsx";
 
@@ -25,8 +25,8 @@ export default function CustomerLayout() {
         backgroundAttachment: { xs: "scroll", md: "fixed" },
       }}
     >
-      <CustomerNavbar surfaces={surfaces} onOpenCart={() => setCartOpen(true)} />
-      <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} surfaceBorderColor={surfaces.surfaceBorderColor} />
+      <StorefrontNavbar surfaces={surfaces} onOpenCart={() => setCartOpen(true)} />
+      <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} surfaceBorderColor={surfaces.surfaceBorderColor} isDarkMode={isDarkMode} />
       <DesignProposalSwitcher surfaces={surfaces} />
       <Outlet context={{ surfaces, isDarkMode }} />
     </Box>

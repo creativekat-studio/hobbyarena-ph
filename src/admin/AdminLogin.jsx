@@ -71,7 +71,7 @@ export default function AdminLogin() {
               {error ? <Alert severity="error">{error}</Alert> : null}
               <TextField label="Admin email" type="email" fullWidth value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="username" />
               <TextField label="Password" type="password" fullWidth value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
-              <Button type="submit" variant="contained" color="primary" size="large" disabled={busy} sx={{ py: 1.3, fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase", boxShadow: `0 12px 36px ${alpha(theme.palette.primary.main, 0.45)}` }}>
+              <Button type="submit" variant="contained" color="primary" size="large" disabled={busy} sx={{ py: 1.3, fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase" }}>
                 {busy ? "Verifying…" : "▶ Sign in"}
               </Button>
               <Box sx={{ p: 1.5, borderRadius: 1, border: "1px dashed", borderColor: surfaceBorderColor }}>

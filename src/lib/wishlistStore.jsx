@@ -12,7 +12,9 @@ function loadAll() {
   if (typeof window === "undefined") return {};
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
   } catch {
     return {};
   }
@@ -45,7 +47,7 @@ export function WishlistProvider({ children }) {
   }, [allWishlists]);
 
   const items = useMemo(
-    () => (userKey ? allWishlists[userKey] || [] : []),
+    () => (userKey && allWishlists ? allWishlists[userKey] || [] : []),
     [allWishlists, userKey],
   );
 

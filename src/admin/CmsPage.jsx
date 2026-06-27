@@ -10,11 +10,6 @@ import {
   Stack,
   Switch,
   Tab,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
   Tabs,
   TextField,
   Typography,
@@ -30,8 +25,8 @@ import { useCms } from "../lib/cmsContent.jsx";
 import { ALL_PRODUCTS } from "../data/mockData.js";
 
 const LINK_OPTIONS = [
-  { value: "sealed", label: "Sealed products" },
-  { value: "preorders", label: "Pre-orders" },
+  { value: "featured-products", label: "Featured products" },
+  { value: "featured-preorders", label: "Featured pre-orders" },
   { value: "newsletter", label: "Newsletter" },
 ];
 
@@ -48,8 +43,9 @@ function SectionHeader({ title, action }) {
 
 function HomepageTab({ panelSx, surfaceBorderColor }) {
   const theme = useTheme();
-  const { content, setHero, addFeatureDrop, updateFeatureDrop, removeFeatureDrop } = useCms();
+  const { content, setHero, setHomepageSection, addFeatureDrop, updateFeatureDrop, removeFeatureDrop } = useCms();
   const hero = content.hero;
+  const sections = content.homepageSections;
   const [saved, setSaved] = useState(false);
 
   return (
@@ -83,6 +79,27 @@ function HomepageTab({ panelSx, surfaceBorderColor }) {
             </Box>
           </Box>
         </Grid>
+      </Grid>
+
+      <Grid container spacing={2.5}>
+        {[
+          { key: "products", label: "Featured products section" },
+          { key: "preorders", label: "Featured pre-orders section" },
+        ].map(({ key, label }) => {
+          const section = sections[key];
+          return (
+            <Grid size={{ xs: 12, md: 6 }} key={key}>
+              <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 }, height: "100%" }}>
+                <SectionHeader title={label} />
+                <Stack spacing={2}>
+                  <TextField label="Overline" fullWidth value={section.overline} onChange={(e) => setHomepageSection(key, { overline: e.target.value })} />
+                  <TextField label="Title" fullWidth value={section.title} onChange={(e) => setHomepageSection(key, { title: e.target.value })} />
+                  <TextField label="Subtitle" fullWidth multiline minRows={2} value={section.subtitle} onChange={(e) => setHomepageSection(key, { subtitle: e.target.value })} />
+                </Stack>
+              </Box>
+            </Grid>
+          );
+        })}
       </Grid>
 
       <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
@@ -150,7 +167,7 @@ function BannerCard({ banner, panelSx, surfaceBorderColor, updateBanner, removeB
   const isDarkMode = theme.palette.mode === "dark";
   const swatches = theme.ha?.cmsSwatches ?? SWATCHES_FALLBACK;
   const accent = banner.color || theme.palette.primary.main;
-  const PreviewIcon = banner.link === "preorders" ? SparkleIcon : BoxIcon;
+  const PreviewIcon = banner.link === "featured-preorders" || banner.link === "preorders" ? SparkleIcon : BoxIcon;
   const headerBg = isDarkMode
     ? `linear-gradient(148deg, ${alpha("#0F1D42", 0.96)} 0%, ${alpha("#0B1538", 0.98)} 100%)`
     : `linear-gradient(148deg, ${OFF_WHITE.paper} 0%, ${OFF_WHITE.paperSoft} 100%)`;
@@ -160,7 +177,7 @@ function BannerCard({ banner, panelSx, surfaceBorderColor, updateBanner, removeB
       <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, background: headerBg, color: isDarkMode ? OFF_WHITE.textBright : theme.palette.text.primary, overflow: "hidden" }}>
         <Box sx={{ position: "relative", flex: 1, p: 3, minHeight: 130 }}>
           <Box aria-hidden sx={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${accent}, ${alpha(accent, 0.15)})` }} />
-          <Typography sx={{ position: "relative", fontFamily: MONO_FONT, fontSize: "0.6rem", fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", color: accent, mb: 1 }}>{banner.link === "preorders" ? "Pre-order" : "Sealed drop"}</Typography>
+          <Typography sx={{ position: "relative", fontFamily: MONO_FONT, fontSize: "0.6rem", fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", color: accent, mb: 1 }}>{banner.link === "featured-preorders" || banner.link === "preorders" ? "Pre-order" : "Featured products"}</Typography>
           <Typography sx={{ position: "relative", fontWeight: 800, fontSize: "1.2rem", lineHeight: 1.15 }}>{banner.title}</Typography>
           <Typography sx={{ position: "relative", fontSize: "0.85rem", mt: 0.5, color: isDarkMode ? alpha(OFF_WHITE.textBright, 0.78) : theme.palette.text.secondary }}>{banner.subtitle}</Typography>
           <Chip label={banner.ctaLabel || "Button"} size="small" sx={{ position: "relative", mt: 1.5, bgcolor: alpha(accent, 0.12), color: accent, fontWeight: 700, border: "1px solid", borderColor: alpha(accent, 0.35) }} />
@@ -274,6 +291,133 @@ function AnnouncementsTab({ panelSx, surfaceBorderColor }) {
   );
 }
 
+function TestimonialsTab({ panelSx, surfaceBorderColor }) {
+  const { content, setTestimonials, setProductReviews, addTestimonial, updateTestimonial, removeTestimonial } = useCms();
+  const { testimonials, productReviews } = content;
+
+  return (
+    <Stack spacing={2.5}>
+      <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
+        <SectionHeader title="Product ratings" />
+        <Typography sx={{ color: "text.secondary", fontSize: "0.85rem", mb: 2 }}>
+          Star ratings on product cards and detail pages. Set rating and review count per SKU in Inventory → Edit product.
+        </Typography>
+        <Stack direction="row" alignItems="center" spacing={2}>
+          <Switch
+            checked={productReviews.showRatings}
+            onChange={(e) => setProductReviews({ showRatings: e.target.checked })}
+            color="primary"
+          />
+          <Typography sx={{ fontWeight: 700 }}>
+            {productReviews.showRatings ? "Ratings visible on storefront" : "Ratings hidden (recommended until real reviews)"}
+          </Typography>
+        </Stack>
+      </Box>
+
+      <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
+        <SectionHeader title="Store testimonials" />
+        <Typography sx={{ color: "text.secondary", fontSize: "0.85rem", mb: 2 }}>
+          Hidden on the storefront by default. Enable when the client provides real reviews.
+        </Typography>
+        <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
+          <Switch
+            checked={testimonials.enabled}
+            onChange={(e) => setTestimonials({ enabled: e.target.checked })}
+            color="primary"
+          />
+          <Typography sx={{ fontWeight: 700 }}>{testimonials.enabled ? "Visible on homepage" : "Hidden on homepage"}</Typography>
+        </Stack>
+        <Stack spacing={2} sx={{ mb: 2 }}>
+          <TextField label="Section overline" fullWidth value={testimonials.overline} onChange={(e) => setTestimonials({ overline: e.target.value })} />
+          <TextField label="Section title" fullWidth value={testimonials.title} onChange={(e) => setTestimonials({ title: e.target.value })} />
+        </Stack>
+        <Button variant="contained" color="primary" onClick={() => addTestimonial({})} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
+          + Add testimonial
+        </Button>
+      </Box>
+
+      <Stack spacing={2}>
+        {testimonials.items.map((item) => (
+          <Box key={item.id} sx={{ ...panelSx, p: 2.5, opacity: item.active !== false ? 1 : 0.55 }}>
+            <Stack spacing={1.5}>
+              <TextField label="Quote" fullWidth multiline minRows={2} value={item.quote} onChange={(e) => updateTestimonial(item.id, { quote: e.target.value })} />
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                <TextField label="Name" fullWidth value={item.name} onChange={(e) => updateTestimonial(item.id, { name: e.target.value })} />
+                <TextField label="Role" fullWidth value={item.role} onChange={(e) => updateTestimonial(item.id, { role: e.target.value })} />
+              </Stack>
+              <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="space-between">
+                <Stack direction="row" spacing={0.5} alignItems="center">
+                  <Switch checked={item.active !== false} onChange={(e) => updateTestimonial(item.id, { active: e.target.checked })} color="primary" />
+                  <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>Active</Typography>
+                </Stack>
+                <IconButton size="small" onClick={() => removeTestimonial(item.id)} sx={{ color: "text.secondary", border: "1px solid", borderColor: surfaceBorderColor }}>✕</IconButton>
+              </Stack>
+            </Stack>
+          </Box>
+        ))}
+      </Stack>
+    </Stack>
+  );
+}
+
+function BankDetailsTab({ panelSx, surfaceBorderColor }) {
+  const { content, setBankDetails, updateBankAccount, addBankAccount, removeBankAccount } = useCms();
+  const bank = content.bankDetails;
+
+  return (
+    <Stack spacing={2.5}>
+      <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
+        <SectionHeader title="Bank details section" />
+        <Stack spacing={2}>
+          <Stack direction="row" alignItems="center" spacing={2}>
+            <Switch checked={bank.enabled} onChange={(e) => setBankDetails({ enabled: e.target.checked })} color="primary" />
+            <Typography sx={{ fontWeight: 700 }}>{bank.enabled ? "Shown on homepage" : "Hidden"}</Typography>
+          </Stack>
+          <TextField label="Section title" fullWidth value={bank.title} onChange={(e) => setBankDetails({ title: e.target.value })} />
+          <TextField label="Section subtitle" fullWidth multiline minRows={2} value={bank.subtitle} onChange={(e) => setBankDetails({ subtitle: e.target.value })} />
+          <Stack direction="row" alignItems="center" spacing={2}>
+            <Switch checked={bank.showBirSeal} onChange={(e) => setBankDetails({ showBirSeal: e.target.checked })} color="primary" />
+            <Typography sx={{ fontWeight: 600 }}>Show BIR QR placeholder</Typography>
+          </Stack>
+          <TextField label="BIR seal note" fullWidth value={bank.birSealNote} onChange={(e) => setBankDetails({ birSealNote: e.target.value })} />
+          <TextField label="BIR QR image URL (optional)" fullWidth placeholder="/payment/bir-qr.png" value={bank.birQrImage ?? ""} onChange={(e) => setBankDetails({ birQrImage: e.target.value })} />
+        </Stack>
+      </Box>
+
+      <SectionHeader
+        title="Bank accounts"
+        action={
+          <Button variant="contained" color="primary" onClick={() => addBankAccount({ label: "New account", accountName: "", accountNumber: "", note: "" })} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
+            + Add account
+          </Button>
+        }
+      />
+      <Grid container spacing={2.5}>
+        {bank.accounts.map((account) => (
+          <Grid size={{ xs: 12, md: 6 }} key={account.id}>
+            <Box sx={{ ...panelSx, p: 2.5, opacity: account.active !== false ? 1 : 0.55 }}>
+              <Stack spacing={1.5}>
+                <TextField size="small" label="Label" fullWidth value={account.label} onChange={(e) => updateBankAccount(account.id, { label: e.target.value })} />
+                <TextField size="small" label="Account name" fullWidth value={account.accountName} onChange={(e) => updateBankAccount(account.id, { accountName: e.target.value })} />
+                <TextField size="small" label="Account number" fullWidth value={account.accountNumber} onChange={(e) => updateBankAccount(account.id, { accountNumber: e.target.value })} />
+                <TextField size="small" label="Note" fullWidth value={account.note ?? ""} onChange={(e) => updateBankAccount(account.id, { note: e.target.value })} />
+                <TextField size="small" label="QR image URL" fullWidth placeholder="/payment/gcash-qr.png" value={account.qrImage ?? ""} onChange={(e) => updateBankAccount(account.id, { qrImage: e.target.value })} />
+                <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="space-between">
+                  <Stack direction="row" spacing={0.5} alignItems="center">
+                    <Switch checked={account.active !== false} onChange={(e) => updateBankAccount(account.id, { active: e.target.checked })} color="primary" />
+                    <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>Active</Typography>
+                  </Stack>
+                  <IconButton size="small" onClick={() => removeBankAccount(account.id)} sx={{ color: "text.secondary", border: "1px solid", borderColor: surfaceBorderColor }}>✕</IconButton>
+                </Stack>
+              </Stack>
+            </Box>
+          </Grid>
+        ))}
+      </Grid>
+    </Stack>
+  );
+}
+
 function SocialContactTab({ panelSx }) {
   const { content, setSocial, setContact } = useCms();
   const social = content.social;
@@ -287,7 +431,7 @@ function SocialContactTab({ panelSx }) {
           <Stack spacing={2}>
             <TextField label="Instagram URL" fullWidth value={social.instagram} onChange={(e) => setSocial({ instagram: e.target.value })} InputProps={{ startAdornment: (<InputAdornment position="start"><InstagramIcon sx={{ fontSize: 18 }} /></InputAdornment>) }} />
             <TextField label="Facebook URL" fullWidth value={social.facebook} onChange={(e) => setSocial({ facebook: e.target.value })} InputProps={{ startAdornment: (<InputAdornment position="start"><FacebookIcon sx={{ fontSize: 18 }} /></InputAdornment>) }} />
-            <TextField label="TikTok URL" fullWidth value={social.tiktok} onChange={(e) => setSocial({ tiktok: e.target.value })} InputProps={{ startAdornment: (<InputAdornment position="start"><TiktokIcon sx={{ fontSize: 18 }} /></InputAdornment>) }} />
+            <TextField label="TikTok URL (optional)" fullWidth value={social.tiktok} onChange={(e) => setSocial({ tiktok: e.target.value })} InputProps={{ startAdornment: (<InputAdornment position="start"><TiktokIcon sx={{ fontSize: 18 }} /></InputAdornment>) }} helperText="Leave blank to hide TikTok from the footer." />
           </Stack>
         </Box>
       </Grid>
@@ -297,8 +441,11 @@ function SocialContactTab({ panelSx }) {
           <Stack spacing={2}>
             <TextField label="Business name" fullWidth value={contact.legalName} onChange={(e) => setContact({ legalName: e.target.value })} />
             <TextField label="Contact email" fullWidth value={contact.email} onChange={(e) => setContact({ email: e.target.value })} />
+            <TextField label="Phone" fullWidth value={contact.phone ?? ""} onChange={(e) => setContact({ phone: e.target.value })} />
+            <TextField label="Address" fullWidth multiline minRows={2} value={contact.address ?? ""} onChange={(e) => setContact({ address: e.target.value })} />
             <TextField label="Order hours" fullWidth value={contact.hours} onChange={(e) => setContact({ hours: e.target.value })} />
             <TextField label="Social handle" fullWidth value={contact.handle} onChange={(e) => setContact({ handle: e.target.value })} />
+            <TextField label="WhatsApp link (optional)" fullWidth value={social.whatsapp ?? ""} onChange={(e) => setSocial({ whatsapp: e.target.value })} placeholder="https://wa.me/639..." />
             <TextField label="Footer blurb" fullWidth multiline minRows={2} value={contact.blurb} onChange={(e) => setContact({ blurb: e.target.value })} />
           </Stack>
         </Box>
@@ -307,47 +454,7 @@ function SocialContactTab({ panelSx }) {
   );
 }
 
-function ProductsTab({ panelSx }) {
-  const [items, setItems] = useState(
-    ALL_PRODUCTS.map((p, i) => ({ id: p.id, name: p.name, line: p.line, price: p.price, published: i % 5 !== 0 })),
-  );
-
-  function toggle(id) {
-    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, published: !it.published } : it)));
-  }
-
-  return (
-    <Box sx={{ ...panelSx, overflow: "hidden" }}>
-      <Table>
-        <TableHead>
-          <TableRow>
-            <TableCell sx={{ fontWeight: 800 }}>Product</TableCell>
-            <TableCell sx={{ fontWeight: 800, display: { xs: "none", sm: "table-cell" } }} align="right">Price</TableCell>
-            <TableCell sx={{ fontWeight: 800 }} align="center">Status</TableCell>
-            <TableCell sx={{ fontWeight: 800 }} align="center">Published</TableCell>
-            <TableCell sx={{ fontWeight: 800 }} align="right">Action</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {items.map((item) => (
-            <TableRow key={item.id} hover>
-              <TableCell sx={{ maxWidth: 360 }}>
-                <Typography sx={{ fontWeight: 600, fontSize: "0.9rem", lineHeight: 1.3 }}>{item.name}</Typography>
-                <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", fontFamily: MONO_FONT }}>{item.line}</Typography>
-              </TableCell>
-              <TableCell align="right" sx={{ fontWeight: 700, display: { xs: "none", sm: "table-cell" } }}>{PESO.format(item.price)}</TableCell>
-              <TableCell align="center"><Chip label={item.published ? "Published" : "Draft"} size="small" color={item.published ? "success" : "default"} variant="outlined" /></TableCell>
-              <TableCell align="center"><Switch checked={item.published} onChange={() => toggle(item.id)} color="primary" /></TableCell>
-              <TableCell align="right"><Button size="small" variant="outlined" color="inherit">Edit</Button></TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </Box>
-  );
-}
-
-const TABS = ["Homepage", "Banners", "Announcements", "Social & Contact", "Products"];
+const TABS = ["Homepage", "Banners", "Announcements", "Reviews", "Bank details", "Social & Contact"];
 
 export default function CmsPage() {
   const { surfaces } = useOutletContext();
@@ -375,8 +482,9 @@ export default function CmsPage() {
       {tab === 0 ? <HomepageTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
       {tab === 1 ? <BannersTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
       {tab === 2 ? <AnnouncementsTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
-      {tab === 3 ? <SocialContactTab panelSx={panelSx} /> : null}
-      {tab === 4 ? <ProductsTab panelSx={panelSx} /> : null}
+      {tab === 3 ? <TestimonialsTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
+      {tab === 4 ? <BankDetailsTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
+      {tab === 5 ? <SocialContactTab panelSx={panelSx} /> : null}
     </Stack>
   );
 }

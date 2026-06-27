@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
@@ -7,21 +7,23 @@ import {
   Container,
   Grid,
   IconButton,
-  Rating,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
+import ProductRating from "../components/ProductRating.jsx";
 import { alpha, useTheme } from "@mui/material/styles";
 import { keyframes } from "@mui/system";
 import { Link as RouterLink, useLocation, useOutletContext } from "react-router-dom";
 import { MONO_FONT, getBrand } from "../theme.js";
-import { announcementBarColors, heroHeadlineSx, sectionHeadlineSx } from "../lib/surfaces.js";
-import { wider } from "../lib/layout.js";
+import { announcementBarColors, heroHeadlineSx, productMediaSurface, sectionHeadlineSx } from "../lib/surfaces.js";
 import { OFF_WHITE } from "../lib/colors.js";
+import { wider } from "../lib/layout.js";
+import { marqueeDuration, marqueeLoop } from "../lib/marquee.js";
 import { useCms } from "../lib/cmsContent.jsx";
 import { useInquiries } from "../lib/inquiriesStore.jsx";
 import ProductCard, { PESO } from "../components/ProductCard.jsx";
+import { useInventory } from "../lib/inventoryStore.jsx";
 import BannerMarquee from "../components/BannerMarquee.jsx";
 import PaymentMethodsMarquee from "../components/PaymentMethodsMarquee.jsx";
 import TestimonialsShowcase from "../components/TestimonialsShowcase.jsx";
@@ -97,11 +99,13 @@ function scrollToId(id) {
 
 function AnnouncementBar({ theme, items }) {
   if (!items.length) return null;
-  const loop = [...items, ...items];
+  const tickerRepeats = 10;
+  const loop = marqueeLoop(items, tickerRepeats);
+  const duration = marqueeDuration(42, tickerRepeats);
   const barColors = announcementBarColors(theme);
   return (
     <Box sx={{ bgcolor: barColors.bgcolor, color: barColors.color, overflow: "hidden", py: 0.75, borderBottom: "1px solid", borderColor: alpha(barColors.color, 0.15) }}>
-      <Box sx={{ display: "inline-flex", whiteSpace: "nowrap", animation: `${tickerSlide} 30s linear infinite` }}>
+      <Box sx={{ display: "inline-flex", width: "max-content", whiteSpace: "nowrap", animation: `${tickerSlide} ${duration}s linear infinite`, willChange: "transform" }}>
         {loop.map((item, index) => (
           <Typography key={index} component="span" sx={{ px: 4, fontFamily: MONO_FONT, fontSize: "0.76rem", fontWeight: 700, letterSpacing: 0.5 }}>
             {item}
@@ -113,14 +117,16 @@ function AnnouncementBar({ theme, items }) {
 }
 
 const BANNER_LINK_TAGS = {
-  sealed: "Sealed drop",
+  "featured-products": "Featured products",
+  "featured-preorders": "Pre-order",
+  sealed: "Featured products",
   preorders: "Pre-order",
   newsletter: "Updates",
 };
 
 function PromoBannerVisual({ link, accent, isDarkMode, hovered }) {
-  const VisualIcon = link === "preorders" ? SparkleIcon : BoxIcon;
-  const watermark = link === "preorders" ? "PRE-ORDER" : "SEALED";
+  const VisualIcon = link === "preorders" || link === "featured-preorders" ? SparkleIcon : BoxIcon;
+  const watermark = link === "preorders" || link === "featured-preorders" ? "PRE-ORDER" : "IN STOCK";
 
   return (
     <Box
@@ -131,23 +137,13 @@ function PromoBannerVisual({ link, accent, isDarkMode, hovered }) {
         width: { xs: "100%", sm: "38%" },
         minHeight: { xs: 108, sm: "auto" },
         overflow: "hidden",
-        borderTop: { xs: `1px solid ${alpha(accent, 0.15)}`, sm: "none" },
-        borderLeft: { sm: `1px solid ${alpha(accent, 0.15)}` },
-        background: isDarkMode
-          ? `linear-gradient(165deg, ${alpha(accent, hovered ? 0.26 : 0.18)} 0%, ${alpha(accent, 0.06)} 55%, transparent 100%)`
-          : `linear-gradient(165deg, ${alpha(accent, hovered ? 0.16 : 0.1)} 0%, ${alpha(accent, 0.03)} 55%, transparent 100%)`,
-        transition: "background 280ms ease",
+        borderTop: { xs: "1px solid", sm: "none" },
+        borderLeft: { sm: "1px solid" },
+        borderColor: "divider",
+        ...productMediaSurface(isDarkMode),
+        transition: "background-color 280ms ease",
       }}
     >
-      <Box
-        sx={{
-          position: "absolute",
-          inset: 0,
-          backgroundImage: `radial-gradient(${alpha(accent, isDarkMode ? 0.45 : 0.35)} 1px, transparent 1px)`,
-          backgroundSize: "16px 16px",
-          opacity: 0.28,
-        }}
-      />
       {[120, 88].map((size) => (
         <Box
           key={size}
@@ -163,7 +159,7 @@ function PromoBannerVisual({ link, accent, isDarkMode, hovered }) {
           }}
         />
       ))}
-      {link === "sealed" ? (
+      {(link === "sealed" || link === "featured-products") ? (
         <>
           <Box
             sx={{
@@ -299,7 +295,7 @@ function PromoBannerCard({ banner, isDarkMode, surfaceBorderColor }) {
           left: 0,
           right: 0,
           height: 3,
-          background: `linear-gradient(90deg, ${accent}, ${alpha(accent, 0.15)})`,
+          bgcolor: "primary.main",
           zIndex: 1,
         }}
       />
@@ -423,7 +419,6 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
   const product = resolveFeatureDropProduct(current);
   const accent = resolveProductAccent(product, theme);
   const Glyph = product.line.startsWith("Pokémon") ? PokeballIcon : CardIcon;
-  const showcaseBg = brand.heroShowcaseGradient?.(accent) ?? `linear-gradient(150deg, ${alpha(accent, 0.95)} 0%, ${alpha(theme.palette.primary.main, 0.85)} 100%)`;
 
   useEffect(() => {
     if (slides.length <= 1 || paused) return undefined;
@@ -486,7 +481,7 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
             borderRadius: 1,
             overflow: "hidden",
             aspectRatio: "16 / 11",
-            background: showcaseBg,
+            ...productMediaSurface(isDarkMode),
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -527,8 +522,8 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
         <Stack direction="row" alignItems="flex-end" justifyContent="space-between" key={`${current.id}-meta`} sx={{ animation: `${fadeSlide} 480ms ease-out` }}>
           <Box sx={{ minWidth: 0, pr: 1 }}>
             <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.15, fontSize: "1rem" }}>{product.name}</Typography>
-            <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
-              <Rating value={product.rating} precision={0.1} size="small" readOnly />
+            <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5, flexWrap: "wrap" }}>
+              <ProductRating product={product} />
               <Typography sx={{ color: "text.secondary", fontSize: "0.75rem" }}>{product.line}</Typography>
             </Stack>
           </Box>
@@ -655,8 +650,12 @@ export default function HomePage() {
   const location = useLocation();
   const { content } = useCms();
   const { surfaces, isDarkMode } = useOutletContext();
+  const { getPublishedByCategory } = useInventory();
   const { panelSx, surfaceBorderColor } = surfaces;
+  const sealedProducts = useMemo(() => getPublishedByCategory("sealed"), [getPublishedByCategory]);
+  const preorderProducts = useMemo(() => getPublishedByCategory("preorder"), [getPublishedByCategory]);
   const hero = content.hero;
+  const sections = content.homepageSections;
   const announcements = content.announcements.filter((a) => a.active).map((a) => a.text);
   const brand = getBrand(theme);
   const headlineSx = heroHeadlineSx(theme);
@@ -695,8 +694,8 @@ export default function HomePage() {
                 <Typography variant="h6" sx={{ fontWeight: 400, color: "text.secondary", maxWidth: wider(540) }}>{hero.subtitle}</Typography>
 
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems="flex-start">
-                  <Button size="large" variant="contained" color="primary" onClick={() => scrollToId("sealed")} sx={{ px: 4, py: 1.4, fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase" }}>▶ {hero.cta}</Button>
-                  <Button size="large" variant="outlined" color="inherit" onClick={() => scrollToId("preorders")} sx={{ px: 4, py: 1.4, borderColor: surfaceBorderColor }}>View pre-orders</Button>
+                  <Button size="large" variant="contained" color="primary" onClick={() => scrollToId(sections.products.anchorId)} sx={{ px: 4, py: 1.4, fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase" }}>▶ {hero.cta}</Button>
+                  <Button size="large" variant="outlined" color="inherit" onClick={() => scrollToId(sections.preorders.anchorId)} sx={{ px: 4, py: 1.4, borderColor: surfaceBorderColor }}>View pre-orders</Button>
                 </Stack>
 
                 <Grid container spacing={2} sx={{ pt: 1 }}>
@@ -721,19 +720,22 @@ export default function HomePage() {
         <Stack spacing={{ xs: 7, md: 11 }}>
           <PromoBanners banners={content.banners} isDarkMode={isDarkMode} surfaceBorderColor={surfaceBorderColor} />
 
-          <Box id="sealed">
+          <Box id={sections.products.anchorId}>
             <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "flex-end" }} spacing={1} sx={{ mb: 4 }}>
               <Box>
                 <Stack direction="row" spacing={1} alignItems="center">
                   <BoxIcon sx={{ color: "primary.main" }} />
-                  <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2 }}>Sealed products</Typography>
+                  <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2 }}>{sections.products.overline}</Typography>
                 </Stack>
-                <Typography variant="h4" sx={sectionTitleSx}>Get it sealed before it&apos;s gone.</Typography>
+                <Typography variant="h4" sx={sectionTitleSx}>{sections.products.title}</Typography>
+                {sections.products.subtitle ? (
+                  <Typography color="text.secondary" sx={{ mt: 0.5, maxWidth: wider(520) }}>{sections.products.subtitle}</Typography>
+                ) : null}
               </Box>
               <Button component={RouterLink} to="/shop?category=sealed" color="primary" sx={{ fontWeight: 700 }}>Shop all →</Button>
             </Stack>
             <Grid container spacing={2.5}>
-              {SEALED_PRODUCTS.map((product) => (
+              {sealedProducts.map((product) => (
                 <Grid size={{ xs: 6, sm: 6, md: 3 }} key={product.id}>
                   <ProductCard product={product} panelSx={panelSx} isDarkMode={isDarkMode} />
                 </Grid>
@@ -741,19 +743,22 @@ export default function HomePage() {
             </Grid>
           </Box>
 
-          <Box id="preorders">
+          <Box id={sections.preorders.anchorId}>
             <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "flex-end" }} spacing={1} sx={{ mb: 4 }}>
               <Box>
                 <Stack direction="row" spacing={1} alignItems="center">
                   <SparkleIcon sx={{ color: "primary.main" }} />
-                  <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2 }}>Pre-order products</Typography>
+                  <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2 }}>{sections.preorders.overline}</Typography>
                 </Stack>
-                <Typography variant="h4" sx={sectionTitleSx}>Pre-order now. Thank yourself later.</Typography>
+                <Typography variant="h4" sx={sectionTitleSx}>{sections.preorders.title}</Typography>
+                {sections.preorders.subtitle ? (
+                  <Typography color="text.secondary" sx={{ mt: 0.5, maxWidth: wider(520) }}>{sections.preorders.subtitle}</Typography>
+                ) : null}
               </Box>
               <Button component={RouterLink} to="/shop?category=preorder" color="primary" sx={{ fontWeight: 700 }}>Shop all →</Button>
             </Stack>
             <Grid container spacing={2.5}>
-              {PREORDER_PRODUCTS.map((product) => (
+              {preorderProducts.map((product) => (
                 <Grid size={{ xs: 6, sm: 6, md: 3 }} key={product.id}>
                   <ProductCard product={product} panelSx={panelSx} isDarkMode={isDarkMode} />
                 </Grid>
@@ -784,7 +789,16 @@ export default function HomePage() {
             </Grid>
           </Box>
 
-          <TestimonialsShowcase panelSx={panelSx} isDarkMode={isDarkMode} surfaceBorderColor={surfaceBorderColor} />
+          {content.testimonials.enabled ? (
+            <TestimonialsShowcase
+              panelSx={panelSx}
+              isDarkMode={isDarkMode}
+              surfaceBorderColor={surfaceBorderColor}
+              overline={content.testimonials.overline}
+              title={content.testimonials.title}
+              items={content.testimonials.items.filter((t) => t.active !== false)}
+            />
+          ) : null}
 
           <NewsletterForm panelSx={panelSx} />
 
@@ -801,7 +815,7 @@ export default function HomePage() {
                   {[
                     { Icon: InstagramIcon, href: content.social.instagram },
                     { Icon: FacebookIcon, href: content.social.facebook },
-                    { Icon: TiktokIcon, href: content.social.tiktok },
+                    ...(content.social.tiktok ? [{ Icon: TiktokIcon, href: content.social.tiktok }] : []),
                   ]
                     .filter((s) => s.href)
                     .map(({ Icon, href }) => (
@@ -815,8 +829,8 @@ export default function HomePage() {
                 <Typography sx={{ fontWeight: 800, mb: 1.5 }}>Shop</Typography>
                 <Stack spacing={1}>
                   {[
-                    { label: "Sealed products", to: "/shop?category=sealed" },
-                    { label: "Pre-orders", to: "/shop?category=preorder" },
+                    { label: "Featured products", to: "/shop?category=sealed" },
+                    { label: "Featured pre-orders", to: "/shop?category=preorder" },
                     { label: "Pokémon TCG", to: "/shop?line=pokemon" },
                     { label: "One Piece CG", to: "/shop?line=one-piece" },
                   ].map((link) => (
@@ -827,14 +841,23 @@ export default function HomePage() {
               <Grid size={{ xs: 6, sm: 4, md: 4 }}>
                 <Typography sx={{ fontWeight: 800, mb: 1.5 }}>Reach us</Typography>
                 <Stack spacing={1}>
-                  <Typography sx={{ color: "text.secondary", fontSize: "0.88rem" }}>📩 {content.contact.email}</Typography>
-                  <Typography sx={{ color: "text.secondary", fontSize: "0.88rem" }}>📦 {content.contact.hours}</Typography>
-                  <Typography sx={{ color: "text.secondary", fontSize: "0.88rem", fontFamily: MONO_FONT }}>{content.contact.handle}</Typography>
+                  {content.contact.address ? (
+                    <Typography sx={{ color: "text.secondary", fontSize: "0.88rem", lineHeight: 1.45 }}>{content.contact.address}</Typography>
+                  ) : null}
+                  {content.contact.phone ? (
+                    <Typography component="a" href={`tel:${content.contact.phone.replace(/\s/g, "")}`} sx={{ color: "text.secondary", fontSize: "0.88rem", textDecoration: "none", "&:hover": { color: "primary.main" } }}>
+                      {content.contact.phone}
+                    </Typography>
+                  ) : null}
+                  <Typography component="a" href={`mailto:${content.contact.email}`} sx={{ color: "text.secondary", fontSize: "0.88rem", textDecoration: "none", "&:hover": { color: "primary.main" } }}>
+                    {content.contact.email}
+                  </Typography>
+                  <Typography sx={{ color: "text.secondary", fontSize: "0.88rem" }}>{content.contact.hours}</Typography>
                 </Stack>
               </Grid>
             </Grid>
             <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center", pt: 4, mt: 4, borderTop: "1px solid", borderColor: surfaceBorderColor }}>
-              © {new Date().getFullYear()} {BRAND.name} · Premium TCG sealed & pre-orders.
+              © {new Date().getFullYear()} {BRAND.name} · {hero.tagline}
             </Typography>
           </Box>
         </Stack>

@@ -1,9 +1,35 @@
 /** Static assets in /public — served from site root. */
 
+/** Encode path segments so filenames with spaces work in URLs. */
+export function publicAsset(path) {
+  return path
+    .split("/")
+    .map((segment, index) => (index === 0 && segment === "" ? "" : encodeURIComponent(segment)))
+    .join("/");
+}
+
+export const BRAND_LOGO = publicAsset("/logo.png");
+export const BRAND_LOGO_HD = publicAsset("/hobby_arena_hd.png");
+
+export const PAYMENT_QR = {
+  bpi: publicAsset("/BPI QR.jpg"),
+  bdo: publicAsset("/BDO QR.jpg"),
+  gcash: publicAsset("/Gcash QR.jpg"),
+  maya: publicAsset("/Maya QR.jpg"),
+};
+
 export const MARQUEE_BANNERS = [
-  "/banner/f40acd_0503401aab2c4ba3bfc14b359609b970~mv2.avif",
-  "/banner/f40acd_32fb3cd0b7884e909581ad3dd1443c63~mv2.avif",
-  "/banner/f40acd_f53c8b9b5591445bb691480ed645e015~mv2.avif",
+  publicAsset("/banner/f40acd_0503401aab2c4ba3bfc14b359609b970~mv2.avif"),
+  publicAsset("/banner/f40acd_32fb3cd0b7884e909581ad3dd1443c63~mv2.avif"),
+  publicAsset("/banner/f40acd_f53c8b9b5591445bb691480ed645e015~mv2.avif"),
+  publicAsset("/TCG logos/Pokemon Logo.png"),
+  publicAsset("/TCG logos/One Piece Logo.png"),
+  publicAsset("/TCG logos/Lorcana logo.jpg"),
+  publicAsset("/TCG logos/Gundam Logo.png"),
+  publicAsset("/TCG logos/union arena logo.webp"),
+  publicAsset("/TCG logos/magic logo.png"),
+  publicAsset("/TCG logos/Yugioh Logo.jpg"),
+  publicAsset("/TCG logos/weis schwarz logo.jpg"),
 ];
 
 export const PRODUCT_IMAGES = {

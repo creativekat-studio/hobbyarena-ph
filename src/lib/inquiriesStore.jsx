@@ -37,7 +37,9 @@ function loadInquiries() {
   if (typeof window === "undefined") return SEED;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : SEED;
+    if (!raw) return SEED;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : SEED;
   } catch {
     return SEED;
   }

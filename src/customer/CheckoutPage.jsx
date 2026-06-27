@@ -6,13 +6,13 @@ import {
   Checkbox,
   Chip,
   Container,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Divider,
-  FormControl,
   FormControlLabel,
-  FormLabel,
   Grid,
-  Radio,
-  RadioGroup,
+  IconButton,
   Stack,
   Step,
   StepLabel,
@@ -21,24 +21,119 @@ import {
   Typography,
 } from "@mui/material";
 import { alpha, keyframes, useTheme } from "@mui/material/styles";
-import { Link as RouterLink, Navigate, useOutletContext } from "react-router-dom";
+import { Link as RouterLink, useOutletContext } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
 import ConfettiBurst from "../components/ConfettiBurst.jsx";
 import { ShieldIcon } from "../components/icons.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
-import { useCart } from "../lib/cartStore.jsx";
+import { useCart, cartItemDueNow } from "../lib/cartStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
-import { BANK_ACCOUNTS, SHIPPING, calcShipping } from "../data/checkoutSettings.js";
+import {
+  BANK_ACCOUNTS,
+  PROCESSING_HOURS,
+  SHIPPING_DISCLAIMER,
+  STORE_PICKUP_INFO,
+  calcShipping,
+} from "../data/checkoutSettings.js";
 
 const STEPS = ["Account", "Details", "Payment"];
+const QR_TILE_SIZE = 168;
+
+function ZoomInIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" {...props}>
+      <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
+      <path d="M12 10h-2v1.5H9V10H7.5V8.5H9V7h1.5v1.5H12z" />
+    </svg>
+  );
+}
+
+function QrCodeTile({ label, imageUrl, surfaceBorderColor }) {
+  const theme = useTheme();
+  const [zoomOpen, setZoomOpen] = useState(false);
+
+  const tileSx = {
+    width: QR_TILE_SIZE,
+    height: QR_TILE_SIZE,
+    maxWidth: "100%",
+    mx: "auto",
+    position: "relative",
+    borderRadius: 1,
+    border: "1px solid",
+    borderColor: surfaceBorderColor,
+    bgcolor: "#fff",
+    overflow: "hidden",
+  };
+
+  if (!imageUrl) {
+    return (
+      <Box
+        sx={{
+          ...tileSx,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          bgcolor: alpha(theme.palette.text.primary, 0.04),
+          fontFamily: MONO_FONT,
+          fontSize: "0.72rem",
+          color: "text.secondary",
+          textAlign: "center",
+          px: 1,
+        }}
+      >
+        QR code coming soon
+      </Box>
+    );
+  }
+
+  return (
+    <>
+      <Box sx={tileSx}>
+        <Box
+          component="img"
+          src={imageUrl}
+          alt={`${label} QR code`}
+          sx={{ width: "100%", height: "100%", objectFit: "contain", p: 0.75, display: "block" }}
+        />
+        <IconButton
+          size="small"
+          onClick={() => setZoomOpen(true)}
+          aria-label={`Zoom ${label} QR code`}
+          sx={{
+            position: "absolute",
+            right: 6,
+            bottom: 6,
+            bgcolor: alpha(theme.palette.background.paper, 0.94),
+            border: "1px solid",
+            borderColor: surfaceBorderColor,
+            boxShadow: 1,
+            "&:hover": { bgcolor: "background.paper" },
+          }}
+        >
+          <ZoomInIcon sx={{ fontSize: 18 }} />
+        </IconButton>
+      </Box>
+
+      <Dialog open={zoomOpen} onClose={() => setZoomOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800 }}>{label} QR code</DialogTitle>
+        <DialogContent sx={{ display: "flex", justifyContent: "center", pb: 3 }}>
+          <Box
+            component="img"
+            src={imageUrl}
+            alt={`${label} QR code`}
+            sx={{ width: "100%", maxHeight: "70vh", objectFit: "contain", borderRadius: 1 }}
+          />
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 
 const EMPTY_DETAILS = {
   name: "",
   email: "",
   phone: "",
-  fulfillment: "delivery",
-  region: "metro",
   street: "",
   city: "",
   province: "",
@@ -46,35 +141,78 @@ const EMPTY_DETAILS = {
   notes: "",
 };
 
-function OrderSummary({ items, subtotal, shippingFee, total, panelSx }) {
+function CheckoutEmptyLanding({ panelSx }) {
+  return (
+    <Container maxWidth="sm" sx={{ py: { xs: 8, md: 12 } }}>
+      <Stack spacing={3} alignItems="center" textAlign="center">
+        <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2, fontFamily: MONO_FONT }}>
+          Checkout
+        </Typography>
+        <Box sx={{ ...panelSx, p: { xs: 4, md: 5 }, width: "100%" }}>
+          <Typography variant="h4" sx={{ fontWeight: 800 }}>Your cart is empty</Typography>
+          <Typography color="text.secondary" sx={{ mt: 1.5, mb: 3, lineHeight: 1.6 }}>
+            Add items from the shop before checking out. You can keep browsing and come back when you&apos;re ready.
+          </Typography>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} justifyContent="center">
+            <Button
+              component={RouterLink}
+              to="/shop"
+              variant="contained"
+              size="large"
+              sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}
+            >
+              Browse shop
+            </Button>
+            <Button component={RouterLink} to="/" variant="outlined" color="inherit" size="large">
+              Back to home
+            </Button>
+          </Stack>
+        </Box>
+      </Stack>
+    </Container>
+  );
+}
+
+function OrderSummary({ items, subtotal, shippingFee, total, balanceDue, hasPreorder, panelSx }) {
   return (
     <Box sx={{ ...panelSx, p: 2.5 }}>
       <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>Order summary</Typography>
       <Stack spacing={1.25} divider={<Divider flexItem />}>
-        {items.map((item) => (
+        {items.map((item) => {
+          const isPreorder = item.tag === "Pre-order";
+          const dueNow = cartItemDueNow(item);
+          return (
           <Stack key={item.id} direction="row" justifyContent="space-between" spacing={2}>
             <Box sx={{ minWidth: 0 }}>
               <Typography sx={{ fontWeight: 600, fontSize: "0.88rem" }}>{item.name}</Typography>
               <Typography sx={{ color: "text.secondary", fontSize: "0.75rem", fontFamily: MONO_FONT }}>
                 {item.tag} · Qty {item.quantity}
+                {isPreorder ? ` · ${item.depositPercent ?? 30}% deposit` : ""}
               </Typography>
             </Box>
-            <Typography sx={{ fontWeight: 700, flexShrink: 0 }}>{PESO.format(item.price * item.quantity)}</Typography>
+            <Typography sx={{ fontWeight: 700, flexShrink: 0 }}>{PESO.format(dueNow)}</Typography>
           </Stack>
-        ))}
+          );
+        })}
       </Stack>
       <Stack spacing={1} sx={{ mt: 2.5 }}>
         <Stack direction="row" justifyContent="space-between">
-          <Typography color="text.secondary">Subtotal</Typography>
+          <Typography color="text.secondary">{hasPreorder ? "Deposit due now" : "Subtotal"}</Typography>
           <Typography>{PESO.format(subtotal)}</Typography>
         </Stack>
+        {hasPreorder && balanceDue > 0 ? (
+          <Stack direction="row" justifyContent="space-between">
+            <Typography color="text.secondary">Balance before release</Typography>
+            <Typography sx={{ color: "text.secondary" }}>{PESO.format(balanceDue)}</Typography>
+          </Stack>
+        ) : null}
         <Stack direction="row" justifyContent="space-between">
           <Typography color="text.secondary">Shipping</Typography>
-          <Typography>{shippingFee === 0 ? "Free" : PESO.format(shippingFee)}</Typography>
+          <Typography sx={{ textAlign: "right", maxWidth: "55%" }}>At buyer&apos;s expense</Typography>
         </Stack>
         <Divider />
         <Stack direction="row" justifyContent="space-between" alignItems="baseline">
-          <Typography sx={{ fontWeight: 800 }}>Total</Typography>
+          <Typography sx={{ fontWeight: 800 }}>{hasPreorder ? "Pay now" : "Total"}</Typography>
           <Typography sx={{ fontWeight: 800, fontSize: "1.25rem", color: "primary.main" }}>{PESO.format(total)}</Typography>
         </Stack>
       </Stack>
@@ -235,7 +373,6 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
 }
 
 function DetailsStep({ panelSx, surfaceBorderColor, details, setDetails, onBack, onContinue }) {
-  const theme = useTheme();
   const [error, setError] = useState("");
 
   function handleSubmit(event) {
@@ -245,11 +382,9 @@ function DetailsStep({ panelSx, surfaceBorderColor, details, setDetails, onBack,
       setError("Name, email, and phone are required.");
       return;
     }
-    if (details.fulfillment === "delivery") {
-      if (!details.street.trim() || !details.city.trim() || !details.province.trim()) {
-        setError("Please complete your delivery address.");
-        return;
-      }
+    if (!details.street.trim() || !details.city.trim() || !details.province.trim()) {
+      setError("Please complete your delivery address.");
+      return;
     }
     onContinue();
   }
@@ -274,59 +409,31 @@ function DetailsStep({ panelSx, surfaceBorderColor, details, setDetails, onBack,
         </Grid>
 
         <Grid size={{ xs: 12 }}>
-          <FormControl component="fieldset">
-            <FormLabel sx={{ fontWeight: 700, color: "text.primary", mb: 1 }}>Fulfillment</FormLabel>
-            <RadioGroup
-              row
-              value={details.fulfillment}
-              onChange={(e) => setDetails({ fulfillment: e.target.value })}
-            >
-              <FormControlLabel value="delivery" control={<Radio />} label="Delivery" />
-              <FormControlLabel value="pickup" control={<Radio />} label="Store pickup (free)" />
-            </RadioGroup>
-          </FormControl>
+          <Alert severity="info" icon={<ShieldIcon />} sx={{ border: "1px solid", borderColor: surfaceBorderColor }}>
+            {SHIPPING_DISCLAIMER}
+          </Alert>
         </Grid>
 
-        {details.fulfillment === "delivery" ? (
-          <>
-            <Grid size={{ xs: 12 }}>
-              <FormControl component="fieldset">
-                <FormLabel sx={{ fontWeight: 700, color: "text.primary", mb: 1 }}>Region</FormLabel>
-                <RadioGroup
-                  row
-                  value={details.region}
-                  onChange={(e) => setDetails({ region: e.target.value })}
-                >
-                  <FormControlLabel value="metro" control={<Radio />} label={`Metro Manila (${PESO.format(SHIPPING.metroManila)})`} />
-                  <FormControlLabel value="provincial" control={<Radio />} label={`Provincial (${PESO.format(SHIPPING.provincial)})`} />
-                </RadioGroup>
-              </FormControl>
-              {SHIPPING.freeThreshold ? (
-                <Typography variant="caption" color="text.secondary">
-                  Free shipping on orders over {PESO.format(SHIPPING.freeThreshold)}.
-                </Typography>
-              ) : null}
-            </Grid>
-            <Grid size={{ xs: 12 }}>
-              <TextField label="Street address" fullWidth required value={details.street} onChange={(e) => setDetails({ street: e.target.value })} />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <TextField label="City" fullWidth required value={details.city} onChange={(e) => setDetails({ city: e.target.value })} />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <TextField label="Province" fullWidth required value={details.province} onChange={(e) => setDetails({ province: e.target.value })} />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <TextField label="Postal code" fullWidth value={details.postal} onChange={(e) => setDetails({ postal: e.target.value })} />
-            </Grid>
-          </>
-        ) : (
-          <Grid size={{ xs: 12 }}>
-            <Alert severity="info" icon={<ShieldIcon />} sx={{ border: "1px solid", borderColor: surfaceBorderColor }}>
-              Pick up at Hobby Arena during processing hours. We&apos;ll email when your order is ready.
-            </Alert>
-          </Grid>
-        )}
+        <Grid size={{ xs: 12 }}>
+          <Alert severity="info" sx={{ border: "1px solid", borderColor: surfaceBorderColor }}>
+            <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Store pickup</Typography>
+            <Typography variant="body2" sx={{ mb: 0.75 }}>{STORE_PICKUP_INFO}</Typography>
+            <Typography variant="body2" color="text.secondary">{PROCESSING_HOURS}</Typography>
+          </Alert>
+        </Grid>
+
+        <Grid size={{ xs: 12 }}>
+          <TextField label="Street address" fullWidth required value={details.street} onChange={(e) => setDetails({ street: e.target.value })} />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 4 }}>
+          <TextField label="City" fullWidth required value={details.city} onChange={(e) => setDetails({ city: e.target.value })} />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 4 }}>
+          <TextField label="Province" fullWidth required value={details.province} onChange={(e) => setDetails({ province: e.target.value })} />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 4 }}>
+          <TextField label="Postal code" fullWidth value={details.postal} onChange={(e) => setDetails({ postal: e.target.value })} />
+        </Grid>
 
         <Grid size={{ xs: 12 }}>
           <TextField label="Order notes (optional)" fullWidth multiline minRows={2} value={details.notes} onChange={(e) => setDetails({ notes: e.target.value })} />
@@ -344,8 +451,6 @@ function DetailsStep({ panelSx, surfaceBorderColor, details, setDetails, onBack,
 }
 
 function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proofFile, setProofFile, confirmedTransfer, setConfirmedTransfer, onBack, onPlaceOrder, busy, error }) {
-  const theme = useTheme();
-
   function handleFileChange(event) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -368,17 +473,17 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
       {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        {BANK_ACCOUNTS.map((bank) => (
+        {BANK_ACCOUNTS.filter((bank) => bank.active !== false).map((bank) => (
           <Grid key={bank.id} size={{ xs: 12, sm: 6 }}>
-            <Box sx={{ p: 2, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor, height: "100%" }}>
+            <Box sx={{ p: 2, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor, height: "100%", display: "flex", flexDirection: "column" }}>
               <Typography sx={{ fontWeight: 800, fontFamily: MONO_FONT, fontSize: "0.75rem", letterSpacing: 1, color: "primary.main" }}>
                 {bank.label.toUpperCase()}
               </Typography>
               <Typography sx={{ fontWeight: 700, mt: 1 }}>{bank.accountName}</Typography>
               <Typography sx={{ fontFamily: MONO_FONT, fontSize: "1.1rem", fontWeight: 800, mt: 0.5 }}>{bank.accountNumber}</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{bank.note}</Typography>
-              <Box sx={{ mt: 1.5, p: 2, borderRadius: 1, bgcolor: alpha(theme.palette.text.primary, 0.04), textAlign: "center", fontFamily: MONO_FONT, fontSize: "0.72rem", color: "text.secondary" }}>
-                QR code placeholder
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1, flexGrow: 1 }}>{bank.note}</Typography>
+              <Box sx={{ mt: 1.5 }}>
+                <QrCodeTile label={bank.label} imageUrl={bank.qrImage} surfaceBorderColor={surfaceBorderColor} />
               </Box>
             </Box>
           </Grid>
@@ -493,6 +598,11 @@ function ConfirmationView({ order, panelSx }) {
           <Typography sx={{ fontWeight: 800, fontSize: "1.35rem", color: "primary.main" }}>
             {PESO.format(order.total)}
           </Typography>
+          {order.balanceDue > 0 ? (
+            <Typography sx={{ color: "text.secondary", fontSize: "0.82rem", fontFamily: MONO_FONT }}>
+              Balance due before release: {PESO.format(order.balanceDue)}
+            </Typography>
+          ) : null}
         </Stack>
       </Box>
     </>
@@ -504,7 +614,7 @@ export default function CheckoutPage() {
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
   const { user, isCustomer, loading } = useAuth();
-  const { items, subtotal, clearCart } = useCart();
+  const { items, subtotal, balanceDue, hasPreorder, clearCart } = useCart();
   const { placeOrder } = useOrders();
 
   const [step, setStep] = useState(0);
@@ -517,10 +627,7 @@ export default function CheckoutPage() {
   const [busy, setBusy] = useState(false);
   const [paymentError, setPaymentError] = useState("");
 
-  const shippingFee = useMemo(
-    () => calcShipping(subtotal, details.fulfillment, details.region),
-    [subtotal, details.fulfillment, details.region],
-  );
+  const shippingFee = useMemo(() => calcShipping(), []);
   const total = subtotal + shippingFee;
 
   function setDetails(patch) {
@@ -541,7 +648,7 @@ export default function CheckoutPage() {
   }, [loading, isCustomer, user, accountSkipped]);
 
   if (items.length === 0 && !placedOrder) {
-    return <Navigate to="/" replace />;
+    return <CheckoutEmptyLanding panelSx={panelSx} />;
   }
 
   if (placedOrder) {
@@ -577,27 +684,27 @@ export default function CheckoutPage() {
     }
     setBusy(true);
     try {
-      const address = details.fulfillment === "delivery"
-        ? {
-            street: details.street.trim(),
-            city: details.city.trim(),
-            province: details.province.trim(),
-            postal: details.postal.trim(),
-          }
-        : null;
+      const address = {
+        street: details.street.trim(),
+        city: details.city.trim(),
+        province: details.province.trim(),
+        postal: details.postal.trim(),
+      };
 
       const order = placeOrder({
         cartItems: items,
         customer: details.name.trim(),
         email: details.email.trim(),
         phone: details.phone.trim(),
-        fulfillment: details.fulfillment,
-        region: details.region,
+        fulfillment: "delivery",
+        region: null,
         address,
         notes: details.notes,
         subtotal,
         shippingFee,
         total,
+        fullSubtotal: items.reduce((sum, item) => sum + item.price * item.quantity, 0),
+        balanceDue,
         proofOfPayment: proofFile.dataUrl,
         guest: isGuest,
         userId: user?.uid,
@@ -670,7 +777,15 @@ export default function CheckoutPage() {
           </Grid>
           <Grid size={{ xs: 12, md: 5 }}>
             <Box sx={{ position: { md: "sticky" }, top: 88 }}>
-              <OrderSummary items={items} subtotal={subtotal} shippingFee={shippingFee} total={total} panelSx={panelSx} />
+              <OrderSummary
+                items={items}
+                subtotal={subtotal}
+                shippingFee={shippingFee}
+                total={total}
+                balanceDue={balanceDue}
+                hasPreorder={hasPreorder}
+                panelSx={panelSx}
+              />
             </Box>
           </Grid>
         </Grid>

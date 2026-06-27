@@ -1,5 +1,6 @@
 import { Box } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+import { BRAND_LOGO } from "../data/mediaAssets.js";
 import { BrandMark } from "./icons.jsx";
 
 export default function BrandLogo({ sx, imageSx }) {
@@ -10,7 +11,7 @@ export default function BrandLogo({ sx, imageSx }) {
     return (
       <Box
         component="img"
-        src="/logo.png"
+        src={BRAND_LOGO}
         alt="Hobby Arena"
         sx={{
           height: { xs: 44, md: 52 },

@@ -33,6 +33,15 @@ export function getSurfaces(theme, isDarkMode, proposalId = theme.ha?.proposalId
   };
 }
 
+/** Product card / detail image well — neutral surface, no accent wash. */
+export function productMediaSurface(isDarkMode) {
+  return {
+    position: "relative",
+    overflow: "hidden",
+    bgcolor: isDarkMode ? alpha(OFF_WHITE.textBright, 0.05) : OFF_WHITE.paperSoft,
+  };
+}
+
 /** Avatar / profile circle gradient using active brand tokens. */
 export function avatarGradient(theme) {
   const brand = theme.ha?.brand;

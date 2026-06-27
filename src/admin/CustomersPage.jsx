@@ -108,7 +108,7 @@ export default function CustomersPage() {
           <Typography variant="h3">Customers</Typography>
           <Typography color="text.secondary" sx={{ mt: 0.5 }}>Customer accounts and marketing consent.</Typography>
         </Box>
-        <Button variant="contained" color="primary" onClick={exportMarketingList} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", boxShadow: `0 10px 30px ${alpha(theme.palette.primary.main, 0.4)}` }}>
+        <Button variant="contained" color="primary" onClick={exportMarketingList} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
           Export opt-in list
         </Button>
       </Stack>

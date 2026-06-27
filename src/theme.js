@@ -62,10 +62,15 @@ export function createAppTheme(mode, proposalId = 2) {
             textTransform: "none",
             fontWeight: 700,
             paddingInline: 22,
-            ...(proposal.id === 2 && {
-              boxShadow: "none",
-              "&:hover": { boxShadow: "none" },
-            }),
+            boxShadow: "none",
+            "&:hover": { boxShadow: "none" },
+            "&:active": { boxShadow: "none" },
+            "&:focus-visible": { boxShadow: "none" },
+          },
+          contained: {
+            boxShadow: "none",
+            "&:hover": { boxShadow: "none" },
+            "&:active": { boxShadow: "none" },
           },
           containedPrimary: proposal.id === 2
             ? {
@@ -80,7 +85,10 @@ export function createAppTheme(mode, proposalId = 2) {
                   borderColor: isDarkMode ? "#F5C518" : "#C9A227",
                 },
               }
-            : {},
+            : {
+                boxShadow: "none",
+                "&:hover": { boxShadow: "none" },
+              },
           outlinedPrimary: proposal.id === 2
             ? {
                 borderColor: isDarkMode ? alpha("#F5C518", 0.45) : alpha("#C9A227", 0.55),

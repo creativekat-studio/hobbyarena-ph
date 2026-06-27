@@ -24,7 +24,7 @@ import {
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { useOutletContext } from "react-router-dom";
-import { MONO_FONT, getStatAccents, getBrand } from "../theme.js";
+import { MONO_FONT, getStatAccents } from "../theme.js";
 import { avatarStyles } from "../lib/surfaces.js";
 import { wider } from "../lib/layout.js";
 import { PESO } from "../components/ProductCard.jsx";
@@ -156,7 +156,6 @@ function StatCard({ panelSx, icon, label, value, accent }) {
 function Dashboard({ panelSx, surfaceBorderColor }) {
   const theme = useTheme();
   const accents = getStatAccents(theme);
-  const heroGlow = getBrand(theme).heroGlowColor ?? theme.palette.primary.main;
   const { user, signOut } = useAuth();
   const { orders: allOrders } = useOrders();
   const { items: wishlistItems, remove: removeFromWishlist } = useWishlist();
@@ -173,8 +172,7 @@ function Dashboard({ panelSx, surfaceBorderColor }) {
 
   return (
     <Stack spacing={3}>
-      <Box sx={{ ...panelSx, p: { xs: 3, md: 4 }, position: "relative", overflow: "hidden" }}>
-        <Box aria-hidden sx={{ position: "absolute", top: -80, right: -60, width: 240, height: 240, borderRadius: "50%", background: `radial-gradient(circle, ${alpha(heroGlow, 0.25)} 0%, transparent 65%)`, pointerEvents: "none" }} />
+      <Box sx={{ ...panelSx, p: { xs: 3, md: 4 } }}>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2.5} alignItems={{ xs: "flex-start", sm: "center" }} justifyContent="space-between">
           <Stack direction="row" spacing={2} alignItems="center">
             <Box sx={{ width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1.5rem", ...avatarStyles(theme) }}>

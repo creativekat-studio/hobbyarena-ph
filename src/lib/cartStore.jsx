@@ -1,4 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import {
+  calcPreorderPricing,
+  getCountdownParts,
+  getDepositPercent,
+  isPreorderProduct,
+  preorderBalanceDue,
+  preorderDueNow,
+} from "./preorder.js";
 
 /**
  * Shopping cart store.
@@ -13,21 +21,32 @@ function loadCart() {
   if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
 
 function canAddProduct(product) {
-  const isPreorder = product.tag === "Pre-order";
+  const isPreorder = isPreorderProduct(product);
+  if (isPreorder && getCountdownParts(product.preorderEndsAt)?.expired) return false;
   const soldOut = !isPreorder && product.stock <= 0;
   return isPreorder || !soldOut;
 }
 
 function maxQuantity(product) {
-  if (product.tag === "Pre-order") return 99;
+  if (isPreorderProduct(product)) return 99;
   return Math.max(product.stock, 0);
+}
+
+function cartItemDueNow(item) {
+  return preorderDueNow(item, item.quantity);
+}
+
+function cartItemBalanceDue(item) {
+  return preorderBalanceDue(item, item.quantity);
 }
 
 const CartContext = createContext(null);
@@ -46,6 +65,8 @@ export function CartProvider({ children }) {
       setItems((prev) => {
         const existing = prev.find((item) => item.id === product.id);
         const limit = maxQuantity(product);
+        const isPreorder = isPreorderProduct(product);
+        const depositPercent = isPreorder ? getDepositPercent(product) : null;
 
         if (existing) {
           if (existing.quantity >= limit) return prev;
@@ -66,6 +87,14 @@ export function CartProvider({ children }) {
             image: product.image,
             maxQuantity: limit,
             quantity: 1,
+            ...(isPreorder
+              ? {
+                  depositPercent,
+                  preorderEndsAt: product.preorderEndsAt ?? null,
+                  depositAmount: calcPreorderPricing(product.price, depositPercent).deposit,
+                  balanceAmount: calcPreorderPricing(product.price, depositPercent).balance,
+                }
+              : {}),
           },
         ];
       });
@@ -95,14 +124,29 @@ export function CartProvider({ children }) {
     [items],
   );
 
-  const subtotal = useMemo(
+  const fullSubtotal = useMemo(
     () => items.reduce((sum, item) => sum + item.price * item.quantity, 0),
     [items],
   );
 
+  const subtotal = useMemo(
+    () => items.reduce((sum, item) => sum + cartItemDueNow(item), 0),
+    [items],
+  );
+
+  const balanceDue = useMemo(
+    () => items.reduce((sum, item) => sum + cartItemBalanceDue(item), 0),
+    [items],
+  );
+
+  const hasPreorder = useMemo(
+    () => items.some((item) => isPreorderProduct(item)),
+    [items],
+  );
+
   const value = useMemo(
-    () => ({ items, itemCount, subtotal, ...api }),
-    [items, itemCount, subtotal, api],
+    () => ({ items, itemCount, subtotal, fullSubtotal, balanceDue, hasPreorder, ...api }),
+    [items, itemCount, subtotal, fullSubtotal, balanceDue, hasPreorder, api],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
@@ -115,3 +159,5 @@ export function useCart() {
   }
   return context;
 }
+
+export { cartItemDueNow, cartItemBalanceDue };

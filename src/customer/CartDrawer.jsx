@@ -7,13 +7,14 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
 import { useNavigate } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { CardIcon, PokeballIcon } from "../components/icons.jsx";
 import { PESO } from "../components/ProductCard.jsx";
 import { OFF_WHITE } from "../lib/colors.js";
-import { useCart } from "../lib/cartStore.jsx";
+import { productMediaSurface } from "../lib/surfaces.js";
+import { useCart, cartItemDueNow, cartItemBalanceDue } from "../lib/cartStore.jsx";
+import { isPreorderProduct } from "../lib/preorder.js";
 
 function CloseIcon(props) {
   return (
@@ -23,10 +24,11 @@ function CloseIcon(props) {
   );
 }
 
-function CartLineItem({ item, onQuantityChange, onRemove, surfaceBorderColor }) {
-  const theme = useTheme();
-  const accent = item.accent || theme.palette.primary.main;
+function CartLineItem({ item, onQuantityChange, onRemove, surfaceBorderColor, isDarkMode }) {
   const Glyph = item.line.startsWith("Pokémon") ? PokeballIcon : CardIcon;
+  const isPreorder = isPreorderProduct(item);
+  const dueNow = cartItemDueNow(item);
+  const balance = cartItemBalanceDue(item);
 
   return (
     <Stack direction="row" spacing={1.5} alignItems="flex-start">
@@ -39,10 +41,7 @@ function CartLineItem({ item, onQuantityChange, onRemove, surfaceBorderColor }) 
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          overflow: "hidden",
-          background: item.image
-            ? alpha(theme.palette.background.default, 0.4)
-            : `linear-gradient(150deg, ${alpha(accent, 0.95)} 0%, ${alpha(accent, 0.4)} 100%)`,
+          ...productMediaSurface(isDarkMode),
         }}
       >
         {item.image ? (
@@ -55,7 +54,10 @@ function CartLineItem({ item, onQuantityChange, onRemove, surfaceBorderColor }) 
       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
         <Typography sx={{ fontWeight: 700, fontSize: "0.88rem", lineHeight: 1.3 }}>{item.name}</Typography>
         <Typography sx={{ fontSize: "0.68rem", color: "text.secondary", fontFamily: MONO_FONT, mt: 0.25 }}>
-          {item.tag.toUpperCase()} · {PESO.format(item.price)}
+          {item.tag.toUpperCase()}
+          {isPreorder
+            ? ` · ${item.depositPercent ?? 30}% now ${PESO.format(dueNow)} · balance ${PESO.format(balance)}`
+            : ` · ${PESO.format(item.price)}`}
         </Typography>
 
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
@@ -80,16 +82,15 @@ function CartLineItem({ item, onQuantityChange, onRemove, surfaceBorderColor }) 
       </Box>
 
       <Typography sx={{ fontWeight: 800, fontSize: "0.92rem", flexShrink: 0 }}>
-        {PESO.format(item.price * item.quantity)}
+        {PESO.format(isPreorder ? dueNow : item.price * item.quantity)}
       </Typography>
     </Stack>
   );
 }
 
-export default function CartDrawer({ open, onClose, surfaceBorderColor }) {
-  const theme = useTheme();
+export default function CartDrawer({ open, onClose, surfaceBorderColor, isDarkMode }) {
   const navigate = useNavigate();
-  const { items, itemCount, subtotal, setQuantity, removeItem, clearCart } = useCart();
+  const { items, itemCount, subtotal, balanceDue, hasPreorder, setQuantity, removeItem, clearCart } = useCart();
 
   function goToCheckout() {
     onClose();
@@ -136,6 +137,7 @@ export default function CartDrawer({ open, onClose, surfaceBorderColor }) {
                   key={item.id}
                   item={item}
                   surfaceBorderColor={surfaceBorderColor}
+                  isDarkMode={isDarkMode}
                   onQuantityChange={setQuantity}
                   onRemove={removeItem}
                 />
@@ -147,9 +149,14 @@ export default function CartDrawer({ open, onClose, surfaceBorderColor }) {
         {items.length > 0 ? (
           <Box sx={{ px: 2.5, py: 2.5, borderTop: "1px solid", borderColor: surfaceBorderColor }}>
             <Stack direction="row" justifyContent="space-between" alignItems="baseline" sx={{ mb: 2 }}>
-              <Typography sx={{ color: "text.secondary" }}>Subtotal</Typography>
+              <Typography sx={{ color: "text.secondary" }}>{hasPreorder ? "Due now (deposit)" : "Subtotal"}</Typography>
               <Typography sx={{ fontWeight: 800, fontSize: "1.2rem" }}>{PESO.format(subtotal)}</Typography>
             </Stack>
+            {hasPreorder && balanceDue > 0 ? (
+              <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", mb: 2, fontFamily: MONO_FONT }}>
+                Balance due before release: {PESO.format(balanceDue)}
+              </Typography>
+            ) : null}
             <Button
               fullWidth
               variant="contained"
