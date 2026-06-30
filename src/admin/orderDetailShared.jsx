@@ -600,7 +600,6 @@ function LineItemSelectorOption({ item, index }) {
 function OrderItemSelector({ lineItems, selectedId, onSelect, surfaceBorderColor, showDivider = true }) {
   if (lineItems.length <= 1) return null;
 
-  const useDropdown = lineItems.length > 3;
   const selectedIndex = lineItems.findIndex((item) => item.id === selectedId);
   const selectedItem = selectedIndex >= 0 ? lineItems[selectedIndex] : null;
   const selectedLabel = selectedId === "all"
@@ -618,58 +617,34 @@ function OrderItemSelector({ lineItems, selectedId, onSelect, surfaceBorderColor
         ) : null}
       </Stack>
 
-      {useDropdown ? (
-        <>
-          <Select
-            fullWidth
-            size="small"
-            value={selectedId}
-            onChange={(e) => onSelect(e.target.value)}
-            displayEmpty
-            renderValue={() => (
-              <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {selectedLabel}
-              </Typography>
-            )}
-            MenuProps={{ PaperProps: { sx: { maxHeight: 320 } } }}
-          >
-            <MenuItem value="all">
-              <Typography sx={{ fontWeight: 700 }}>All items ({lineItems.length})</Typography>
-            </MenuItem>
-            <Divider component="li" sx={{ my: 0.5 }} />
-            {lineItems.map((item, index) => (
-              <MenuItem key={item.id} value={item.id} sx={{ alignItems: "flex-start", py: 1.25, whiteSpace: "normal" }}>
-                <LineItemSelectorOption item={item} index={index} />
-              </MenuItem>
-            ))}
-          </Select>
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
-            {selectedId === "all"
-              ? "Combined trail — pick an item to update."
-              : "Updating this line item only."}
+      <Select
+        fullWidth
+        size="small"
+        value={selectedId}
+        onChange={(e) => onSelect(e.target.value)}
+        displayEmpty
+        renderValue={() => (
+          <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {selectedLabel}
           </Typography>
-        </>
-      ) : (
-        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-          <Chip
-            label={`All items (${lineItems.length})`}
-            onClick={() => onSelect("all")}
-            color={selectedId === "all" ? "primary" : "default"}
-            variant={selectedId === "all" ? "filled" : "outlined"}
-            sx={{ fontWeight: 700, maxWidth: "100%" }}
-          />
-          {lineItems.map((item) => (
-            <Chip
-              key={item.id}
-              label={shortLineItemLabel(item)}
-              onClick={() => onSelect(item.id)}
-              color={selectedId === item.id ? "primary" : "default"}
-              variant={selectedId === item.id ? "filled" : "outlined"}
-              sx={{ fontWeight: 700, maxWidth: "100%" }}
-            />
-          ))}
-        </Stack>
-      )}
+        )}
+        MenuProps={{ PaperProps: { sx: { maxHeight: 320 } } }}
+      >
+        <MenuItem value="all">
+          <Typography sx={{ fontWeight: 700 }}>All items ({lineItems.length})</Typography>
+        </MenuItem>
+        <Divider component="li" sx={{ my: 0.5 }} />
+        {lineItems.map((item, index) => (
+          <MenuItem key={item.id} value={item.id} sx={{ alignItems: "flex-start", py: 1.25, whiteSpace: "normal" }}>
+            <LineItemSelectorOption item={item} index={index} />
+          </MenuItem>
+        ))}
+      </Select>
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
+        {selectedId === "all"
+          ? "Combined trail — pick an item to update."
+          : "Updating this line item only."}
+      </Typography>
     </Box>
   );
 }
