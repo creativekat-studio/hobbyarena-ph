@@ -1,63 +1,97 @@
-import { Box, Chip, Stack, Typography } from "@mui/material";
+import { Box, Stack, Typography } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "./ProductCard.jsx";
 import { calcPreorderPricing, getDepositPercent, isPreorderProduct } from "../lib/preorder.js";
 import { usePreorderDisplay } from "../lib/preorderDisplayLayout.jsx";
 
+function PercentHighlight({ percent, timing, amount, pesoFormatter, compact, tone = "now" }) {
+  const theme = useTheme();
+  const isNow = tone === "now";
+  const accent = isNow ? theme.palette.primary.main : (theme.palette.secondary?.main ?? theme.palette.warning.main);
+
+  return (
+    <Box
+      sx={{
+        flex: 1,
+        minWidth: 0,
+        px: compact ? 1 : 1.25,
+        py: compact ? 0.75 : 0.85,
+        borderRadius: 1,
+        bgcolor: alpha(accent, isNow ? 0.14 : 0.1),
+        border: "1px solid",
+        borderColor: alpha(accent, isNow ? 0.45 : 0.35),
+        boxShadow: isNow ? `0 0 0 1px ${alpha(accent, 0.08)} inset` : "none",
+      }}
+    >
+      <Typography
+        sx={{
+          fontFamily: MONO_FONT,
+          fontSize: compact ? "0.68rem" : "0.72rem",
+          fontWeight: 800,
+          letterSpacing: 0.8,
+          textTransform: "uppercase",
+          color: accent,
+          lineHeight: 1.2,
+        }}
+      >
+        {percent}% {timing}
+      </Typography>
+      <Typography
+        sx={{
+          fontWeight: 800,
+          fontSize: compact ? "1rem" : "1.05rem",
+          color: isNow ? "primary.main" : "text.primary",
+          lineHeight: 1.25,
+          mt: 0.2,
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {pesoFormatter.format(amount)}
+      </Typography>
+    </Box>
+  );
+}
+
 function SplitPricing({ depositPercent, balancePercent, deposit, balance, fullPrice, showFullPrice, compact, pesoFormatter }) {
   return (
     <Stack spacing={compact ? 0.75 : 1}>
       {showFullPrice ? (
-        <Typography sx={{ fontSize: compact ? "0.68rem" : "0.82rem", color: "text.secondary" }}>
+        <Typography sx={{ fontSize: compact ? "0.72rem" : "0.82rem", color: "text.secondary" }}>
           Full price: <strong>{pesoFormatter.format(fullPrice)}</strong>
         </Typography>
       ) : null}
-      <Stack direction={compact ? "column" : { xs: "column", sm: "row" }} spacing={compact ? 0.75 : 1.5}>
-        <Stack spacing={0.25} sx={{ flex: 1 }}>
-          <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", fontWeight: 800, letterSpacing: 1, color: "primary.main", textTransform: "uppercase" }}>
-            Due now — {depositPercent}%
-          </Typography>
-          <Typography sx={{ fontWeight: 800, fontSize: compact ? "1rem" : "1.35rem", color: "primary.main" }}>
-            {pesoFormatter.format(deposit)}
-          </Typography>
-        </Stack>
-        <Stack spacing={0.25} sx={{ flex: 1 }}>
-          <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", fontWeight: 800, letterSpacing: 1, color: "text.secondary", textTransform: "uppercase" }}>
-            Balance — {balancePercent}%
-          </Typography>
-          <Typography sx={{ fontWeight: 800, fontSize: compact ? "0.92rem" : "1.15rem", color: "text.secondary" }}>
-            {pesoFormatter.format(balance)}
-          </Typography>
-        </Stack>
-      </Stack>
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: compact ? 0.75 : 1,
+        }}
+      >
+        <PercentHighlight percent={depositPercent} timing="now" amount={deposit} pesoFormatter={pesoFormatter} compact={compact} tone="now" />
+        <PercentHighlight percent={balancePercent} timing="later" amount={balance} pesoFormatter={pesoFormatter} compact={compact} tone="later" />
+      </Box>
     </Stack>
   );
 }
 
 function InlinePricing({ depositPercent, balancePercent, deposit, balance, fullPrice, showFullPrice, compact, pesoFormatter }) {
   return (
-    <Stack spacing={0.35}>
+    <Stack spacing={0.75}>
       {showFullPrice ? (
         <Typography sx={{ fontSize: compact ? "0.68rem" : "0.82rem", color: "text.secondary", fontFamily: MONO_FONT }}>
           Full {pesoFormatter.format(fullPrice)}
         </Typography>
       ) : null}
-      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-        <Typography sx={{ fontSize: compact ? "0.72rem" : "0.85rem", fontWeight: 800, color: "primary.main", fontFamily: MONO_FONT }}>
-          {depositPercent}% now {pesoFormatter.format(deposit)}
-        </Typography>
-        <Typography sx={{ fontSize: compact ? "0.72rem" : "0.85rem", fontWeight: 700, color: "text.secondary", fontFamily: MONO_FONT }}>
-          · {balancePercent}% later {pesoFormatter.format(balance)}
-        </Typography>
+      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+        <PercentHighlight percent={depositPercent} timing="now" amount={deposit} pesoFormatter={pesoFormatter} compact={compact} tone="now" />
+        <PercentHighlight percent={balancePercent} timing="later" amount={balance} pesoFormatter={pesoFormatter} compact={compact} tone="later" />
       </Stack>
     </Stack>
   );
 }
 
 function BadgesPricing({ depositPercent, balancePercent, deposit, balance, fullPrice, showFullPrice, compact, pesoFormatter }) {
-  const theme = useTheme();
-
   return (
     <Stack spacing={0.75}>
       {showFullPrice ? (
@@ -66,30 +100,8 @@ function BadgesPricing({ depositPercent, balancePercent, deposit, balance, fullP
         </Typography>
       ) : null}
       <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-        <Chip
-          label={`${depositPercent}% now · ${pesoFormatter.format(deposit)}`}
-          size="small"
-          sx={{
-            fontFamily: MONO_FONT,
-            fontWeight: 800,
-            fontSize: compact ? "0.65rem" : "0.72rem",
-            bgcolor: alpha(theme.palette.primary.main, 0.14),
-            color: "primary.main",
-            border: "1px solid",
-            borderColor: alpha(theme.palette.primary.main, 0.35),
-          }}
-        />
-        <Chip
-          label={`${balancePercent}% later · ${pesoFormatter.format(balance)}`}
-          size="small"
-          variant="outlined"
-          sx={{
-            fontFamily: MONO_FONT,
-            fontWeight: 700,
-            fontSize: compact ? "0.65rem" : "0.72rem",
-            color: "text.secondary",
-          }}
-        />
+        <PercentHighlight percent={depositPercent} timing="now" amount={deposit} pesoFormatter={pesoFormatter} compact={compact} tone="now" />
+        <PercentHighlight percent={balancePercent} timing="later" amount={balance} pesoFormatter={pesoFormatter} compact={compact} tone="later" />
       </Stack>
     </Stack>
   );
@@ -97,17 +109,14 @@ function BadgesPricing({ depositPercent, balancePercent, deposit, balance, fullP
 
 function DepositFirstPricing({ depositPercent, balancePercent, deposit, balance, fullPrice, showFullPrice, compact, pesoFormatter }) {
   return (
-    <Stack spacing={0.5}>
-      <Typography sx={{ fontFamily: MONO_FONT, fontSize: compact ? "0.58rem" : "0.62rem", fontWeight: 800, letterSpacing: 1, color: "primary.main", textTransform: "uppercase" }}>
-        {depositPercent}% deposit due now
-      </Typography>
-      <Typography sx={{ fontWeight: 900, fontSize: compact ? "1.15rem" : "1.75rem", color: "primary.main", lineHeight: 1.1 }}>
-        {pesoFormatter.format(deposit)}
-      </Typography>
-      <Typography sx={{ fontSize: compact ? "0.72rem" : "0.82rem", color: "text.secondary" }}>
-        {balancePercent}% balance ({pesoFormatter.format(balance)}) due before release
-        {showFullPrice ? ` · Full ${pesoFormatter.format(fullPrice)}` : ""}
-      </Typography>
+    <Stack spacing={0.75}>
+      <PercentHighlight percent={depositPercent} timing="now" amount={deposit} pesoFormatter={pesoFormatter} compact={compact} tone="now" />
+      <PercentHighlight percent={balancePercent} timing="later" amount={balance} pesoFormatter={pesoFormatter} compact={compact} tone="later" />
+      {showFullPrice ? (
+        <Typography sx={{ fontSize: compact ? "0.68rem" : "0.78rem", color: "text.secondary", fontFamily: MONO_FONT }}>
+          Full price {pesoFormatter.format(fullPrice)}
+        </Typography>
+      ) : null}
     </Stack>
   );
 }

@@ -20,6 +20,7 @@ import { useOutletContext } from "react-router-dom";
 import { MONO_FONT, getStatAccents } from "../theme.js";
 import { avatarStyles } from "../lib/surfaces.js";
 import { PESO } from "../components/ProductCard.jsx";
+import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import { CardIcon, SearchIcon, SparkleIcon, UserIcon } from "../components/icons.jsx";
 import { CUSTOMERS } from "../data/mockData.js";
 
@@ -101,19 +102,19 @@ export default function CustomersPage() {
   }
 
   return (
-    <Stack spacing={3}>
-      <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "center" }} spacing={2}>
-        <Box>
-          <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2 }}>People</Typography>
-          <Typography variant="h3">Customers</Typography>
-          <Typography color="text.secondary" sx={{ mt: 0.5 }}>Customer accounts and marketing consent.</Typography>
-        </Box>
-        <Button variant="contained" color="primary" onClick={exportMarketingList} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
-          Export opt-in list
-        </Button>
-      </Stack>
+    <Stack spacing={ADMIN_PAGE_SPACING}>
+      <AdminPageHeader
+        eyebrow="People"
+        title="Customers"
+        subtitle="Customer accounts and marketing consent."
+        action={(
+          <Button variant="contained" color="primary" onClick={exportMarketingList} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.78rem" }}>
+            Export opt-in list
+          </Button>
+        )}
+      />
 
-      <Grid container spacing={2.5}>
+      <Grid container spacing={2}>
         <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={UserIcon} label="Customers" value={stats.total} accent={accents[0]} /></Grid>
         <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={SparkleIcon} label="Marketing opt-in" value={`${stats.optIn} (${stats.optInPct}%)`} accent={accents[1]} /></Grid>
         <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Lifetime value" value={PESO.format(stats.ltv)} accent={theme.palette.success.main} /></Grid>

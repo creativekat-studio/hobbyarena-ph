@@ -15,6 +15,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
+import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
 import { BellIcon, BoxIcon, MailIcon } from "../components/icons.jsx";
 import { INQUIRY_STATUS, useInquiries } from "../lib/inquiriesStore.jsx";
 import { isUnseenOrder, useOrders } from "../lib/ordersStore.jsx";
@@ -81,7 +82,7 @@ export default function AdminNotificationBell({ surfaceBorderColor }) {
   function goToOrder(orderId) {
     markOrderSeen(orderId);
     setAnchor(null);
-    navigate("/admin/orders", { state: { openOrderId: orderId } });
+    navigate(`/admin/orders/${encodeURIComponent(orderId)}`);
   }
 
   function goToInquiry(inquiryId) {
@@ -124,7 +125,7 @@ export default function AdminNotificationBell({ surfaceBorderColor }) {
         }}
       >
         <Box sx={{ px: 2, py: 1.5 }}>
-          <Typography sx={{ fontWeight: 800 }}>Notifications</Typography>
+          <AdminSectionTitle>Notifications</AdminSectionTitle>
           <Typography variant="caption" color="text.secondary">
             {isEmpty
               ? "You're all caught up"

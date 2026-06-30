@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   Accordion,
   AccordionDetails,
@@ -6,26 +5,14 @@ import {
   Box,
   Button,
   Chip,
-  Slider,
+  MenuItem,
+  Select,
   Stack,
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { MONO_FONT } from "../theme.js";
-
-const PESO_FILTER = new Intl.NumberFormat("en-PH", {
-  style: "currency",
-  currency: "PHP",
-  maximumFractionDigits: 0,
-});
-
-function ExpandIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden>
-      <path d="M19 13H5v-2h14v2z" />
-    </svg>
-  );
-}
+import { resolveLineLogo, shortLineLabel } from "../lib/shopFilterUi.js";
 
 function CollapseIcon() {
   return (
@@ -35,48 +22,76 @@ function CollapseIcon() {
   );
 }
 
-export default function ShopFilters({
+function LineLogo({ line, size = 28 }) {
+  const logo = resolveLineLogo(line);
+  if (logo) {
+    return (
+      <Box
+        component="img"
+        src={logo}
+        alt=""
+        sx={{ width: size, height: size, objectFit: "contain", display: "block" }}
+      />
+    );
+  }
+  return (
+    <Box
+      sx={{
+        width: size,
+        height: size,
+        borderRadius: 1,
+        border: "1px dashed",
+        borderColor: "divider",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: "0.62rem",
+        fontWeight: 800,
+        fontFamily: MONO_FONT,
+        color: "text.secondary",
+      }}
+    >
+      ALL
+    </Box>
+  );
+}
+
+function LineChip({ item, selected, onClick, surfaceBorderColor }) {
+  return (
+    <Chip
+      key={item.value}
+      label={item.label}
+      size="small"
+      clickable
+      onClick={() => onClick(item.value)}
+      variant={selected ? "filled" : "outlined"}
+      sx={{
+        fontFamily: MONO_FONT,
+        fontWeight: 600,
+        ...(selected
+          ? {
+              bgcolor: "text.primary",
+              color: "background.paper",
+              borderColor: "text.primary",
+            }
+          : {
+              bgcolor: "background.paper",
+              borderColor: surfaceBorderColor,
+            }),
+      }}
+    />
+  );
+}
+
+export function ShopFiltersSidebar({
   panelSx,
   surfaceBorderColor,
   lines,
   activeLine,
   onLineChange,
-  priceBounds,
-  priceRange,
-  onPriceChange,
   onReset,
   hasActiveFilters,
 }) {
-  const theme = useTheme();
-  const [priceOpen, setPriceOpen] = useState(true);
-  const [lineOpen, setLineOpen] = useState(true);
-
-  const sliderSx = {
-    mt: 1,
-    px: 0.5,
-    color: theme.palette.text.primary,
-    "& .MuiSlider-rail": {
-      opacity: 1,
-      height: 3,
-      bgcolor: alpha(theme.palette.text.primary, 0.12),
-    },
-    "& .MuiSlider-track": {
-      height: 3,
-      border: "none",
-      bgcolor: theme.palette.text.primary,
-    },
-    "& .MuiSlider-thumb": {
-      width: 16,
-      height: 16,
-      bgcolor: theme.palette.text.primary,
-      border: `2px solid ${theme.palette.background.paper}`,
-      boxShadow: `0 2px 8px ${alpha(theme.palette.common.black, 0.2)}`,
-      "&:hover, &.Mui-focusVisible": {
-        boxShadow: `0 0 0 6px ${alpha(theme.palette.text.primary, 0.12)}`,
-      },
-    },
-  };
-
   return (
     <Box
       sx={{
@@ -87,9 +102,7 @@ export default function ShopFilters({
       }}
     >
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-        <Typography variant="h6" sx={{ fontWeight: 800 }}>
-          Filter by
-        </Typography>
+        <Typography variant="h6" sx={{ fontWeight: 800 }}>Filter by</Typography>
         {hasActiveFilters ? (
           <Button size="small" onClick={onReset} sx={{ fontWeight: 700, textTransform: "none", minWidth: 0 }}>
             Clear
@@ -98,62 +111,13 @@ export default function ShopFilters({
       </Stack>
 
       <Accordion
-        expanded={priceOpen}
-        onChange={() => setPriceOpen((open) => !open)}
+        defaultExpanded
         disableGutters
         elevation={0}
-        sx={{
-          bgcolor: "transparent",
-          "&::before": { display: "none" },
-          borderBottom: "1px solid",
-          borderColor: surfaceBorderColor,
-        }}
+        sx={{ bgcolor: "transparent", "&::before": { display: "none" } }}
       >
         <AccordionSummary
-          expandIcon={priceOpen ? <CollapseIcon /> : <ExpandIcon />}
-          sx={{
-            px: 0,
-            minHeight: 48,
-            "& .MuiAccordionSummary-content": { my: 1 },
-            "& .MuiAccordionSummary-expandIconWrapper": { transform: "none" },
-          }}
-        >
-          <Typography sx={{ fontWeight: 700 }}>Price</Typography>
-        </AccordionSummary>
-        <AccordionDetails sx={{ px: 0, pt: 0, pb: 2.5 }}>
-          <Slider
-            value={priceRange}
-            min={priceBounds[0]}
-            max={priceBounds[1]}
-            step={100}
-            onChange={(_, value) => onPriceChange(value)}
-            valueLabelDisplay="off"
-            sx={sliderSx}
-            disabled={priceBounds[0] === priceBounds[1]}
-          />
-          <Stack direction="row" justifyContent="space-between" sx={{ mt: 1 }}>
-            <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 700, fontSize: "0.88rem" }}>
-              {PESO_FILTER.format(priceRange[0])}
-            </Typography>
-            <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 700, fontSize: "0.88rem" }}>
-              {PESO_FILTER.format(priceRange[1])}
-            </Typography>
-          </Stack>
-        </AccordionDetails>
-      </Accordion>
-
-      <Accordion
-        expanded={lineOpen}
-        onChange={() => setLineOpen((open) => !open)}
-        disableGutters
-        elevation={0}
-        sx={{
-          bgcolor: "transparent",
-          "&::before": { display: "none" },
-        }}
-      >
-        <AccordionSummary
-          expandIcon={lineOpen ? <CollapseIcon /> : <ExpandIcon />}
+          expandIcon={<CollapseIcon />}
           sx={{
             px: 0,
             minHeight: 48,
@@ -165,36 +129,267 @@ export default function ShopFilters({
         </AccordionSummary>
         <AccordionDetails sx={{ px: 0, pt: 0, pb: 1 }}>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            {lines.map((item) => {
-              const selected = activeLine === item.value;
-              return (
-                <Chip
-                  key={item.value}
-                  label={item.label}
-                  size="small"
-                  clickable
-                  onClick={() => onLineChange(item.value)}
-                  variant={selected ? "filled" : "outlined"}
-                  sx={{
-                    fontFamily: MONO_FONT,
-                    fontWeight: 600,
-                    ...(selected
-                      ? {
-                          bgcolor: "text.primary",
-                          color: "background.paper",
-                          borderColor: "text.primary",
-                        }
-                      : {
-                          bgcolor: "background.paper",
-                          borderColor: surfaceBorderColor,
-                        }),
-                  }}
-                />
-              );
-            })}
+            {lines.map((item) => (
+              <LineChip
+                key={item.value}
+                item={item}
+                selected={activeLine === item.value}
+                onClick={onLineChange}
+                surfaceBorderColor={surfaceBorderColor}
+              />
+            ))}
           </Stack>
         </AccordionDetails>
       </Accordion>
     </Box>
   );
 }
+
+export function ShopFilterFranchiseRail({
+  panelSx,
+  surfaceBorderColor,
+  lines,
+  activeLine,
+  onLineChange,
+}) {
+  const theme = useTheme();
+  const primary = theme.palette.primary.main;
+
+  return (
+    <Stack
+      spacing={1}
+      sx={{
+        position: { md: "sticky" },
+        top: { md: 96 },
+        width: { xs: "100%", md: 88 },
+        flexShrink: 0,
+      }}
+    >
+      {lines.map((line) => {
+        const selected = activeLine === line.value;
+        return (
+          <Box
+            key={line.value}
+            component="button"
+            type="button"
+            onClick={() => onLineChange(line.value)}
+            sx={{
+              ...panelSx,
+              width: "100%",
+              p: 1.25,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 0.75,
+              cursor: "pointer",
+              border: "1px solid",
+              borderColor: selected ? alpha(primary, 0.55) : surfaceBorderColor,
+              boxShadow: selected ? `inset 3px 0 0 ${primary}` : "none",
+              bgcolor: selected ? alpha(primary, 0.08) : "background.paper",
+              transition: "border-color 0.15s ease, background-color 0.15s ease",
+              "&:hover": {
+                borderColor: selected ? alpha(primary, 0.55) : alpha(theme.palette.text.primary, 0.22),
+              },
+            }}
+          >
+            <LineLogo line={line} size={line.value === "all" ? 24 : 32} />
+            <Typography
+              sx={{
+                fontSize: "0.68rem",
+                fontWeight: selected ? 800 : 600,
+                fontFamily: MONO_FONT,
+                textAlign: "center",
+                lineHeight: 1.2,
+                color: selected ? "primary.main" : "text.secondary",
+              }}
+            >
+              {shortLineLabel(line.label)}
+            </Typography>
+          </Box>
+        );
+      })}
+    </Stack>
+  );
+}
+
+export function ShopFilterCommandBar({
+  surfaceBorderColor,
+  lines,
+  activeLine,
+  onLineChange,
+  tabs,
+  activeTab,
+  onTabChange,
+  itemCount,
+}) {
+  const theme = useTheme();
+  const activeLineLabel = lines.find((line) => line.value === activeLine)?.label ?? "All lines";
+
+  return (
+    <Stack
+      direction={{ xs: "column", md: "row" }}
+      alignItems={{ xs: "stretch", md: "center" }}
+      justifyContent="space-between"
+      spacing={1.5}
+      sx={{
+        mb: 2,
+        px: { xs: 2, md: 2.5 },
+        py: 1.5,
+        borderRadius: 1,
+        border: "1px solid",
+        borderColor: surfaceBorderColor,
+        bgcolor: alpha(theme.palette.background.paper, 0.92),
+      }}
+    >
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 1, minWidth: 0 }}>
+        {tabs.map((tab) => (
+          <Chip
+            key={tab.value}
+            label={tab.label}
+            size="small"
+            clickable
+            onClick={() => onTabChange(tab.value)}
+            variant={activeTab === tab.value ? "filled" : "outlined"}
+            sx={{
+              fontFamily: MONO_FONT,
+              fontWeight: 700,
+              height: 32,
+              ...(activeTab === tab.value
+                ? { bgcolor: "primary.main", color: "primary.contrastText", borderColor: "primary.main" }
+                : { borderColor: surfaceBorderColor }),
+            }}
+          />
+        ))}
+      </Stack>
+
+      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexShrink: 0 }}>
+        <Select
+          size="small"
+          value={activeLine}
+          onChange={(e) => onLineChange(e.target.value)}
+          sx={{ minWidth: { xs: "100%", md: 180 }, fontFamily: MONO_FONT, fontSize: "0.82rem" }}
+        >
+          {lines.map((line) => (
+            <MenuItem key={line.value} value={line.value}>{line.label}</MenuItem>
+          ))}
+        </Select>
+        <Typography sx={{ fontSize: "0.78rem", fontFamily: MONO_FONT, color: "text.secondary", whiteSpace: "nowrap", display: { xs: "none", sm: "block" } }}>
+          {itemCount} {itemCount === 1 ? "item" : "items"}
+        </Typography>
+      </Stack>
+    </Stack>
+  );
+}
+
+export function ShopFilterFranchiseTiles({
+  panelSx,
+  surfaceBorderColor,
+  lines,
+  activeLine,
+  onLineChange,
+}) {
+  const theme = useTheme();
+  const primary = theme.palette.primary.main;
+
+  return (
+    <Stack
+      direction="row"
+      spacing={1.25}
+      sx={{
+        mb: 2.5,
+        overflowX: "auto",
+        flexWrap: "nowrap",
+        pb: 0.5,
+        mx: -0.5,
+        px: 0.5,
+      }}
+    >
+      {lines.map((line) => {
+        const selected = activeLine === line.value;
+        return (
+          <Box
+            key={line.value}
+            component="button"
+            type="button"
+            onClick={() => onLineChange(line.value)}
+            sx={{
+              ...panelSx,
+              flexShrink: 0,
+              width: 96,
+              p: 1.25,
+              textAlign: "center",
+              cursor: "pointer",
+              border: "1px solid",
+              borderColor: selected ? alpha(primary, 0.55) : surfaceBorderColor,
+              bgcolor: selected ? alpha(primary, 0.06) : "background.paper",
+              transition: "border-color 0.15s ease, background-color 0.15s ease",
+              "&:hover": {
+                borderColor: selected ? alpha(primary, 0.55) : alpha(theme.palette.text.primary, 0.22),
+              },
+            }}
+          >
+            <Box sx={{ display: "flex", justifyContent: "center", mb: 0.75 }}>
+              <LineLogo line={line} size={36} />
+            </Box>
+            <Typography sx={{ fontSize: "0.78rem", fontWeight: selected ? 800 : 600, lineHeight: 1.2 }}>
+              {shortLineLabel(line.label)}
+            </Typography>
+          </Box>
+        );
+      })}
+    </Stack>
+  );
+}
+
+export function ShopFilterBreadcrumb({
+  sectionLabel,
+  lines,
+  activeLine,
+  onLineChange,
+  itemCount,
+}) {
+  const theme = useTheme();
+  const primary = theme.palette.primary.main;
+  const activeLineItem = lines.find((line) => line.value === activeLine);
+  const activeLabel = activeLineItem?.label ?? "All lines";
+
+  return (
+    <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mb: 2 }}>
+      <Typography sx={{ fontSize: "0.82rem", fontWeight: 700, color: "text.secondary" }}>
+        {sectionLabel}
+      </Typography>
+      <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>›</Typography>
+      <Typography sx={{ fontSize: "0.82rem", fontWeight: 800, color: primary }}>
+        {activeLabel}
+      </Typography>
+      <Typography sx={{ fontSize: "0.78rem", fontFamily: MONO_FONT, color: "text.secondary" }}>
+        · {itemCount} {itemCount === 1 ? "item" : "items"}
+      </Typography>
+      {activeLine !== "all" ? (
+        <Chip
+          label={`${activeLabel} ×`}
+          size="small"
+          clickable
+          onClick={() => onLineChange("all")}
+          sx={{
+            height: 24,
+            fontSize: "0.72rem",
+            fontFamily: MONO_FONT,
+            fontWeight: 700,
+            bgcolor: alpha(primary, 0.12),
+            color: primary,
+          }}
+        />
+      ) : null}
+    </Stack>
+  );
+}
+
+/** @deprecated Use ShopFiltersSidebar */
+export default ShopFiltersSidebar;
+
+export {
+  getFilterLayoutMode,
+  getTopFilterVariant,
+  embedsCategoryTabs,
+} from "../lib/shopFilterUi.js";

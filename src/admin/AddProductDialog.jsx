@@ -12,13 +12,11 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import ProductDescriptionEditor, { normalizeDescriptionSections, serializeDescriptionSections } from "../components/ProductDescriptionEditor.jsx";
+import { useCatalog } from "../lib/catalogStore.jsx";
+import { useInventory } from "../lib/inventoryStore.jsx";
 import { MONO_FONT } from "../theme.js";
 import { DEFAULT_DEPOSIT_PERCENT, fromDatetimeLocalValue, toDatetimeLocalValue } from "../lib/preorder.js";
-
-const LINES = [
-  { value: "Pokémon TCG", label: "Pokémon TCG" },
-  { value: "One Piece Card Game", label: "One Piece Card Game" },
-];
 
 const TYPES = [
   { value: "Sealed", label: "Sealed" },
@@ -39,6 +37,8 @@ const EMPTY = {
   reviews: "0",
   preorderEndsAt: "",
   depositPercent: String(DEFAULT_DEPOSIT_PERCENT),
+  category: "tcg",
+  descriptionSections: [],
 };
 
 function formFromProduct(product) {
@@ -57,6 +57,19 @@ function formFromProduct(product) {
     reviews: String(product.reviews ?? 0),
     preorderEndsAt: toDatetimeLocalValue(product.preorderEndsAt),
     depositPercent: String(product.depositPercent ?? DEFAULT_DEPOSIT_PERCENT),
+    category: product.category ?? "tcg",
+    descriptionSections: normalizeDescriptionSections(product.descriptionSections),
+  };
+}
+
+function formFromCopy(product) {
+  const base = formFromProduct(product);
+  const copyLabel = base.name.trim().endsWith("(Copy)") ? base.name : `${base.name.trim()} (Copy)`;
+  return {
+    ...base,
+    name: copyLabel,
+    published: false,
+    stock: "0",
   };
 }
 
@@ -64,28 +77,54 @@ export default function AddProductDialog({
   open,
   onClose,
   product = null,
+  products = [],
+  copyMode = false,
   onAdd,
   onUpdate,
   surfaceBorderColor,
 }) {
   const isEdit = Boolean(product);
+  const { getProduct } = useInventory();
+  const { activeLines, activeCategories } = useCatalog();
   const [form, setForm] = useState(EMPTY);
+  const [copyFromId, setCopyFromId] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (open) {
-      setForm(formFromProduct(product));
+      if (isEdit) {
+        const source = getProduct(product.id) ?? product;
+        setForm(formFromProduct(source));
+        setCopyFromId("");
+      } else if (copyMode && products.length === 1) {
+        setCopyFromId(products[0].id);
+        setForm(formFromCopy(getProduct(products[0].id) ?? products[0]));
+      } else {
+        setForm(EMPTY);
+        setCopyFromId("");
+      }
       setError("");
     }
-  }, [open, product]);
+  }, [open, product, isEdit, copyMode, getProduct, products]);
 
   function update(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
     setError("");
   }
 
+  function handleCopyFromChange(productId) {
+    setCopyFromId(productId);
+    if (!productId) {
+      setForm(EMPTY);
+      return;
+    }
+    const source = getProduct(productId) ?? products.find((row) => row.id === productId);
+    if (source) setForm(formFromCopy(source));
+  }
+
   function handleClose() {
     setForm(EMPTY);
+    setCopyFromId("");
     setError("");
     onClose();
   }
@@ -94,6 +133,10 @@ export default function AddProductDialog({
     event.preventDefault();
     if (!form.name.trim()) {
       setError("Product name is required.");
+      return;
+    }
+    if (copyMode && !isEdit && !copyFromId) {
+      setError("Choose a product to copy from.");
       return;
     }
 
@@ -109,12 +152,13 @@ export default function AddProductDialog({
       published: form.published,
       rating: form.rating === "" ? 0 : Number(form.rating),
       reviews: Number(form.reviews),
+      descriptionSections: serializeDescriptionSections(form.descriptionSections),
       ...(form.type === "Pre-order"
         ? {
             preorderEndsAt: fromDatetimeLocalValue(form.preorderEndsAt),
             depositPercent: Number(form.depositPercent),
           }
-        : {}),
+        : { category: form.category }),
     };
 
     const ok = isEdit
@@ -129,10 +173,31 @@ export default function AddProductDialog({
   }
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth component="form" onSubmit={handleSubmit}>
-      <DialogTitle sx={{ fontWeight: 800 }}>{isEdit ? "Edit product" : "Add product"}</DialogTitle>
+    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth component="form" onSubmit={handleSubmit}>
+      <DialogTitle sx={{ fontWeight: 800 }}>
+        {isEdit ? "Edit product" : copyMode ? "Add product from copy" : "Add product"}
+      </DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2} sx={{ pt: 0.5 }}>
+          {!isEdit && copyMode ? (
+            <TextField
+              label="Copy from product"
+              select
+              required
+              fullWidth
+              value={copyFromId}
+              onChange={(e) => handleCopyFromChange(e.target.value)}
+              helperText="Pre-fills line, pricing, description, and pre-order settings. Name gets “(Copy)” and stock resets to 0."
+              autoFocus
+            >
+              <MenuItem value="" disabled>Select a product…</MenuItem>
+              {products.map((row) => (
+                <MenuItem key={row.id} value={row.id}>
+                  {row.name} · {row.sku}
+                </MenuItem>
+              ))}
+            </TextField>
+          ) : null}
           {isEdit ? (
             <TextField
               label="SKU"
@@ -148,7 +213,7 @@ export default function AddProductDialog({
             fullWidth
             value={form.name}
             onChange={(e) => update("name", e.target.value)}
-            autoFocus
+            autoFocus={!copyMode || isEdit}
           />
           <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
             <TextField
@@ -158,8 +223,8 @@ export default function AddProductDialog({
               value={form.line}
               onChange={(e) => update("line", e.target.value)}
             >
-              {LINES.map((item) => (
-                <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
+              {activeLines.map((item) => (
+                <MenuItem key={item.id} value={item.name}>{item.name}</MenuItem>
               ))}
             </TextField>
             <TextField
@@ -174,6 +239,19 @@ export default function AddProductDialog({
               ))}
             </TextField>
           </Stack>
+          {form.type !== "Pre-order" ? (
+            <TextField
+              label="Category"
+              select
+              fullWidth
+              value={form.category}
+              onChange={(e) => update("category", e.target.value)}
+            >
+              {activeCategories.map((item) => (
+                <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
+              ))}
+            </TextField>
+          ) : null}
           <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
             <TextField
               label="Price (₱)"
@@ -260,6 +338,11 @@ export default function AddProductDialog({
             value={form.image}
             onChange={(e) => update("image", e.target.value)}
             helperText="Leave blank to use a placeholder thumbnail."
+          />
+          <ProductDescriptionEditor
+            sections={form.descriptionSections}
+            onChange={(descriptionSections) => update("descriptionSections", descriptionSections)}
+            surfaceBorderColor={surfaceBorderColor}
           />
           <FormControlLabel
             control={(

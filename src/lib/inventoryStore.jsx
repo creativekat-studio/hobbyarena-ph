@@ -31,6 +31,8 @@ function rowToProduct(row) {
       image: row.image ?? catalog.image ?? productImage(row.id),
       rating: typeof row.rating === "number" ? row.rating : catalog.rating,
       reviews: typeof row.reviews === "number" ? row.reviews : catalog.reviews,
+      category: row.category ?? catalog.category ?? "tcg",
+      descriptionSections: row.descriptionSections ?? catalog.descriptionSections,
       ...(isPreorder
         ? {
             preorderEndsAt: row.preorderEndsAt ?? catalog.preorderEndsAt ?? null,
@@ -100,6 +102,8 @@ function loadInventory() {
         preorderEndsAt: saved.preorderEndsAt ?? row.preorderEndsAt ?? null,
         depositPercent:
           typeof saved.depositPercent === "number" ? saved.depositPercent : row.depositPercent,
+        category: saved.category ?? row.category ?? "tcg",
+        descriptionSections: saved.descriptionSections ?? row.descriptionSections,
       };
     });
 
@@ -151,6 +155,17 @@ export function InventoryProvider({ children }) {
     );
   }, []);
 
+  const decrementStockForCart = useCallback((cartItems) => {
+    setItems((prev) => {
+      const qtyById = new Map(cartItems.filter((i) => i.tag !== "Pre-order").map((i) => [i.id, i.quantity]));
+      return prev.map((row) => {
+        const qty = qtyById.get(row.id);
+        if (!qty || row.type === "Pre-order") return row;
+        return { ...row, stock: Math.max(0, row.stock - qty) };
+      });
+    });
+  }, []);
+
   const addProduct = useCallback((input) => {
     const name = input.name?.trim();
     if (!name) return null;
@@ -182,6 +197,8 @@ export function InventoryProvider({ children }) {
       accent: line.startsWith("Pokémon") ? "#2563EB" : "#06b6d4",
       rating: Math.min(5, Math.max(0, Number(input.rating) || 0)),
       reviews: Math.max(0, Number(input.reviews) || 0),
+      category: type === "Pre-order" ? undefined : (input.category || "tcg"),
+      descriptionSections: input.descriptionSections ?? undefined,
       ...(type === "Pre-order"
         ? {
             preorderEndsAt: input.preorderEndsAt || null,
@@ -223,6 +240,8 @@ export function InventoryProvider({ children }) {
           image: input.image?.trim() || null,
           rating: Math.min(5, Math.max(0, Number(input.rating) ?? row.rating ?? 0)),
           reviews: Math.max(0, Number(input.reviews) ?? row.reviews ?? 0),
+          category: type === "Pre-order" ? undefined : (input.category ?? row.category ?? "tcg"),
+          descriptionSections: input.descriptionSections !== undefined ? input.descriptionSections : row.descriptionSections,
           preorderEndsAt: type === "Pre-order" ? (input.preorderEndsAt || null) : null,
           depositPercent:
             type === "Pre-order"
@@ -286,6 +305,7 @@ export function InventoryProvider({ children }) {
       setPublishedMany,
       togglePublished,
       setStock,
+      decrementStockForCart,
       addProduct,
       updateProduct,
     }),
@@ -302,6 +322,7 @@ export function InventoryProvider({ children }) {
       setPublishedMany,
       togglePublished,
       setStock,
+      decrementStockForCart,
       addProduct,
       updateProduct,
     ],

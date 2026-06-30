@@ -39,7 +39,7 @@ function MenuIcon(props) {
   );
 }
 
-export default function CustomerNavbar({ surfaces, onOpenCart }) {
+export default function CustomerNavbar({ surfaces, onOpenCart, onOpenSearch }) {
   const theme = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -131,8 +131,10 @@ export default function CustomerNavbar({ surfaces, onOpenCart }) {
 
             <TextField
               size="small"
-              placeholder="Search sealed, pre-orders…"
-              sx={{ display: { xs: "none", xl: "block" }, width: 220 }}
+              placeholder="Search products…"
+              onClick={onOpenSearch}
+              readOnly
+              sx={{ display: { xs: "none", xl: "block" }, width: 220, cursor: "pointer" }}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">

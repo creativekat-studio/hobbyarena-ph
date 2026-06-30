@@ -14,7 +14,7 @@ import {
 import { alpha, useTheme } from "@mui/material/styles";
 import { useLocation, useNavigate } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
-import { groupIsActive, NAV_DESTINATIONS } from "../data/navDestinations.js";
+import { groupIsActive, NAV_GROUPS, NAV_DESTINATIONS } from "../data/navDestinations.js";
 import { useColorMode } from "../lib/colorMode.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { useCart } from "../lib/cartStore.jsx";
@@ -101,7 +101,7 @@ function MegaPanel({ group, onNavigate, onClose, surfaceBorderColor }) {
         </Stack>
       </Box>
       <Grid container sx={{ p: 1.5 }}>
-        {group.items.map((item) => (
+        {(group.items ?? []).map((item) => (
           <Grid size={{ xs: 12, sm: 6 }} key={item.label}>
             <Button
               fullWidth
@@ -162,7 +162,7 @@ function CatalogOverlay({ open, onClose, onNavigate, surfaceBorderColor }) {
         <Typography variant="h5" sx={{ fontWeight: 800, mb: 3 }}>Where are we headed?</Typography>
 
         <Stack spacing={3}>
-          {NAV_DESTINATIONS.groups.map((group) => {
+          {NAV_GROUPS.map((group) => {
             const Icon = groupIcon(group.id);
             const accent = group.accent || theme.palette.primary.main;
             return (
@@ -172,7 +172,7 @@ function CatalogOverlay({ open, onClose, onNavigate, surfaceBorderColor }) {
                   <Typography sx={{ fontWeight: 800 }}>{group.label}</Typography>
                 </Stack>
                 <Grid container spacing={1}>
-                  {group.items.map((item) => (
+                  {(group.items ?? []).map((item) => (
                     <Grid size={{ xs: 6 }} key={item.label}>
                       <Button
                         fullWidth
@@ -229,7 +229,7 @@ function CatalogOverlay({ open, onClose, onNavigate, surfaceBorderColor }) {
   );
 }
 
-function DockSegment({ label, active, onClick, mono, chevron, open }) {
+function DockSegment({ label, active, onClick, chevron, open }) {
   const theme = useTheme();
 
   return (
@@ -250,9 +250,6 @@ function DockSegment({ label, active, onClick, mono, chevron, open }) {
       }}
     >
       <Stack direction="row" spacing={1} alignItems="center">
-        <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.58rem", fontWeight: 800, letterSpacing: 1, opacity: active ? 0.85 : 0.55 }}>
-          {mono}
-        </Typography>
         <Typography sx={{ fontWeight: 800, fontSize: "0.82rem", letterSpacing: 0.2 }}>{label}</Typography>
         {chevron ? (
           <Typography sx={{ fontSize: "0.65rem", opacity: 0.7, transform: open ? "rotate(180deg)" : "none", transition: "transform 180ms ease" }}>
@@ -264,7 +261,7 @@ function DockSegment({ label, active, onClick, mono, chevron, open }) {
   );
 }
 
-export default function DockNavbar({ surfaces, onOpenCart }) {
+export default function DockNavbar({ surfaces, onOpenCart, onOpenSearch }) {
   const theme = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -311,6 +308,10 @@ export default function DockNavbar({ surfaces, onOpenCart }) {
 
   function homeActive() {
     return location.pathname === "/" && !location.search;
+  }
+
+  function contactActive() {
+    return location.pathname === "/contact";
   }
 
   return (
@@ -369,14 +370,13 @@ export default function DockNavbar({ surfaces, onOpenCart }) {
                   py: 0.75,
                 }}
               >
-                <DockSegment label="Home" active={homeActive()} onClick={() => handleItem(NAV_DESTINATIONS.home)} mono="01" />
-                {NAV_DESTINATIONS.groups.map((group, index) => (
+                <DockSegment label="Home" active={homeActive()} onClick={() => handleItem(NAV_DESTINATIONS.home)} />
+                {NAV_GROUPS.map((group) => (
                   <Box key={group.id} sx={{ position: "relative" }}>
                     <DockSegment
                       label={group.label}
-                      active={openGroup === group.id || groupIsActive(location.pathname, location.search, group.items)}
+                      active={openGroup === group.id || groupIsActive(location.pathname, location.search, group)}
                       onClick={() => setOpenGroup((prev) => (prev === group.id ? null : group.id))}
-                      mono={String(index + 2).padStart(2, "0")}
                       chevron
                       open={openGroup === group.id}
                     />
@@ -385,13 +385,13 @@ export default function DockNavbar({ surfaces, onOpenCart }) {
                     ) : null}
                   </Box>
                 ))}
-                <DockSegment label="Contact" active={false} onClick={() => handleItem(NAV_DESTINATIONS.contact)} mono="04" />
+                <DockSegment label="Contact" active={contactActive()} onClick={() => handleItem(NAV_DESTINATIONS.contact)} />
               </Stack>
             </Box>
 
             <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
               <Tooltip title="Search">
-                <IconButton color="inherit" aria-label="Search">
+                <IconButton color="inherit" aria-label="Search" onClick={onOpenSearch}>
                   <SearchIcon sx={{ fontSize: 20 }} />
                 </IconButton>
               </Tooltip>

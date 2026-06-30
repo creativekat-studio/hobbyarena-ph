@@ -41,9 +41,9 @@ export const TOP_PRODUCTS = [
 ];
 
 export const RECENT_ORDERS = [
-  { id: "HA-10428", customer: "Ash K.", total: 18000, status: "Processing", date: "2026-06-15" },
-  { id: "HA-10427", customer: "Misty W.", total: 4800, status: "Paid", date: "2026-06-15" },
-  { id: "HA-10426", customer: "Brock H.", total: 9600, status: "Shipped", date: "2026-06-14" },
-  { id: "HA-10425", customer: "Nami O.", total: 3300, status: "Pre-order", date: "2026-06-14" },
-  { id: "HA-10424", customer: "Gary O.", total: 12000, status: "Paid", date: "2026-06-13" },
+  { id: "HA-202606150001", customer: "Ash K.", total: 18000, status: "Processing", date: "2026-06-15" },
+  { id: "HA-202606150002", customer: "Misty W.", total: 4800, status: "Paid", date: "2026-06-15" },
+  { id: "HA-202606140001", customer: "Brock H.", total: 9600, status: "Shipped", date: "2026-06-14" },
+  { id: "HA-202606140002", customer: "Nami O.", total: 3300, status: "Pre-order", date: "2026-06-14" },
+  { id: "HA-202606130001", customer: "Gary O.", total: 12000, status: "Paid", date: "2026-06-13" },
 ];

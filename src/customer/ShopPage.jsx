@@ -11,7 +11,17 @@ import { useOutletContext, useSearchParams } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { wider } from "../lib/layout.js";
 import ProductCard from "../components/ProductCard.jsx";
-import ShopFilters from "../components/ShopFilters.jsx";
+import {
+  ShopFiltersSidebar,
+  ShopFilterFranchiseRail,
+  ShopFilterCommandBar,
+  ShopFilterFranchiseTiles,
+  ShopFilterBreadcrumb,
+  getFilterLayoutMode,
+  getTopFilterVariant,
+  embedsCategoryTabs,
+} from "../components/ShopFilters.jsx";
+import { useShopFilterLayout } from "../lib/shopFilterLayout.jsx";
 import { BoxIcon, SparkleIcon } from "../components/icons.jsx";
 import { useInventory } from "../lib/inventoryStore.jsx";
 
@@ -95,6 +105,10 @@ export default function ShopPage() {
   const { surfaces, isDarkMode } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
   const { getPublishedByCategory } = useInventory();
+  const { layoutId } = useShopFilterLayout();
+  const filterMode = getFilterLayoutMode(layoutId);
+  const topFilterVariant = getTopFilterVariant(layoutId);
+  const showCategoryTabs = !embedsCategoryTabs(layoutId);
   const [searchParams, setSearchParams] = useSearchParams();
 
   const category = searchParams.get("category") || "all";
@@ -173,55 +187,101 @@ export default function ShopPage() {
           </Typography>
         </Box>
 
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          alignItems={{ xs: "flex-start", sm: "center" }}
-          justifyContent="space-between"
-          spacing={{ xs: 1.5, sm: 2 }}
-          useFlexGap
-        >
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 1 }}>
-            {CATEGORIES.map((item) => (
-              <CategoryChip
-                key={item.value}
-                label={item.label}
-                selected={activeCategory === item.value}
-                surfaceBorderColor={surfaceBorderColor}
-                onClick={() => updateParams({ category: item.value })}
-              />
-            ))}
-          </Stack>
-          <Typography
-            sx={{
-              color: "text.secondary",
-              fontFamily: MONO_FONT,
-              fontSize: "0.78rem",
-              letterSpacing: 0.5,
-              flexShrink: 0,
-              whiteSpace: "nowrap",
-            }}
+        {topFilterVariant === "commandBar" ? (
+          <ShopFilterCommandBar
+            surfaceBorderColor={surfaceBorderColor}
+            lines={LINES}
+            activeLine={activeLine}
+            onLineChange={(value) => updateParams({ line: value })}
+            tabs={CATEGORIES}
+            activeTab={activeCategory}
+            onTabChange={(value) => updateParams({ category: value })}
+            itemCount={products.length}
+          />
+        ) : null}
+
+        {topFilterVariant === "franchiseTiles" ? (
+          <ShopFilterFranchiseTiles
+            panelSx={panelSx}
+            surfaceBorderColor={surfaceBorderColor}
+            lines={LINES}
+            activeLine={activeLine}
+            onLineChange={(value) => updateParams({ line: value })}
+          />
+        ) : null}
+
+        {topFilterVariant === "breadcrumb" ? (
+          <ShopFilterBreadcrumb
+            sectionLabel="Shop"
+            lines={LINES}
+            activeLine={activeLine}
+            onLineChange={(value) => updateParams({ line: value })}
+            itemCount={products.length}
+          />
+        ) : null}
+
+        {showCategoryTabs ? (
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            alignItems={{ xs: "flex-start", sm: "center" }}
+            justifyContent="space-between"
+            spacing={{ xs: 1.5, sm: 2 }}
+            useFlexGap
           >
-            {products.length} {products.length === 1 ? "product" : "products"}
-          </Typography>
-        </Stack>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 1 }}>
+              {CATEGORIES.map((item) => (
+                <CategoryChip
+                  key={item.value}
+                  label={item.label}
+                  selected={activeCategory === item.value}
+                  surfaceBorderColor={surfaceBorderColor}
+                  onClick={() => updateParams({ category: item.value })}
+                />
+              ))}
+            </Stack>
+            <Typography
+              sx={{
+                color: "text.secondary",
+                fontFamily: MONO_FONT,
+                fontSize: "0.78rem",
+                letterSpacing: 0.5,
+                flexShrink: 0,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {products.length} {products.length === 1 ? "product" : "products"}
+            </Typography>
+          </Stack>
+        ) : null}
 
         <Grid container spacing={{ xs: 3, md: 4 }} alignItems="flex-start">
-          <Grid size={{ xs: 12, md: 3 }}>
-            <ShopFilters
-              panelSx={panelSx}
-              surfaceBorderColor={surfaceBorderColor}
-              lines={LINES}
-              activeLine={activeLine}
-              onLineChange={(value) => updateParams({ line: value })}
-              priceBounds={priceBounds}
-              priceRange={priceRange}
-              onPriceChange={setPriceRange}
-              onReset={resetFilters}
-              hasActiveFilters={hasActiveFilters}
-            />
-          </Grid>
+          {filterMode === "sidebar" ? (
+            <Grid size={{ xs: 12, md: 3 }}>
+              <ShopFiltersSidebar
+                panelSx={panelSx}
+                surfaceBorderColor={surfaceBorderColor}
+                lines={LINES}
+                activeLine={activeLine}
+                onLineChange={(value) => updateParams({ line: value })}
+                onReset={resetFilters}
+                hasActiveFilters={hasActiveFilters}
+              />
+            </Grid>
+          ) : null}
 
-          <Grid size={{ xs: 12, md: 9 }}>
+          {filterMode === "rail" ? (
+            <Grid size={{ xs: 12, md: "auto" }}>
+              <ShopFilterFranchiseRail
+                panelSx={panelSx}
+                surfaceBorderColor={surfaceBorderColor}
+                lines={LINES}
+                activeLine={activeLine}
+                onLineChange={(value) => updateParams({ line: value })}
+              />
+            </Grid>
+          ) : null}
+
+          <Grid size={{ xs: 12, md: filterMode === "sidebar" ? 9 : filterMode === "rail" ? true : 12 }}>
             {products.length ? (
               <Grid container spacing={2.5}>
                   {products.map((product) => (

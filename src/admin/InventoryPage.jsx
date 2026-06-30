@@ -25,6 +25,7 @@ import { alpha, useTheme } from "@mui/material/styles";
 import { useOutletContext } from "react-router-dom";
 import { MONO_FONT, getStatAccents } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
+import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import InventoryProductThumb from "../components/InventoryProductThumb.jsx";
 import { BoxIcon, EditIcon, InventoryIcon, SearchIcon, ShieldIcon, SparkleIcon, ViewGridIcon, ViewTableIcon } from "../components/icons.jsx";
 import { useInventory } from "../lib/inventoryStore.jsx";
@@ -342,21 +343,31 @@ export default function InventoryPage() {
   const [query, setQuery] = useState("");
   const [view, setView] = useState("table");
   const [formOpen, setFormOpen] = useState(false);
+  const [copyMode, setCopyMode] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
 
   function openAddForm() {
     setEditingProduct(null);
+    setCopyMode(false);
+    setFormOpen(true);
+  }
+
+  function openCopyForm() {
+    setEditingProduct(null);
+    setCopyMode(true);
     setFormOpen(true);
   }
 
   function openEditForm(product) {
     setEditingProduct(product);
+    setCopyMode(false);
     setFormOpen(true);
   }
 
   function closeForm() {
     setFormOpen(false);
+    setCopyMode(false);
     setEditingProduct(null);
   }
 
@@ -436,26 +447,35 @@ export default function InventoryPage() {
   const allVisibleSelected = rows.length > 0 && rows.every((row) => selectedIds.has(row.id));
 
   return (
-    <Stack spacing={3}>
-      <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "center" }} spacing={2}>
-        <Box>
-          <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2 }}>Inventory</Typography>
-          <Typography variant="h3">Products & stock</Typography>
-          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-            Manage SKUs, stock levels, and what appears on the storefront.
-          </Typography>
-        </Box>
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={openAddForm}
-          sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}
-        >
-          + Add product
-        </Button>
-      </Stack>
+    <Stack spacing={ADMIN_PAGE_SPACING}>
+      <AdminPageHeader
+        eyebrow="Inventory"
+        title="Products & stock"
+        subtitle="Manage SKUs, stock levels, and what appears on the storefront."
+        action={(
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Button
+              variant="outlined"
+              color="inherit"
+              onClick={openCopyForm}
+              disabled={items.length === 0}
+              sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.78rem" }}
+            >
+              Copy from product
+            </Button>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={openAddForm}
+              sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.78rem" }}
+            >
+              + Add product
+            </Button>
+          </Stack>
+        )}
+      />
 
-      <Grid container spacing={2.5}>
+      <Grid container spacing={2}>
         <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={InventoryIcon} label="Total SKUs" value={stats.skus} accent={accents[0]} /></Grid>
         <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={SparkleIcon} label="Published on shop" value={stats.published} accent={accents[1]} /></Grid>
         <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={ShieldIcon} label="Out of stock" value={stats.outOfStock} accent={accents[2]} /></Grid>
@@ -552,6 +572,8 @@ export default function InventoryPage() {
         open={formOpen}
         onClose={closeForm}
         product={editingProduct}
+        products={items}
+        copyMode={copyMode}
         onAdd={addProduct}
         onUpdate={updateProduct}
         surfaceBorderColor={surfaceBorderColor}

@@ -35,13 +35,7 @@ import { useWishlist } from "../lib/wishlistStore.jsx";
 import { useCart } from "../lib/cartStore.jsx";
 import { ACCOUNT } from "../data/mockData.js";
 
-const STATUS_COLOR = {
-  "Pending Verification": "warning",
-  Processing: "warning",
-  Shipped: "info",
-  Delivered: "success",
-  Cancelled: "error",
-};
+import { STATUS_COLOR } from "../data/orderWorkflow.js";
 
 function AuthCard({ panelSx }) {
   const theme = useTheme();
@@ -156,7 +150,7 @@ function StatCard({ panelSx, icon, label, value, accent }) {
 function Dashboard({ panelSx, surfaceBorderColor }) {
   const theme = useTheme();
   const accents = getStatAccents(theme);
-  const { user, signOut } = useAuth();
+  const { user, signOutCustomer } = useAuth();
   const { orders: allOrders } = useOrders();
   const { items: wishlistItems, remove: removeFromWishlist } = useWishlist();
   const { addItem } = useCart();
@@ -184,21 +178,15 @@ function Dashboard({ panelSx, surfaceBorderColor }) {
               <Chip label={ACCOUNT.tier} size="small" color="primary" sx={{ mt: 0.75, fontFamily: MONO_FONT, letterSpacing: 0.5 }} />
             </Box>
           </Stack>
-          <Button variant="outlined" color="inherit" onClick={signOut} sx={{ borderColor: surfaceBorderColor }}>Sign out</Button>
+          <Button variant="outlined" color="inherit" onClick={signOutCustomer} sx={{ borderColor: surfaceBorderColor }}>Sign out</Button>
         </Stack>
       </Box>
 
       <Grid container spacing={2.5}>
-        <Grid size={{ xs: 6, sm: 3 }}>
-          <StatCard panelSx={panelSx} icon={SparkleIcon} label="Store credit" value={PESO.format(ACCOUNT.storeCredit)} accent={accents[1]} />
-        </Grid>
-        <Grid size={{ xs: 6, sm: 3 }}>
-          <StatCard panelSx={panelSx} icon={BoltIcon} label="Loyalty points" value={ACCOUNT.loyaltyPoints.toLocaleString()} accent={accents[2]} />
-        </Grid>
-        <Grid size={{ xs: 6, sm: 3 }}>
+        <Grid size={{ xs: 6, sm: 6 }}>
           <StatCard panelSx={panelSx} icon={CardIcon} label="Total orders" value={customerOrders.length} accent={accents[0]} />
         </Grid>
-        <Grid size={{ xs: 6, sm: 3 }}>
+        <Grid size={{ xs: 6, sm: 6 }}>
           <StatCard panelSx={panelSx} icon={HeartIcon} label="Wishlist" value={wishlistItems.length} accent={accents[3]} />
         </Grid>
       </Grid>
@@ -210,30 +198,49 @@ function Dashboard({ panelSx, surfaceBorderColor }) {
         </Tabs>
 
         {tab === 0 ? (
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell sx={{ fontWeight: 800 }}>Order</TableCell>
-                  <TableCell sx={{ fontWeight: 800, display: { xs: "none", sm: "table-cell" } }}>Date</TableCell>
-                  <TableCell sx={{ fontWeight: 800 }}>Items</TableCell>
-                  <TableCell sx={{ fontWeight: 800 }} align="right">Total</TableCell>
-                  <TableCell sx={{ fontWeight: 800 }} align="right">Status</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {customerOrders.map((order) => (
-                  <TableRow key={order.id} hover>
-                    <TableCell sx={{ fontFamily: MONO_FONT, fontWeight: 700 }}>{order.id}</TableCell>
-                    <TableCell sx={{ color: "text.secondary", display: { xs: "none", sm: "table-cell" } }}>{order.date}</TableCell>
-                    <TableCell sx={{ maxWidth: 280 }}>{order.items}</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>{PESO.format(order.total)}</TableCell>
-                    <TableCell align="right"><Chip label={order.status} size="small" color={STATUS_COLOR[order.status] || "default"} variant="outlined" /></TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+          <Stack spacing={2} sx={{ p: 3 }}>
+            {customerOrders.map((order) => {
+              const trail = order.trail ?? [];
+              const last = trail[trail.length - 1];
+              const prev = trail.length > 1 ? trail[trail.length - 2] : null;
+              const lineItems = order.lineItems ?? [];
+              return (
+                <Box key={order.id} sx={{ p: 2.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor, position: "relative" }}>
+                  <Stack direction="row" spacing={1} sx={{ position: "absolute", top: 12, right: 12 }} flexWrap="wrap" useFlexGap>
+                    {prev ? <Chip label={prev.status} size="small" variant="outlined" sx={{ fontSize: "0.65rem" }} /> : null}
+                    {prev ? <Typography sx={{ color: "text.secondary", fontSize: "0.75rem" }}>→</Typography> : null}
+                    <Chip label={order.status} size="small" color={STATUS_COLOR[order.status] || "default"} sx={{ fontWeight: 800 }} />
+                  </Stack>
+                  <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: "0.9rem" }}>{order.id}</Typography>
+                  <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", mt: 0.25 }}>{order.date}</Typography>
+                  {order.type ? (
+                    <Chip
+                      label={order.type}
+                      size="small"
+                      variant="outlined"
+                      color={order.type === "Pre-order" ? "secondary" : "default"}
+                      sx={{ mt: 1, fontFamily: MONO_FONT, fontSize: "0.65rem" }}
+                    />
+                  ) : null}
+                  <Stack spacing={0.75} sx={{ mt: 1.5 }}>
+                    {lineItems.length ? lineItems.map((item) => (
+                      <Stack key={`${order.id}-${item.id}`} direction="row" justifyContent="space-between" spacing={2}>
+                        <Typography sx={{ fontSize: "0.85rem", flex: 1 }}>{item.name}</Typography>
+                        <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.75rem", color: "text.secondary" }}>Qty {item.quantity}</Typography>
+                        <Typography sx={{ fontWeight: 700, fontSize: "0.85rem" }}>{PESO.format(item.price * item.quantity)}</Typography>
+                      </Stack>
+                    )) : (
+                      <Typography sx={{ fontSize: "0.88rem" }}>{order.items}</Typography>
+                    )}
+                  </Stack>
+                  <Stack direction="row" justifyContent="space-between" sx={{ mt: 2, pt: 1.5, borderTop: "1px dashed", borderColor: surfaceBorderColor }}>
+                    <Typography sx={{ fontWeight: 800 }}>Total</Typography>
+                    <Typography sx={{ fontWeight: 800, color: "primary.main" }}>{PESO.format(order.total)}</Typography>
+                  </Stack>
+                </Box>
+              );
+            })}
+          </Stack>
         ) : wishlistItems.length === 0 ? (
           <Stack spacing={1.5} alignItems="center" sx={{ p: 5, textAlign: "center", color: "text.secondary" }}>
             <HeartIcon sx={{ fontSize: 40, color: "text.secondary" }} />

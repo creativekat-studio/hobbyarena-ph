@@ -25,7 +25,7 @@ function CloseIcon(props) {
 }
 
 function CartLineItem({ item, onQuantityChange, onRemove, surfaceBorderColor, isDarkMode }) {
-  const Glyph = item.line.startsWith("Pokémon") ? PokeballIcon : CardIcon;
+  const Glyph = item.line?.startsWith?.("Pokémon") ? PokeballIcon : CardIcon;
   const isPreorder = isPreorderProduct(item);
   const dueNow = cartItemDueNow(item);
   const balance = cartItemBalanceDue(item);
@@ -54,7 +54,7 @@ function CartLineItem({ item, onQuantityChange, onRemove, surfaceBorderColor, is
       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
         <Typography sx={{ fontWeight: 700, fontSize: "0.88rem", lineHeight: 1.3 }}>{item.name}</Typography>
         <Typography sx={{ fontSize: "0.68rem", color: "text.secondary", fontFamily: MONO_FONT, mt: 0.25 }}>
-          {item.tag.toUpperCase()}
+          {(item.tag ?? "Item").toUpperCase()}
           {isPreorder
             ? ` · ${item.depositPercent ?? 30}% now ${PESO.format(dueNow)} · balance ${PESO.format(balance)}`
             : ` · ${PESO.format(item.price)}`}

@@ -1,4 +1,4 @@
-/** Pre-order UI variants — switch via the design preview panel (bottom-left). */
+/** Pre-order UI variants — switch in Admin → Design preview. */
 
 export const PREORDER_COUNTDOWN_VARIANTS = {
   segments: {

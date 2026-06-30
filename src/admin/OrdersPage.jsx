@@ -1,12 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Box,
   Button,
   Chip,
   Grid,
   InputAdornment,
-  MenuItem,
-  Select,
   Stack,
   Table,
   TableBody,
@@ -18,19 +16,23 @@ import {
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
-import { useLocation, useOutletContext } from "react-router-dom";
+import { useNavigate, useOutletContext } from "react-router-dom";
 import { MONO_FONT, getStatAccents } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
+import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import { BoxIcon, CardIcon, SearchIcon, SparkleIcon, TruckIcon } from "../components/icons.jsx";
+import {
+  ORDER_QUEUES,
+  PAYMENT_COLOR,
+  STATUS_COLOR,
+  allocationLabel,
+  getOrderStage,
+  isPreorderOrder,
+  migratePaymentStatus,
+  migrateOrderStatus,
+} from "../data/orderWorkflow.js";
 import { useOrders } from "../lib/ordersStore.jsx";
-import OrderDetailDialog, { PAYMENT_COLOR, PAYMENT_OPTIONS, STATUS_COLOR, STATUS_OPTIONS } from "./OrderDetailDialog.jsx";
-
-const TYPE_FILTERS = [
-  { id: "all", label: "All" },
-  { id: "In-stock", label: "In-stock" },
-  { id: "Pre-order", label: "Pre-order" },
-  { id: "unpaid", label: "Awaiting payment" },
-];
+import AddOrderDialog from "./AddOrderDialog.jsx";
 
 function StatCard({ panelSx, icon, label, value, accent }) {
   const theme = useTheme();
@@ -54,28 +56,19 @@ function StatCard({ panelSx, icon, label, value, accent }) {
 export default function OrdersPage() {
   const theme = useTheme();
   const accents = getStatAccents(theme);
-  const location = useLocation();
+  const navigate = useNavigate();
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
-  const { orders, setStatus, setPayment, markOrderSeen } = useOrders();
+  const { orders } = useOrders();
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState(null);
-
-  const selectedOrder = orders.find((o) => o.id === selectedId) || null;
-
-  useEffect(() => {
-    const openOrderId = location.state?.openOrderId;
-    if (openOrderId) {
-      setSelectedId(openOrderId);
-      markOrderSeen(openOrderId);
-    }
-  }, [location.state?.openOrderId, markOrderSeen]);
+  const [addOpen, setAddOpen] = useState(false);
 
   function openOrder(id) {
-    setSelectedId(id);
-    markOrderSeen(id);
+    navigate(`/admin/orders/${encodeURIComponent(id)}`);
   }
+
+  const activeQueue = ORDER_QUEUES.find((q) => q.id === filter) ?? ORDER_QUEUES[0];
 
   const rows = useMemo(() => {
     return orders.filter((o) => {
@@ -86,43 +79,42 @@ export default function OrdersPage() {
         o.items.toLowerCase().includes(query.toLowerCase());
       if (!matchesQuery) return false;
       if (filter === "all") return true;
-      if (filter === "unpaid") {
-        return o.payment === "Unpaid" || o.payment === "Deposit" || o.payment === "Pending Verification";
-      }
-      return o.type === filter;
+      return activeQueue.match?.(o) ?? false;
     });
-  }, [orders, filter, query]);
+  }, [orders, filter, query, activeQueue]);
 
   const stats = useMemo(() => {
+    const review = orders.filter((o) => migratePaymentStatus(o.payment) === "Pending Verification").length;
     const preorders = orders.filter((o) => o.type === "Pre-order").length;
-    const awaiting = orders.filter((o) => o.payment === "Unpaid" || o.payment === "Deposit" || o.payment === "Pending Verification").length;
-    const revenue = orders
-      .filter((o) => o.payment === "Paid")
-      .reduce((sum, o) => sum + o.total, 0);
-    return { total: orders.length, preorders, awaiting, revenue };
+    const balanceDue = orders.filter((o) => migratePaymentStatus(o.payment) === "Unpaid").length;
+    const pickup = orders.filter((o) => migrateOrderStatus(o.status) === "Ready for Pickup").length;
+    return { total: orders.length, review, preorders, balanceDue, pickup };
   }, [orders]);
 
   return (
-    <Stack spacing={3}>
-      <Box>
-        <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2 }}>Sales</Typography>
-        <Typography variant="h3">Orders</Typography>
-        <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-          Review proof of payment, set payment status manually, and advance orders.
-        </Typography>
-      </Box>
+    <Stack spacing={ADMIN_PAGE_SPACING}>
+      <AdminPageHeader
+        eyebrow="Sales"
+        title="Orders"
+        subtitle="Work the pre-order pipeline: verify deposits, allocate stock, collect balance, then release for pickup."
+        action={(
+          <Button variant="contained" color="primary" onClick={() => setAddOpen(true)} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", flexShrink: 0, fontSize: "0.78rem" }}>
+            Add order
+          </Button>
+        )}
+      />
 
-      <Grid container spacing={2.5}>
+      <Grid container spacing={2}>
         <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Total orders" value={stats.total} accent={accents[0]} /></Grid>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={SparkleIcon} label="Pre-orders" value={stats.preorders} accent={accents[1]} /></Grid>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={BoxIcon} label="Awaiting payment" value={stats.awaiting} accent={accents[2]} /></Grid>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={TruckIcon} label="Paid revenue" value={PESO.format(stats.revenue)} accent={theme.palette.success.main} /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={SparkleIcon} label="Needs review" value={stats.review} accent={accents[1]} /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={BoxIcon} label="Balance due" value={stats.balanceDue} accent={accents[2]} /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={TruckIcon} label="Awaiting pickup" value={stats.pickup} accent={theme.palette.success.main} /></Grid>
       </Grid>
 
       <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
         <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems={{ xs: "stretch", md: "center" }} justifyContent="space-between">
           <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
-            {TYPE_FILTERS.map((item) => (
+            {ORDER_QUEUES.map((item) => (
               <Chip key={item.id} label={item.label} onClick={() => setFilter(item.id)} color={filter === item.id ? "primary" : "default"} variant={filter === item.id ? "filled" : "outlined"} sx={{ fontWeight: 700 }} />
             ))}
           </Stack>
@@ -144,66 +136,59 @@ export default function OrdersPage() {
               <TableRow>
                 <TableCell sx={{ fontWeight: 800 }}>Order</TableCell>
                 <TableCell sx={{ fontWeight: 800 }}>Customer</TableCell>
-                <TableCell sx={{ fontWeight: 800, display: { xs: "none", md: "table-cell" } }}>Items</TableCell>
-                <TableCell sx={{ fontWeight: 800 }}>Type</TableCell>
-                <TableCell sx={{ fontWeight: 800 }} align="right">Total</TableCell>
-                <TableCell sx={{ fontWeight: 800, minWidth: 175 }}>Payment</TableCell>
-                <TableCell sx={{ fontWeight: 800, minWidth: 170 }}>Status</TableCell>
-                <TableCell sx={{ fontWeight: 800 }} align="right">Proof</TableCell>
+                <TableCell sx={{ fontWeight: 800, display: { xs: "none", lg: "table-cell" } }}>Items</TableCell>
+                <TableCell sx={{ fontWeight: 800 }}>Stage</TableCell>
+                <TableCell sx={{ fontWeight: 800, display: { xs: "none", md: "table-cell" } }}>Allocation</TableCell>
+                <TableCell sx={{ fontWeight: 800 }} align="right">Balance</TableCell>
+                <TableCell sx={{ fontWeight: 800, minWidth: 150 }}>Payment</TableCell>
+                <TableCell sx={{ fontWeight: 800, minWidth: 150 }}>Status</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {rows.map((order) => (
-                <TableRow key={order.id} hover sx={{ cursor: "pointer" }} onClick={() => openOrder(order.id)}>
-                  <TableCell sx={{ whiteSpace: "nowrap" }}>
-                    <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 700, fontSize: "0.85rem" }}>{order.id}</Typography>
-                    <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>{order.date}</Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Typography sx={{ fontWeight: 600, fontSize: "0.88rem" }}>{order.customer}</Typography>
-                    <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>{order.email}</Typography>
-                  </TableCell>
-                  <TableCell sx={{ maxWidth: 260, display: { xs: "none", md: "table-cell" } }}>
-                    <Typography sx={{ fontSize: "0.85rem" }}>{order.items}</Typography>
-                    <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", fontFamily: MONO_FONT }}>Qty {order.qty}</Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Chip label={order.type} size="small" variant="outlined" color={order.type === "Pre-order" ? "secondary" : "default"} />
-                  </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 700 }}>{PESO.format(order.total)}</TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <Select
-                      size="small"
-                      value={order.payment}
-                      onChange={(e) => setPayment(order.id, e.target.value)}
-                      sx={{ minWidth: 158, fontSize: "0.8rem", "& .MuiOutlinedInput-notchedOutline": { borderColor: surfaceBorderColor } }}
-                      renderValue={(value) => <Chip label={value} size="small" color={PAYMENT_COLOR[value] || "default"} variant="outlined" />}
-                    >
-                      {PAYMENT_OPTIONS.map((payment) => (
-                        <MenuItem key={payment} value={payment} sx={{ fontSize: "0.85rem" }}>{payment}</MenuItem>
-                      ))}
-                    </Select>
-                  </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <Select
-                      size="small"
-                      value={order.status}
-                      onChange={(e) => setStatus(order.id, e.target.value)}
-                      sx={{ minWidth: 158, fontSize: "0.8rem", "& .MuiOutlinedInput-notchedOutline": { borderColor: surfaceBorderColor } }}
-                      renderValue={(value) => <Chip label={value} size="small" color={STATUS_COLOR[value] || "default"} variant="outlined" />}
-                    >
-                      {STATUS_OPTIONS.map((status) => (
-                        <MenuItem key={status} value={status} sx={{ fontSize: "0.85rem" }}>{status}</MenuItem>
-                      ))}
-                    </Select>
-                  </TableCell>
-                  <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                    <Button size="small" variant="outlined" color="inherit" onClick={() => openOrder(order.id)} sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.68rem" }}>
-                      {order.proofOfPayment ? "View proof" : "Details"}
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {rows.map((order) => {
+                const stage = getOrderStage(order);
+                const needsReview = migratePaymentStatus(order.payment) === "Pending Verification";
+                return (
+                  <TableRow key={order.id} hover sx={{ cursor: "pointer" }} onClick={() => openOrder(order.id)}>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}>
+                      <Stack direction="row" spacing={0.75} alignItems="center">
+                        {needsReview ? (
+                          <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "warning.main", flexShrink: 0 }} title="Needs payment review" />
+                        ) : null}
+                        <Box>
+                          <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 700, fontSize: "0.85rem" }}>{order.id}</Typography>
+                          <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>{order.date}</Typography>
+                        </Box>
+                      </Stack>
+                    </TableCell>
+                    <TableCell>
+                      <Typography sx={{ fontWeight: 600, fontSize: "0.88rem" }}>{order.customer}</Typography>
+                      <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
+                        <Chip label={order.type} size="small" variant="outlined" color={order.type === "Pre-order" ? "secondary" : "default"} sx={{ height: 20, fontSize: "0.62rem", mt: 0.25 }} />
+                      </Stack>
+                    </TableCell>
+                    <TableCell sx={{ maxWidth: 260, display: { xs: "none", lg: "table-cell" } }}>
+                      <Typography sx={{ fontSize: "0.85rem" }}>{order.items}</Typography>
+                      <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", fontFamily: MONO_FONT }}>Qty {order.qty}</Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography sx={{ fontSize: "0.82rem", fontWeight: 700 }}>{stage}</Typography>
+                    </TableCell>
+                    <TableCell sx={{ display: { xs: "none", md: "table-cell" }, fontFamily: MONO_FONT, fontSize: "0.82rem" }}>
+                      {isPreorderOrder(order) ? allocationLabel(order) : "—"}
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, fontSize: "0.85rem" }}>
+                      {isPreorderOrder(order) && (order.balanceDue ?? 0) > 0 ? PESO.format(order.balanceDue) : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Chip label={order.payment} size="small" color={PAYMENT_COLOR[order.payment] || "default"} variant="outlined" />
+                    </TableCell>
+                    <TableCell>
+                      <Chip label={order.status} size="small" color={STATUS_COLOR[order.status] || "default"} variant="outlined" />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
               {rows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} sx={{ textAlign: "center", py: 5, color: "text.secondary" }}>No orders match your filters.</TableCell>
@@ -214,14 +199,11 @@ export default function OrdersPage() {
         </TableContainer>
       </Box>
 
-      <OrderDetailDialog
-        order={selectedOrder}
-        open={Boolean(selectedOrder)}
-        onClose={() => setSelectedId(null)}
-        panelSx={panelSx}
+      <AddOrderDialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
         surfaceBorderColor={surfaceBorderColor}
-        setPayment={setPayment}
-        setStatus={setStatus}
+        onCreated={(id) => navigate(`/admin/orders/${encodeURIComponent(id)}`)}
       />
     </Stack>
   );

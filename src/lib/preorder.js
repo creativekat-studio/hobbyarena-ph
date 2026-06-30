@@ -63,7 +63,7 @@ export function formatCountdownUnit(value) {
 
 export function formatCountdownLabel(parts) {
   if (!parts) return null;
-  if (parts.expired) return "Pre-order closed";
+  if (parts.expired) return "Closed";
   return `${parts.days}d ${formatCountdownUnit(parts.hours)}h ${formatCountdownUnit(parts.minutes)}m ${formatCountdownUnit(parts.seconds)}s`;
 }
 

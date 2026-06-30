@@ -152,8 +152,8 @@ function ExpiredCountdown({ compact, accent, panelSx }) {
       }}
     >
       <Typography sx={{ fontFamily: MONO_FONT, fontSize: compact ? "0.68rem" : "0.75rem", fontWeight: 800, color: accent, letterSpacing: 0.6 }}>
-        PRE-ORDER CLOSED
-      </Typography>
+          CLOSED
+        </Typography>
     </Box>
   );
 }

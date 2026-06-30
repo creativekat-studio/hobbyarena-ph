@@ -35,6 +35,8 @@ import { useInquiries } from "../lib/inquiriesStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import AdminNotificationBell from "./AdminNotificationBell.jsx";
+import AdminStorefrontButton from "../components/AdminStorefrontButton.jsx";
+import { AdminPageHeaderProvider, AdminPageHeaderToolbar, AdminPageHeaderMobileMeta } from "../components/AdminPageHeader.jsx";
 
 const DRAWER_WIDTH = 248;
 
@@ -44,6 +46,8 @@ const NAV = [
   { label: "Customers", to: "/admin/customers", icon: UserIcon },
   { label: "Inquiries", to: "/admin/inquiries", icon: MailIcon, badgeKey: "inquiries" },
   { label: "Inventory", to: "/admin/inventory", icon: InventoryIcon },
+  { label: "Classifications", to: "/admin/catalog", icon: CardIcon },
+  { label: "Design", to: "/admin/design", icon: SparkleIcon },
   { label: "CMS", to: "/admin/cms", icon: CardIcon },
 ];
 
@@ -53,13 +57,13 @@ export default function AdminLayout() {
   const { mode, toggle } = useColorMode();
   const { unreadCount } = useInquiries();
   const { pendingCount: notificationCount } = useOrders();
-  const { user, signOut } = useAuth();
+  const { admin, signOutAdmin } = useAuth();
   const isDarkMode = mode === "dark";
   const surfaces = getSurfaces(theme, isDarkMode);
   const { surfaceBorderColor, navbarBackground } = surfaces;
 
   async function handleSignOut() {
-    await signOut();
+    await signOutAdmin();
     navigate("/admin/login", { replace: true });
   }
 
@@ -118,11 +122,11 @@ export default function AdminLayout() {
       <Box sx={{ ...surfaces.panelSx, p: 1.5 }}>
         <Stack direction="row" spacing={1} alignItems="center">
           <Box sx={{ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, ...avatarStyles(theme) }}>
-            {user?.displayName?.charAt(0) || "A"}
+            {admin?.displayName?.charAt(0) || "A"}
           </Box>
           <Box sx={{ minWidth: 0, flexGrow: 1 }}>
             <Typography sx={{ fontWeight: 700, fontSize: "0.82rem", lineHeight: 1.1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {user?.displayName || "Admin"}
+              {admin?.displayName || "Admin"}
             </Typography>
             <Chip label="ADMIN" size="small" color="primary" sx={{ height: 18, fontSize: "0.6rem", fontFamily: MONO_FONT, mt: 0.25 }} />
           </Box>
@@ -158,26 +162,33 @@ export default function AdminLayout() {
       </Drawer>
 
       <Box sx={{ ml: { md: `${DRAWER_WIDTH}px` } }}>
-        <AppBar position="sticky" color="transparent" elevation={0} sx={{ bgcolor: navbarBackground, backdropFilter: "blur(20px)", borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
-          <Toolbar sx={{ gap: 1.5 }}>
-            <Typography sx={{ fontWeight: 800, flexGrow: 1, fontFamily: theme.typography.h6.fontFamily }}>
-              Admin
-            </Typography>
-            <AdminNotificationBell surfaceBorderColor={surfaceBorderColor} />
-            <Tooltip title="View storefront">
-              <Button size="small" variant="outlined" color="inherit" onClick={() => navigate("/")} sx={{ borderColor: surfaceBorderColor }}>
-                Storefront ↗
-              </Button>
-            </Tooltip>
-            <Tooltip title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}>
-              <IconButton onClick={toggle} color="inherit">{isDarkMode ? <SunIcon /> : <MoonIcon />}</IconButton>
-            </Tooltip>
-          </Toolbar>
-        </AppBar>
+        <AdminPageHeaderProvider>
+          <AppBar position="sticky" color="transparent" elevation={0} sx={{ bgcolor: navbarBackground, backdropFilter: "blur(20px)", borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
+            <Toolbar disableGutters sx={{ px: { xs: 1.5, md: 2.5 }, minHeight: { xs: 64, md: 76 } }}>
+              <AdminPageHeaderToolbar
+                surfaceBorderColor={surfaceBorderColor}
+                notificationBell={<AdminNotificationBell surfaceBorderColor={surfaceBorderColor} />}
+                storefrontButton={(
+                  <Tooltip title="View storefront">
+                    <span>
+                      <AdminStorefrontButton />
+                    </span>
+                  </Tooltip>
+                )}
+                themeToggle={(
+                  <Tooltip title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}>
+                    <IconButton size="small" onClick={toggle} color="inherit">{isDarkMode ? <SunIcon /> : <MoonIcon />}</IconButton>
+                  </Tooltip>
+                )}
+              />
+            </Toolbar>
+          </AppBar>
 
-        <Container maxWidth={false} sx={{ py: { xs: 3, md: 4 }, px: { xs: 2, sm: 3, lg: 4, xl: 5 } }}>
-          <Outlet context={{ surfaces, isDarkMode }} />
-        </Container>
+          <Container maxWidth={false} disableGutters sx={{ py: { xs: 1.25, md: 1.5 }, px: { xs: 1.5, md: 2.5 } }}>
+            <AdminPageHeaderMobileMeta />
+            <Outlet context={{ surfaces, isDarkMode }} />
+          </Container>
+        </AdminPageHeaderProvider>
       </Box>
     </Box>
   );

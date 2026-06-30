@@ -6,7 +6,7 @@ import { getDesignProposal } from "../themes/index.js";
 
 const COLOR_MODE_STORAGE_KEY = "hobbyarena:color-mode";
 
-const ColorModeContext = createContext({ mode: "light", toggle: () => {} });
+const ColorModeContext = createContext({ mode: "light", setMode: () => {}, toggle: () => {} });
 
 function getInitialColorMode(proposalId) {
   if (typeof window === "undefined") {
@@ -26,11 +26,6 @@ export function ColorModeProvider({ children }) {
     window.localStorage.setItem(COLOR_MODE_STORAGE_KEY, mode);
   }, [mode]);
 
-  // When switching design proposals, snap to each proposal's preferred default mode.
-  useEffect(() => {
-    setMode(getDesignProposal(proposalId).defaultMode);
-  }, [proposalId]);
-
   useEffect(() => {
     const brand = theme.ha?.brand;
     document.documentElement.dataset.designProposal = String(proposalId);
@@ -46,6 +41,7 @@ export function ColorModeProvider({ children }) {
   const value = useMemo(
     () => ({
       mode,
+      setMode,
       toggle: () => setMode((current) => (current === "light" ? "dark" : "light")),
     }),
     [mode],

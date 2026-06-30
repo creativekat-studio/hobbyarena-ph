@@ -25,12 +25,12 @@ export function productsForShopCategory(category, publishedIds) {
 
 export function productCategoryLabel(product) {
   if (product.tag === "Pre-order") return "Pre-orders";
-  return "Sealed products";
+  return "Products";
 }
 
 export function productCategoryPath(product) {
-  if (product.tag === "Pre-order") return "/shop?category=preorder";
-  return "/shop?category=sealed";
+  if (product.tag === "Pre-order") return "/preorders";
+  return "/products";
 }
 
 export function productNeighbors(id, catalogProducts = ALL_PRODUCTS) {

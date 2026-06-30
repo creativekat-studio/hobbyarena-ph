@@ -13,6 +13,8 @@ import {
 import { alpha, useTheme } from "@mui/material/styles";
 import { useLocation, useOutletContext } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
+import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
+import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
 import { MailIcon, SearchIcon, SparkleIcon } from "../components/icons.jsx";
 import { INQUIRY_STATUS, useInquiries } from "../lib/inquiriesStore.jsx";
 
@@ -303,19 +305,17 @@ export default function InquiriesPage() {
   }
 
   return (
-    <Stack spacing={3}>
-      <Box>
-        <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2 }}>
-          Messages
-        </Typography>
-        <Stack direction="row" spacing={1.5} alignItems="center">
-          <Typography variant="h3">Inquiries</Typography>
-          {unreadCount > 0 ? <Chip label={`${unreadCount} new`} color="primary" sx={{ fontWeight: 800 }} /> : null}
-        </Stack>
-        <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-          Messages from the storefront contact form.
-        </Typography>
-      </Box>
+    <Stack spacing={ADMIN_PAGE_SPACING}>
+      <AdminPageHeader
+        eyebrow="Messages"
+        title={(
+          <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
+            <span>Inquiries</span>
+            {unreadCount > 0 ? <Chip label={`${unreadCount} new`} color="primary" size="small" sx={{ fontWeight: 800 }} /> : null}
+          </Stack>
+        )}
+        subtitle="Messages from the storefront contact form."
+      />
 
       <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
         <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems={{ xs: "stretch", md: "center" }} justifyContent="space-between">
@@ -370,9 +370,7 @@ export default function InquiriesPage() {
           }}
         >
           <Box sx={{ px: 2, py: 1.5, borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
-            <Typography sx={{ fontWeight: 800, fontSize: "0.82rem" }}>
-              Inbox
-            </Typography>
+            <AdminSectionTitle sx={{ fontSize: "0.82rem" }}>Inbox</AdminSectionTitle>
             <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", fontFamily: MONO_FONT }}>
               {rows.length} conversation{rows.length === 1 ? "" : "s"}
             </Typography>

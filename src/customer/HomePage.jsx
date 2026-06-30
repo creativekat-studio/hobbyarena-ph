@@ -23,6 +23,8 @@ import { marqueeDuration, marqueeLoop } from "../lib/marquee.js";
 import { useCms } from "../lib/cmsContent.jsx";
 import { useInquiries } from "../lib/inquiriesStore.jsx";
 import ProductCard, { PESO } from "../components/ProductCard.jsx";
+import PreorderCountdown from "../components/PreorderCountdown.jsx";
+import PreorderPricing from "../components/PreorderPricing.jsx";
 import { useInventory } from "../lib/inventoryStore.jsx";
 import BannerMarquee from "../components/BannerMarquee.jsx";
 import PaymentMethodsMarquee from "../components/PaymentMethodsMarquee.jsx";
@@ -44,7 +46,6 @@ import {
   BRAND,
   PREORDER_PRODUCTS,
   SEALED_PRODUCTS,
-  STATS,
 } from "../data/mockData.js";
 
 const floatY = keyframes`
@@ -95,6 +96,13 @@ const PERKS = [
 
 function scrollToId(id) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+/** CMS banner link → storefront route (null = scroll to section id on homepage). */
+function bannerRoute(link) {
+  if (link === "featured-products" || link === "sealed" || link === "products") return "/products";
+  if (link === "featured-preorders" || link === "preorders") return "/preorders";
+  return null;
 }
 
 function AnnouncementBar({ theme, items }) {
@@ -247,6 +255,7 @@ function PromoBannerCard({ banner, isDarkMode, surfaceBorderColor }) {
   const [hovered, setHovered] = useState(false);
   const accent = banner.color || theme.palette.primary.main;
   const tag = BANNER_LINK_TAGS[banner.link] ?? "Promo";
+  const route = bannerRoute(banner.link);
 
   const cardBg = isDarkMode
     ? `linear-gradient(148deg, ${alpha("#0F1D42", 0.96)} 0%, ${alpha("#0B1538", 0.98)} 100%)`
@@ -254,9 +263,10 @@ function PromoBannerCard({ banner, isDarkMode, surfaceBorderColor }) {
 
   return (
     <Box
-      component="button"
-      type="button"
-      onClick={() => scrollToId(banner.link)}
+      component={route ? RouterLink : "button"}
+      to={route ?? undefined}
+      type={route ? undefined : "button"}
+      onClick={route ? () => window.scrollTo({ top: 0, behavior: "smooth" }) : () => scrollToId(banner.link)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       sx={{
@@ -285,6 +295,7 @@ function PromoBannerCard({ banner, isDarkMode, surfaceBorderColor }) {
             : `0 14px 36px ${alpha("#1E3A8A", 0.06)}`,
         transform: hovered ? "translateY(-4px)" : "none",
         transition: "transform 280ms cubic-bezier(0.34, 1.4, 0.64, 1), border-color 280ms ease, box-shadow 320ms ease",
+        textDecoration: "none",
       }}
     >
       <Box
@@ -410,15 +421,18 @@ function PromoBanners({ banners, isDarkMode, surfaceBorderColor }) {
 function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
   const theme = useTheme();
   const brand = getBrand(theme);
+  const { getProduct } = useInventory();
   const activeDrops = featureDrops.filter((d) => d.active);
   const slides = activeDrops.length ? activeDrops : [{ id: "fallback", productId: SEALED_PRODUCTS[3]?.id, badge: "FEATURED DROP", tier: "ULTRA-PREMIUM", active: true }];
   const [index, setIndex] = useState(0);
   const [tilt, setTilt] = useState({ x: -5, y: 3, hovered: false });
   const [paused, setPaused] = useState(false);
   const current = slides[index % slides.length];
-  const product = resolveFeatureDropProduct(current);
+  const baseProduct = resolveFeatureDropProduct(current);
+  const product = getProduct(baseProduct.id) ?? baseProduct;
+  const isPreorder = product.tag === "Pre-order";
   const accent = resolveProductAccent(product, theme);
-  const Glyph = product.line.startsWith("Pokémon") ? PokeballIcon : CardIcon;
+  const Glyph = product.line?.startsWith("Pokémon") ? PokeballIcon : CardIcon;
 
   useEffect(() => {
     if (slides.length <= 1 || paused) return undefined;
@@ -469,7 +483,9 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
         <Stack direction="row" alignItems="center" justifyContent="space-between">
           <Stack direction="row" spacing={1} alignItems="center">
             <Box sx={{ width: 9, height: 9, borderRadius: "50%", bgcolor: brand.liveDot, boxShadow: `0 0 10px ${brand.liveDot}`, animation: `${liveDot} 1.6s ease-in-out infinite` }} />
-            <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 700, fontSize: "0.7rem", letterSpacing: 1.5 }}>DROP ▸ LIVE</Typography>
+            <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 700, fontSize: "0.7rem", letterSpacing: 1.5 }}>
+              {isPreorder ? "PRE-ORDER ▸ LIVE" : "DROP ▸ LIVE"}
+            </Typography>
           </Stack>
           <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.7rem", color: "text.secondary" }}>{current.tier || "ULTRA-PREMIUM"}</Typography>
         </Stack>
@@ -516,18 +532,39 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
           ) : (
             <Glyph sx={{ fontSize: 140, color: OFF_WHITE.glyph, filter: "drop-shadow(0 12px 24px rgba(0,0,0,0.3))", animation: `${floatY} 5s ease-in-out infinite` }} />
           )}
-          <Chip label={current.badge || "FEATURED DROP"} size="small" sx={{ position: "absolute", top: 12, left: 12, zIndex: 2, bgcolor: "rgba(0,0,0,0.45)", color: OFF_WHITE.textBright, fontFamily: MONO_FONT, letterSpacing: 1, backdropFilter: "blur(4px)" }} />
+          <Chip label={current.badge || (isPreorder ? "PRE-ORDER" : "FEATURED DROP")} size="small" sx={{ position: "absolute", top: 12, left: 12, zIndex: 2, bgcolor: "rgba(0,0,0,0.45)", color: OFF_WHITE.textBright, fontFamily: MONO_FONT, letterSpacing: 1, backdropFilter: "blur(4px)" }} />
+          {isPreorder && product.preorderEndsAt ? (
+            <Box
+              sx={{
+                position: "absolute",
+                bottom: 12,
+                left: 12,
+                right: 12,
+                zIndex: 2,
+                "& > *": { backdropFilter: "blur(8px)", bgcolor: alpha(theme.palette.background.paper, 0.92) },
+              }}
+            >
+              <PreorderCountdown endsAt={product.preorderEndsAt} compact />
+            </Box>
+          ) : null}
         </Box>
 
-        <Stack direction="row" alignItems="flex-end" justifyContent="space-between" key={`${current.id}-meta`} sx={{ animation: `${fadeSlide} 480ms ease-out` }}>
-          <Box sx={{ minWidth: 0, pr: 1 }}>
-            <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.15, fontSize: "1rem" }}>{product.name}</Typography>
-            <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5, flexWrap: "wrap" }}>
-              <ProductRating product={product} />
-              <Typography sx={{ color: "text.secondary", fontSize: "0.75rem" }}>{product.line}</Typography>
-            </Stack>
-          </Box>
-          <Typography sx={{ color: "primary.main", fontWeight: 800, fontSize: "1.35rem", whiteSpace: "nowrap" }}>{PESO.format(product.price)}</Typography>
+        <Stack spacing={1} key={`${current.id}-meta`} sx={{ animation: `${fadeSlide} 480ms ease-out` }}>
+          <Stack direction="row" alignItems="flex-end" justifyContent="space-between">
+            <Box sx={{ minWidth: 0, pr: 1 }}>
+              <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.15, fontSize: "1rem" }}>{product.name}</Typography>
+              <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5, flexWrap: "wrap" }}>
+                <ProductRating product={product} />
+                <Typography sx={{ color: "text.secondary", fontSize: "0.75rem" }}>{product.line}</Typography>
+              </Stack>
+            </Box>
+            {!isPreorder ? (
+              <Typography sx={{ color: "primary.main", fontWeight: 800, fontSize: "1.35rem", whiteSpace: "nowrap" }}>{PESO.format(product.price)}</Typography>
+            ) : null}
+          </Stack>
+          {isPreorder ? (
+            <PreorderPricing product={product} compact showFullPrice />
+          ) : null}
         </Stack>
 
         {slides.length > 1 ? (
@@ -697,15 +734,6 @@ export default function HomePage() {
                   <Button size="large" variant="contained" color="primary" onClick={() => scrollToId(sections.products.anchorId)} sx={{ px: 4, py: 1.4, fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase" }}>▶ {hero.cta}</Button>
                   <Button size="large" variant="outlined" color="inherit" onClick={() => scrollToId(sections.preorders.anchorId)} sx={{ px: 4, py: 1.4, borderColor: surfaceBorderColor }}>View pre-orders</Button>
                 </Stack>
-
-                <Grid container spacing={2} sx={{ pt: 1 }}>
-                  {STATS.map((stat) => (
-                    <Grid size={{ xs: 6, sm: 3 }} key={stat.label}>
-                      <Typography sx={{ fontWeight: 800, fontSize: "1.4rem", color: "primary.main" }}>{stat.value}</Typography>
-                      <Typography sx={{ fontSize: "0.78rem", color: "text.secondary" }}>{stat.label}</Typography>
-                    </Grid>
-                  ))}
-                </Grid>
               </Stack>
             </Grid>
 
@@ -732,7 +760,7 @@ export default function HomePage() {
                   <Typography color="text.secondary" sx={{ mt: 0.5, maxWidth: wider(520) }}>{sections.products.subtitle}</Typography>
                 ) : null}
               </Box>
-              <Button component={RouterLink} to="/shop?category=sealed" color="primary" sx={{ fontWeight: 700 }}>Shop all →</Button>
+              <Button component={RouterLink} to="/products" color="primary" sx={{ fontWeight: 700 }}>Shop all →</Button>
             </Stack>
             <Grid container spacing={2.5}>
               {sealedProducts.map((product) => (
@@ -755,7 +783,7 @@ export default function HomePage() {
                   <Typography color="text.secondary" sx={{ mt: 0.5, maxWidth: wider(520) }}>{sections.preorders.subtitle}</Typography>
                 ) : null}
               </Box>
-              <Button component={RouterLink} to="/shop?category=preorder" color="primary" sx={{ fontWeight: 700 }}>Shop all →</Button>
+              <Button component={RouterLink} to="/preorders" color="primary" sx={{ fontWeight: 700 }}>Shop all →</Button>
             </Stack>
             <Grid container spacing={2.5}>
               {preorderProducts.map((product) => (
@@ -800,66 +828,7 @@ export default function HomePage() {
             />
           ) : null}
 
-          <NewsletterForm panelSx={panelSx} />
-
-          <InquiryForm panelSx={panelSx} />
-
           <PaymentMethodsMarquee panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} />
-
-          <Box sx={{ borderTop: "1px solid", borderColor: surfaceBorderColor, pt: 4 }}>
-            <Grid container spacing={3}>
-              <Grid size={{ xs: 12, md: 5 }}>
-                <Typography variant="h6" sx={{ fontWeight: 800 }}>{content.contact.legalName}</Typography>
-                <Typography color="text.secondary" sx={{ fontSize: "0.9rem", mt: 1, maxWidth: wider(360) }}>{content.contact.blurb}</Typography>
-                <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                  {[
-                    { Icon: InstagramIcon, href: content.social.instagram },
-                    { Icon: FacebookIcon, href: content.social.facebook },
-                    ...(content.social.tiktok ? [{ Icon: TiktokIcon, href: content.social.tiktok }] : []),
-                  ]
-                    .filter((s) => s.href)
-                    .map(({ Icon, href }) => (
-                      <IconButton key={href} size="small" component="a" href={href} target="_blank" rel="noopener noreferrer" sx={{ border: "1px solid", borderColor: surfaceBorderColor, color: "text.secondary", "&:hover": { color: "primary.main", borderColor: "primary.main" } }}>
-                        <Icon sx={{ fontSize: 18 }} />
-                      </IconButton>
-                    ))}
-                </Stack>
-              </Grid>
-              <Grid size={{ xs: 6, sm: 4, md: 3 }}>
-                <Typography sx={{ fontWeight: 800, mb: 1.5 }}>Shop</Typography>
-                <Stack spacing={1}>
-                  {[
-                    { label: "Featured products", to: "/shop?category=sealed" },
-                    { label: "Featured pre-orders", to: "/shop?category=preorder" },
-                    { label: "Pokémon TCG", to: "/shop?line=pokemon" },
-                    { label: "One Piece CG", to: "/shop?line=one-piece" },
-                  ].map((link) => (
-                    <Typography key={link.to} component={RouterLink} to={link.to} sx={{ color: "text.secondary", fontSize: "0.88rem", textDecoration: "none", "&:hover": { color: "primary.main" } }}>{link.label}</Typography>
-                  ))}
-                </Stack>
-              </Grid>
-              <Grid size={{ xs: 6, sm: 4, md: 4 }}>
-                <Typography sx={{ fontWeight: 800, mb: 1.5 }}>Reach us</Typography>
-                <Stack spacing={1}>
-                  {content.contact.address ? (
-                    <Typography sx={{ color: "text.secondary", fontSize: "0.88rem", lineHeight: 1.45 }}>{content.contact.address}</Typography>
-                  ) : null}
-                  {content.contact.phone ? (
-                    <Typography component="a" href={`tel:${content.contact.phone.replace(/\s/g, "")}`} sx={{ color: "text.secondary", fontSize: "0.88rem", textDecoration: "none", "&:hover": { color: "primary.main" } }}>
-                      {content.contact.phone}
-                    </Typography>
-                  ) : null}
-                  <Typography component="a" href={`mailto:${content.contact.email}`} sx={{ color: "text.secondary", fontSize: "0.88rem", textDecoration: "none", "&:hover": { color: "primary.main" } }}>
-                    {content.contact.email}
-                  </Typography>
-                  <Typography sx={{ color: "text.secondary", fontSize: "0.88rem" }}>{content.contact.hours}</Typography>
-                </Stack>
-              </Grid>
-            </Grid>
-            <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center", pt: 4, mt: 4, borderTop: "1px solid", borderColor: surfaceBorderColor }}>
-              © {new Date().getFullYear()} {BRAND.name} · {hero.tagline}
-            </Typography>
-          </Box>
         </Stack>
       </Container>
     </Box>

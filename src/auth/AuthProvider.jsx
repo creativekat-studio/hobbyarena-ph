@@ -3,26 +3,14 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 /**
  * Auth layer for Hobby Arena.
  *
- * This is a MOCK implementation that stores a session in localStorage so the
- * customer and admin areas can be built and demoed without a backend.
+ * MOCK: customer and admin sessions are stored separately so browsing the
+ * storefront (or signing in as a customer) does not sign you out of admin.
  *
- * It is intentionally shaped like Firebase Auth so it can be swapped later:
- *   - `user` mirrors a Firebase user ({ uid, email, displayName }) plus a `role`.
- *   - Role should come from a **Firebase custom claim** (e.g. role: "admin"),
- *     set by a trusted backend / Cloud Function — never from the client.
- *   - `signInCustomer` / `registerCustomer` -> signInWithEmailAndPassword /
- *     createUserWithEmailAndPassword.
- *   - `signInAdmin` -> same sign-in, then verify the `admin` custom claim.
- *   - `signOut` -> firebase signOut().
- *
- * SECURITY NOTE: client-side route guards (see ProtectedRoute) are UX only.
- * Real authorization MUST be enforced server-side via Firebase Auth custom
- * claims + Firestore/Storage Security Rules. Never trust the client role alone.
+ * Shaped for Firebase later — admin role from custom claims, not client trust.
  */
 
 const STORAGE_KEY = "hobbyarena:auth";
 
-// Demo admin credential — replace with Firebase Auth + an `admin` custom claim.
 const DEMO_ADMIN = {
   email: "admin@hobbyarena.ph",
   password: "admin1234",
@@ -33,14 +21,45 @@ export const ROLES = { CUSTOMER: "customer", ADMIN: "admin" };
 
 const AuthContext = createContext(null);
 
-function readSession() {
-  if (typeof window === "undefined") return null;
+function readSessions() {
+  if (typeof window === "undefined") {
+    return { customer: null, admin: null };
+  }
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return { customer: null, admin: null };
+
+    const parsed = JSON.parse(raw);
+
+    // New format: { customer, admin }
+    if (parsed && typeof parsed === "object" && ("customer" in parsed || "admin" in parsed)) {
+      return {
+        customer: parsed.customer ?? null,
+        admin: parsed.admin ?? null,
+      };
+    }
+
+    // Legacy single-session blob — migrate in memory on read.
+    if (parsed?.role === ROLES.ADMIN) {
+      return { customer: null, admin: parsed };
+    }
+    if (parsed?.role === ROLES.CUSTOMER) {
+      return { customer: parsed, admin: null };
+    }
+
+    return { customer: null, admin: null };
   } catch {
-    return null;
+    return { customer: null, admin: null };
   }
+}
+
+function writeSessions(customer, admin) {
+  if (typeof window === "undefined") return;
+  if (!customer && !admin) {
+    window.localStorage.removeItem(STORAGE_KEY);
+    return;
+  }
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ customer, admin }));
 }
 
 function makeUid(email) {
@@ -48,24 +67,40 @@ function makeUid(email) {
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
+  const [customer, setCustomer] = useState(null);
+  const [admin, setAdmin] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Mimics firebase onAuthStateChanged bootstrapping.
-  useEffect(() => {
-    setUser(readSession());
-    setLoading(false);
+  const syncFromStorage = useCallback(() => {
+    const sessions = readSessions();
+    setCustomer(sessions.customer);
+    setAdmin(sessions.admin);
   }, []);
 
-  const persist = useCallback((nextUser) => {
-    setUser(nextUser);
-    if (typeof window !== "undefined") {
-      if (nextUser) {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
-      } else {
-        window.localStorage.removeItem(STORAGE_KEY);
-      }
+  useEffect(() => {
+    syncFromStorage();
+    setLoading(false);
+
+    function handleStorage(event) {
+      if (event.key === STORAGE_KEY) syncFromStorage();
     }
+
+    function handleVisibility() {
+      if (document.visibilityState === "visible") syncFromStorage();
+    }
+
+    window.addEventListener("storage", handleStorage);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [syncFromStorage]);
+
+  const persist = useCallback((nextCustomer, nextAdmin) => {
+    setCustomer(nextCustomer);
+    setAdmin(nextAdmin);
+    writeSessions(nextCustomer, nextAdmin);
   }, []);
 
   const signInCustomer = useCallback(
@@ -73,14 +108,14 @@ export function AuthProvider({ children }) {
       if (!email?.trim() || !password) {
         throw new Error("Email and password are required.");
       }
-      // MOCK: accept any credential as a customer.
       const nextUser = {
         uid: makeUid(email),
         email: email.trim(),
         displayName: email.split("@")[0],
         role: ROLES.CUSTOMER,
       };
-      persist(nextUser);
+      const { admin: currentAdmin } = readSessions();
+      persist(nextUser, currentAdmin);
       return nextUser;
     },
     [persist],
@@ -102,15 +137,14 @@ export function AuthProvider({ children }) {
         email: email.trim(),
         displayName: name.trim(),
         role: ROLES.CUSTOMER,
-        // Consent record — store with a timestamp for compliance. With Firebase,
-        // persist this to the user's Firestore profile document.
         consent: {
           acceptedTerms: true,
           marketingOptIn: Boolean(marketingOptIn),
           acceptedAt: new Date().toISOString(),
         },
       };
-      persist(nextUser);
+      const { admin: currentAdmin } = readSessions();
+      persist(nextUser, currentAdmin);
       return nextUser;
     },
     [persist],
@@ -118,43 +152,65 @@ export function AuthProvider({ children }) {
 
   const signInAdmin = useCallback(
     async (email, password) => {
-      // MOCK: validate against a known admin credential. With Firebase this
-      // becomes: sign in, then getIdTokenResult() and require claims.admin.
       if (
         email?.trim().toLowerCase() !== DEMO_ADMIN.email ||
         password !== DEMO_ADMIN.password
       ) {
         throw new Error("Invalid admin credentials.");
       }
-      const nextUser = {
+      const nextAdmin = {
         uid: makeUid(DEMO_ADMIN.email),
         email: DEMO_ADMIN.email,
         displayName: DEMO_ADMIN.displayName,
         role: ROLES.ADMIN,
       };
-      persist(nextUser);
-      return nextUser;
+      const { customer: currentCustomer } = readSessions();
+      persist(currentCustomer, nextAdmin);
+      return nextAdmin;
     },
     [persist],
   );
 
-  const signOut = useCallback(async () => {
-    persist(null);
+  const signOutCustomer = useCallback(async () => {
+    const { admin: currentAdmin } = readSessions();
+    persist(null, currentAdmin);
   }, [persist]);
+
+  const signOutAdmin = useCallback(async () => {
+    const { customer: currentCustomer } = readSessions();
+    persist(currentCustomer, null);
+  }, [persist]);
+
+  /** @deprecated use signOutCustomer or signOutAdmin */
+  const signOut = signOutCustomer;
 
   const value = useMemo(
     () => ({
-      user,
+      user: customer,
+      customer,
+      admin,
       loading,
-      isAuthenticated: Boolean(user),
-      isAdmin: user?.role === ROLES.ADMIN,
-      isCustomer: user?.role === ROLES.CUSTOMER,
+      isAuthenticated: Boolean(customer),
+      isAdmin: Boolean(admin),
+      isCustomer: Boolean(customer),
       signInCustomer,
       registerCustomer,
       signInAdmin,
+      signOutCustomer,
+      signOutAdmin,
       signOut,
     }),
-    [user, loading, signInCustomer, registerCustomer, signInAdmin, signOut],
+    [
+      customer,
+      admin,
+      loading,
+      signInCustomer,
+      registerCustomer,
+      signInAdmin,
+      signOutCustomer,
+      signOutAdmin,
+      signOut,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -19,15 +19,17 @@ import { useOutletContext } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
 import { FacebookIcon, InstagramIcon, TiktokIcon, SparkleIcon, BoxIcon } from "../components/icons.jsx";
-import { cmsPreviewGradient } from "../lib/surfaces.js";
 import { OFF_WHITE } from "../lib/colors.js";
 import { useCms } from "../lib/cmsContent.jsx";
 import { ALL_PRODUCTS } from "../data/mockData.js";
+import CmsPreviewMockup from "../components/CmsPreviewMockup.jsx";
+import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
+import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
 
 const LINK_OPTIONS = [
-  { value: "featured-products", label: "Featured products" },
-  { value: "featured-preorders", label: "Featured pre-orders" },
-  { value: "newsletter", label: "Newsletter" },
+  { value: "featured-products", label: "Products page (/products)" },
+  { value: "featured-preorders", label: "Pre-orders page (/preorders)" },
+  { value: "newsletter", label: "Newsletter section (scroll)" },
 ];
 
 const SWATCHES_FALLBACK = ["#7c3aed", "#06b6d4", "#f43f5e", "#f59e0b", "#22c55e", "#ec4899"];
@@ -35,14 +37,13 @@ const SWATCHES_FALLBACK = ["#7c3aed", "#06b6d4", "#f43f5e", "#f59e0b", "#22c55e"
 function SectionHeader({ title, action }) {
   return (
     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-      <Typography variant="h6" sx={{ fontWeight: 800 }}>{title}</Typography>
+      <AdminSectionTitle variant="h6">{title}</AdminSectionTitle>
       {action}
     </Stack>
   );
 }
 
 function HomepageTab({ panelSx, surfaceBorderColor }) {
-  const theme = useTheme();
   const { content, setHero, setHomepageSection, addFeatureDrop, updateFeatureDrop, removeFeatureDrop } = useCms();
   const hero = content.hero;
   const sections = content.homepageSections;
@@ -50,36 +51,21 @@ function HomepageTab({ panelSx, surfaceBorderColor }) {
 
   return (
     <Stack spacing={2.5}>
-      <Grid container spacing={2.5}>
-        <Grid size={{ xs: 12, md: 7 }}>
-          <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
-            <SectionHeader title="Hero section" />
-            <Stack spacing={2}>
-              <TextField label="Tagline" fullWidth value={hero.tagline} onChange={(e) => { setHero({ tagline: e.target.value }); setSaved(false); }} />
-              <TextField label="Headline" fullWidth value={hero.headline} onChange={(e) => { setHero({ headline: e.target.value }); setSaved(false); }} />
-              <TextField label="Subtitle" fullWidth multiline minRows={3} value={hero.subtitle} onChange={(e) => { setHero({ subtitle: e.target.value }); setSaved(false); }} />
-              <TextField label="Primary button label" fullWidth value={hero.cta} onChange={(e) => { setHero({ cta: e.target.value }); setSaved(false); }} />
-              <Stack direction="row" spacing={1.5} alignItems="center">
-                <Button variant="contained" color="primary" onClick={() => setSaved(true)} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>Save</Button>
-                <Typography sx={{ color: saved ? "success.main" : "text.secondary", fontSize: "0.82rem", fontWeight: 600 }}>
-                  {saved ? "Saved — live on storefront" : "Changes auto-save as you type"}
-                </Typography>
-              </Stack>
-            </Stack>
-          </Box>
-        </Grid>
-        <Grid size={{ xs: 12, md: 5 }}>
-          <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 }, height: "100%" }}>
-            <Typography variant="overline" sx={{ color: "text.secondary", fontWeight: 700, letterSpacing: 1.5 }}>Live preview</Typography>
-            <Box sx={{ mt: 2, p: 3, borderRadius: 1, background: cmsPreviewGradient(theme), border: "1px solid", borderColor: alpha(theme.palette.primary.main, 0.2) }}>
-              <Typography sx={{ fontFamily: MONO_FONT, color: "primary.main", fontWeight: 800, fontSize: "0.7rem", letterSpacing: 1, textTransform: "uppercase" }}>{hero.tagline}</Typography>
-              <Typography variant="h5" sx={{ fontWeight: 800, mt: 1 }}>{hero.headline}</Typography>
-              <Typography sx={{ color: "text.secondary", fontSize: "0.85rem", mt: 1 }}>{hero.subtitle}</Typography>
-              <Button variant="contained" color="primary" sx={{ mt: 2, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>▶ {hero.cta}</Button>
-            </Box>
-          </Box>
-        </Grid>
-      </Grid>
+      <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
+        <SectionHeader title="Hero section" />
+        <Stack spacing={2}>
+          <TextField label="Tagline" fullWidth value={hero.tagline} onChange={(e) => { setHero({ tagline: e.target.value }); setSaved(false); }} />
+          <TextField label="Headline" fullWidth value={hero.headline} onChange={(e) => { setHero({ headline: e.target.value }); setSaved(false); }} />
+          <TextField label="Subtitle" fullWidth multiline minRows={3} value={hero.subtitle} onChange={(e) => { setHero({ subtitle: e.target.value }); setSaved(false); }} />
+          <TextField label="Primary button label" fullWidth value={hero.cta} onChange={(e) => { setHero({ cta: e.target.value }); setSaved(false); }} />
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Button variant="contained" color="primary" onClick={() => setSaved(true)} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>Save</Button>
+            <Typography sx={{ color: saved ? "success.main" : "text.secondary", fontSize: "0.82rem", fontWeight: 600 }}>
+              {saved ? "Saved — live on storefront" : "Changes auto-save as you type"}
+            </Typography>
+          </Stack>
+        </Stack>
+      </Box>
 
       <Grid container spacing={2.5}>
         {[
@@ -442,7 +428,15 @@ function SocialContactTab({ panelSx }) {
             <TextField label="Business name" fullWidth value={contact.legalName} onChange={(e) => setContact({ legalName: e.target.value })} />
             <TextField label="Contact email" fullWidth value={contact.email} onChange={(e) => setContact({ email: e.target.value })} />
             <TextField label="Phone" fullWidth value={contact.phone ?? ""} onChange={(e) => setContact({ phone: e.target.value })} />
-            <TextField label="Address" fullWidth multiline minRows={2} value={contact.address ?? ""} onChange={(e) => setContact({ address: e.target.value })} />
+            <TextField label="Address" fullWidth multiline minRows={2} value={contact.address ?? ""} onChange={(e) => setContact({ address: e.target.value })} helperText="Shown on the contact page and footer." />
+            <TextField
+              label="Google Maps link"
+              fullWidth
+              value={contact.googleMapsUrl ?? ""}
+              onChange={(e) => setContact({ googleMapsUrl: e.target.value })}
+              placeholder="https://maps.google.com/?q=1139+Mahatma+Gandhi+St..."
+              helperText="Used for the map embed and Open in Google Maps. Leave blank to auto-generate from the address above."
+            />
             <TextField label="Order hours" fullWidth value={contact.hours} onChange={(e) => setContact({ hours: e.target.value })} />
             <TextField label="Social handle" fullWidth value={contact.handle} onChange={(e) => setContact({ handle: e.target.value })} />
             <TextField label="WhatsApp link (optional)" fullWidth value={social.whatsapp ?? ""} onChange={(e) => setSocial({ whatsapp: e.target.value })} placeholder="https://wa.me/639..." />
@@ -463,28 +457,51 @@ export default function CmsPage() {
   const [tab, setTab] = useState(0);
 
   return (
-    <Stack spacing={3}>
-      <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "center" }} spacing={1.5}>
-        <Box>
-          <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2 }}>Content</Typography>
-          <Typography variant="h3">CMS</Typography>
-          <Typography color="text.secondary" sx={{ mt: 0.5 }}>Manage what customers see — homepage, banners, announcements, and links. Edits save automatically.</Typography>
-        </Box>
-        <Button variant="outlined" color="inherit" onClick={reset} sx={{ borderColor: surfaceBorderColor }}>Reset to defaults</Button>
-      </Stack>
+    <Stack spacing={ADMIN_PAGE_SPACING}>
+      <AdminPageHeader
+        eyebrow="Content"
+        title="CMS"
+        subtitle="Homepage, banners, announcements, and contact info. Edit on the left — preview updates on the right."
+        action={(
+          <Button variant="outlined" color="inherit" onClick={reset} sx={{ borderColor: surfaceBorderColor, fontSize: "0.78rem" }}>
+            Reset to defaults
+          </Button>
+        )}
+      />
 
-      <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto" sx={{ borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
-        {TABS.map((label) => (
-          <Tab key={label} label={label} sx={{ fontWeight: 700, textTransform: "none" }} />
-        ))}
-      </Tabs>
-
-      {tab === 0 ? <HomepageTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
-      {tab === 1 ? <BannersTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
-      {tab === 2 ? <AnnouncementsTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
-      {tab === 3 ? <TestimonialsTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
-      {tab === 4 ? <BankDetailsTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
-      {tab === 5 ? <SocialContactTab panelSx={panelSx} /> : null}
+      <Grid container spacing={2} alignItems="stretch">
+        <Grid size={{ xs: 12, lg: 6 }} order={{ xs: 1, lg: 1 }}>
+          <Stack spacing={ADMIN_PAGE_SPACING}>
+            <Tabs
+              value={tab}
+              onChange={(_, value) => setTab(value)}
+              variant="scrollable"
+              scrollButtons="auto"
+              sx={{
+                minHeight: 40,
+                borderBottom: "1px solid",
+                borderColor: surfaceBorderColor,
+                "& .MuiTab-root": { minHeight: 40, py: 1, fontSize: "0.82rem" },
+              }}
+            >
+              {TABS.map((label) => (
+                <Tab key={label} label={label} sx={{ fontWeight: 700, textTransform: "none" }} />
+              ))}
+            </Tabs>
+            {tab === 0 ? <HomepageTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
+            {tab === 1 ? <BannersTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
+            {tab === 2 ? <AnnouncementsTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
+            {tab === 3 ? <TestimonialsTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
+            {tab === 4 ? <BankDetailsTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
+            {tab === 5 ? <SocialContactTab panelSx={panelSx} /> : null}
+          </Stack>
+        </Grid>
+        <Grid size={{ xs: 12, lg: 6 }} order={{ xs: 2, lg: 2 }} sx={{ display: "flex", minHeight: 0 }}>
+          <Box sx={{ position: { lg: "sticky" }, top: { lg: 16 }, alignSelf: "flex-start", width: "100%", maxHeight: { lg: "calc(100dvh - 80px)" }, display: "flex", flexDirection: "column", flex: 1 }}>
+            <CmsPreviewMockup panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} activeTab={tab} />
+          </Box>
+        </Grid>
+      </Grid>
     </Stack>
   );
 }

@@ -20,15 +20,18 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { alpha, keyframes, useTheme } from "@mui/material/styles";
+import { alpha, useTheme } from "@mui/material/styles";
 import { Link as RouterLink, useOutletContext } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
-import ConfettiBurst from "../components/ConfettiBurst.jsx";
-import { ShieldIcon } from "../components/icons.jsx";
+import { OrderSummaryPanel } from "../components/OrderSummaryPanel.jsx";
+import CheckoutConfirmation from "./CheckoutConfirmation.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
+import { useColorMode } from "../lib/colorMode.jsx";
+import { getSurfaces } from "../lib/surfaces.js";
 import { useCart, cartItemDueNow } from "../lib/cartStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
+import { useInventory } from "../lib/inventoryStore.jsx";
 import {
   BANK_ACCOUNTS,
   PROCESSING_HOURS,
@@ -36,9 +39,38 @@ import {
   STORE_PICKUP_INFO,
   calcShipping,
 } from "../data/checkoutSettings.js";
+import { useCheckoutConfirmation, writeCheckoutConfirmation } from "../lib/checkoutConfirmation.js";
 
 const STEPS = ["Account", "Details", "Payment"];
 const QR_TILE_SIZE = 168;
+const QR_TILE_SIZE_COMPACT = 112;
+
+function CheckoutStepShell({ panelSx, children, sx }) {
+  return (
+    <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 }, ...sx }}>
+      {children}
+    </Box>
+  );
+}
+
+function StepHeading({ step, title, subtitle, action }) {
+  return (
+    <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "center" }} spacing={1.5} sx={{ mb: 2.5 }}>
+      <Box>
+        <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2, fontFamily: MONO_FONT, display: "block" }}>
+          {step}
+        </Typography>
+        <Typography variant="h5" sx={{ fontWeight: 800, mt: 0.25, lineHeight: 1.2 }}>{title}</Typography>
+        {subtitle ? (
+          <Typography color="text.secondary" sx={{ mt: 0.5, fontSize: "0.88rem", lineHeight: 1.45, maxWidth: 520 }}>
+            {subtitle}
+          </Typography>
+        ) : null}
+      </Box>
+      {action ?? null}
+    </Stack>
+  );
+}
 
 function ZoomInIcon(props) {
   return (
@@ -49,13 +81,14 @@ function ZoomInIcon(props) {
   );
 }
 
-function QrCodeTile({ label, imageUrl, surfaceBorderColor }) {
+function QrCodeTile({ label, imageUrl, surfaceBorderColor, size = "default" }) {
   const theme = useTheme();
   const [zoomOpen, setZoomOpen] = useState(false);
+  const tileSize = size === "compact" ? QR_TILE_SIZE_COMPACT : QR_TILE_SIZE;
 
   const tileSx = {
-    width: QR_TILE_SIZE,
-    height: QR_TILE_SIZE,
+    width: tileSize,
+    height: tileSize,
     maxWidth: "100%",
     mx: "auto",
     position: "relative",
@@ -170,53 +203,6 @@ function CheckoutEmptyLanding({ panelSx }) {
         </Box>
       </Stack>
     </Container>
-  );
-}
-
-function OrderSummary({ items, subtotal, shippingFee, total, balanceDue, hasPreorder, panelSx }) {
-  return (
-    <Box sx={{ ...panelSx, p: 2.5 }}>
-      <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>Order summary</Typography>
-      <Stack spacing={1.25} divider={<Divider flexItem />}>
-        {items.map((item) => {
-          const isPreorder = item.tag === "Pre-order";
-          const dueNow = cartItemDueNow(item);
-          return (
-          <Stack key={item.id} direction="row" justifyContent="space-between" spacing={2}>
-            <Box sx={{ minWidth: 0 }}>
-              <Typography sx={{ fontWeight: 600, fontSize: "0.88rem" }}>{item.name}</Typography>
-              <Typography sx={{ color: "text.secondary", fontSize: "0.75rem", fontFamily: MONO_FONT }}>
-                {item.tag} · Qty {item.quantity}
-                {isPreorder ? ` · ${item.depositPercent ?? 30}% deposit` : ""}
-              </Typography>
-            </Box>
-            <Typography sx={{ fontWeight: 700, flexShrink: 0 }}>{PESO.format(dueNow)}</Typography>
-          </Stack>
-          );
-        })}
-      </Stack>
-      <Stack spacing={1} sx={{ mt: 2.5 }}>
-        <Stack direction="row" justifyContent="space-between">
-          <Typography color="text.secondary">{hasPreorder ? "Deposit due now" : "Subtotal"}</Typography>
-          <Typography>{PESO.format(subtotal)}</Typography>
-        </Stack>
-        {hasPreorder && balanceDue > 0 ? (
-          <Stack direction="row" justifyContent="space-between">
-            <Typography color="text.secondary">Balance before release</Typography>
-            <Typography sx={{ color: "text.secondary" }}>{PESO.format(balanceDue)}</Typography>
-          </Stack>
-        ) : null}
-        <Stack direction="row" justifyContent="space-between">
-          <Typography color="text.secondary">Shipping</Typography>
-          <Typography sx={{ textAlign: "right", maxWidth: "55%" }}>At buyer&apos;s expense</Typography>
-        </Stack>
-        <Divider />
-        <Stack direction="row" justifyContent="space-between" alignItems="baseline">
-          <Typography sx={{ fontWeight: 800 }}>{hasPreorder ? "Pay now" : "Total"}</Typography>
-          <Typography sx={{ fontWeight: 800, fontSize: "1.25rem", color: "primary.main" }}>{PESO.format(total)}</Typography>
-        </Stack>
-      </Stack>
-    </Box>
   );
 }
 
@@ -390,67 +376,84 @@ function DetailsStep({ panelSx, surfaceBorderColor, details, setDetails, onBack,
   }
 
   return (
-    <Box component="form" onSubmit={handleSubmit} sx={{ ...panelSx, p: { xs: 3, md: 4 } }}>
-      <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2, fontFamily: MONO_FONT }}>Step 2</Typography>
-      <Typography variant="h5" sx={{ fontWeight: 800, mt: 0.5 }}>Contact & delivery</Typography>
-      <Typography color="text.secondary" sx={{ mt: 0.5, mb: 3 }}>Where should we send your order?</Typography>
+    <Box component="form" onSubmit={handleSubmit}>
+      <CheckoutStepShell panelSx={panelSx}>
+      <StepHeading
+        step="Step 2"
+        title="Contact & delivery"
+        subtitle="Where should we send your order?"
+      />
 
       {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField label="Full name" fullWidth required value={details.name} onChange={(e) => setDetails({ name: e.target.value })} />
+          <TextField label="Full name" fullWidth required size="small" value={details.name} onChange={(e) => setDetails({ name: e.target.value })} />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField label="Phone" fullWidth required value={details.phone} onChange={(e) => setDetails({ phone: e.target.value })} placeholder="09XX XXX XXXX" />
+          <TextField label="Phone" fullWidth required size="small" value={details.phone} onChange={(e) => setDetails({ phone: e.target.value })} placeholder="09XX XXX XXXX" />
         </Grid>
         <Grid size={{ xs: 12 }}>
-          <TextField label="Email" type="email" fullWidth required value={details.email} onChange={(e) => setDetails({ email: e.target.value })} />
-        </Grid>
-
-        <Grid size={{ xs: 12 }}>
-          <Alert severity="info" icon={<ShieldIcon />} sx={{ border: "1px solid", borderColor: surfaceBorderColor }}>
-            {SHIPPING_DISCLAIMER}
-          </Alert>
+          <TextField label="Email" type="email" fullWidth required size="small" value={details.email} onChange={(e) => setDetails({ email: e.target.value })} />
         </Grid>
 
         <Grid size={{ xs: 12 }}>
-          <Alert severity="info" sx={{ border: "1px solid", borderColor: surfaceBorderColor }}>
-            <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Store pickup</Typography>
-            <Typography variant="body2" sx={{ mb: 0.75 }}>{STORE_PICKUP_INFO}</Typography>
-            <Typography variant="body2" color="text.secondary">{PROCESSING_HOURS}</Typography>
-          </Alert>
+          <Box
+            sx={{
+              p: 1.5,
+              borderRadius: 1,
+              border: "1px solid",
+              borderColor: surfaceBorderColor,
+              bgcolor: (theme) => alpha(theme.palette.info.main, 0.06),
+            }}
+          >
+            <Typography variant="body2" sx={{ lineHeight: 1.5, fontSize: "0.82rem" }}>
+              {SHIPPING_DISCLAIMER} {STORE_PICKUP_INFO} {PROCESSING_HOURS}
+            </Typography>
+          </Box>
         </Grid>
 
         <Grid size={{ xs: 12 }}>
-          <TextField label="Street address" fullWidth required value={details.street} onChange={(e) => setDetails({ street: e.target.value })} />
+          <TextField label="Street address" fullWidth required size="small" value={details.street} onChange={(e) => setDetails({ street: e.target.value })} />
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
-          <TextField label="City" fullWidth required value={details.city} onChange={(e) => setDetails({ city: e.target.value })} />
+          <TextField label="City" fullWidth required size="small" value={details.city} onChange={(e) => setDetails({ city: e.target.value })} />
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
-          <TextField label="Province" fullWidth required value={details.province} onChange={(e) => setDetails({ province: e.target.value })} />
+          <TextField label="Province" fullWidth required size="small" value={details.province} onChange={(e) => setDetails({ province: e.target.value })} />
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
-          <TextField label="Postal code" fullWidth value={details.postal} onChange={(e) => setDetails({ postal: e.target.value })} />
+          <TextField label="Postal code" fullWidth size="small" value={details.postal} onChange={(e) => setDetails({ postal: e.target.value })} />
         </Grid>
 
         <Grid size={{ xs: 12 }}>
-          <TextField label="Order notes (optional)" fullWidth multiline minRows={2} value={details.notes} onChange={(e) => setDetails({ notes: e.target.value })} />
+          <TextField label="Order notes (optional)" fullWidth multiline minRows={2} size="small" value={details.notes} onChange={(e) => setDetails({ notes: e.target.value })} />
         </Grid>
       </Grid>
 
-      <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
+      <Stack direction="row" spacing={1.5} sx={{ mt: 2.5 }}>
         <Button variant="outlined" color="inherit" onClick={onBack} sx={{ borderColor: surfaceBorderColor }}>Back</Button>
         <Button type="submit" variant="contained" sx={{ flexGrow: 1, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
           Continue to payment
         </Button>
       </Stack>
+      </CheckoutStepShell>
     </Box>
   );
 }
 
 function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proofFile, setProofFile, confirmedTransfer, setConfirmedTransfer, onBack, onPlaceOrder, busy, error }) {
+  const theme = useTheme();
+  const banks = useMemo(() => BANK_ACCOUNTS.filter((bank) => bank.active !== false), []);
+  const [selectedBankId, setSelectedBankId] = useState(banks[0]?.id ?? "");
+  const selectedBank = banks.find((bank) => bank.id === selectedBankId) ?? banks[0];
+
+  useEffect(() => {
+    if (banks.length && !banks.some((bank) => bank.id === selectedBankId)) {
+      setSelectedBankId(banks[0].id);
+    }
+  }, [banks, selectedBankId]);
+
   function handleFileChange(event) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -463,55 +466,120 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
   }
 
   return (
-    <Box sx={{ ...panelSx, p: { xs: 3, md: 4 } }}>
-      <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2, fontFamily: MONO_FONT }}>Step 3</Typography>
-      <Typography variant="h5" sx={{ fontWeight: 800, mt: 0.5 }}>Pay via bank transfer</Typography>
-      <Typography color="text.secondary" sx={{ mt: 0.5, mb: 3 }}>
-        Transfer <strong>{PESO.format(total)}</strong> to one of the accounts below, then upload your proof of payment.
-      </Typography>
+    <CheckoutStepShell panelSx={panelSx}>
+      <StepHeading
+        step="Step 3"
+        title="Pay & confirm"
+        subtitle="Transfer to one account below, upload proof, then place your order."
+        action={(
+          <Typography sx={{ fontWeight: 800, fontSize: "1.35rem", color: "primary.main", fontFamily: MONO_FONT, whiteSpace: "nowrap" }}>
+            {PESO.format(total)}
+          </Typography>
+        )}
+      />
 
       {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
 
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        {BANK_ACCOUNTS.filter((bank) => bank.active !== false).map((bank) => (
-          <Grid key={bank.id} size={{ xs: 12, sm: 6 }}>
-            <Box sx={{ p: 2, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor, height: "100%", display: "flex", flexDirection: "column" }}>
-              <Typography sx={{ fontWeight: 800, fontFamily: MONO_FONT, fontSize: "0.75rem", letterSpacing: 1, color: "primary.main" }}>
-                {bank.label.toUpperCase()}
-              </Typography>
-              <Typography sx={{ fontWeight: 700, mt: 1 }}>{bank.accountName}</Typography>
-              <Typography sx={{ fontFamily: MONO_FONT, fontSize: "1.1rem", fontWeight: 800, mt: 0.5 }}>{bank.accountNumber}</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1, flexGrow: 1 }}>{bank.note}</Typography>
-              <Box sx={{ mt: 1.5 }}>
-                <QrCodeTile label={bank.label} imageUrl={bank.qrImage} surfaceBorderColor={surfaceBorderColor} />
-              </Box>
-            </Box>
-          </Grid>
+      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 2 }}>
+        {banks.map((bank) => (
+          <Chip
+            key={bank.id}
+            label={bank.label}
+            onClick={() => setSelectedBankId(bank.id)}
+            color={selectedBank?.id === bank.id ? "primary" : "default"}
+            variant={selectedBank?.id === bank.id ? "filled" : "outlined"}
+            sx={{ fontWeight: 700 }}
+          />
         ))}
-      </Grid>
+      </Stack>
 
-      <Typography sx={{ fontWeight: 700, mb: 1 }}>Proof of payment</Typography>
-      <Button component="label" variant="outlined" color="inherit" sx={{ borderColor: surfaceBorderColor, mb: 1 }}>
-        {proofFile ? "Change file" : "Upload screenshot or PDF"}
-        <input type="file" hidden accept="image/*,application/pdf" onChange={handleFileChange} />
-      </Button>
-      {proofFile ? (
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
-          <Chip label={proofFile.name} size="small" color="success" />
-          {proofFile.dataUrl?.startsWith("data:image") ? (
-            <Box component="img" src={proofFile.dataUrl} alt="Proof preview" sx={{ height: 48, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }} />
-          ) : null}
+      {selectedBank ? (
+        <Box
+          sx={{
+            p: 2,
+            mb: 2.5,
+            borderRadius: 1,
+            border: "1px solid",
+            borderColor: surfaceBorderColor,
+            display: "flex",
+            flexDirection: { xs: "column", sm: "row" },
+            alignItems: { xs: "stretch", sm: "center" },
+            gap: 2,
+          }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography sx={{ fontWeight: 800, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 1, color: "primary.main" }}>
+              {selectedBank.label.toUpperCase()}
+            </Typography>
+            <Typography sx={{ fontWeight: 700, mt: 0.75, fontSize: "0.95rem" }}>{selectedBank.accountName}</Typography>
+            <Typography sx={{ fontFamily: MONO_FONT, fontSize: "1.05rem", fontWeight: 800, mt: 0.35, letterSpacing: 0.3 }}>
+              {selectedBank.accountNumber}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75, lineHeight: 1.45 }}>
+              {selectedBank.note}
+            </Typography>
+          </Box>
+          <Box sx={{ flexShrink: 0, alignSelf: { xs: "center", sm: "flex-start" } }}>
+            <QrCodeTile label={selectedBank.label} imageUrl={selectedBank.qrImage} surfaceBorderColor={surfaceBorderColor} size="compact" />
+          </Box>
+        </Box>
+      ) : null}
+
+      <Box
+        sx={{
+          p: 2,
+          borderRadius: 1,
+          border: "1px solid",
+          borderColor: surfaceBorderColor,
+          bgcolor: alpha(theme.palette.background.paper, 0.45),
+        }}
+      >
+        <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", mb: 1.25 }}>
+          Proof of payment
+          <Box component="span" sx={{ color: "error.main", ml: 0.25 }}>*</Box>
+        </Typography>
+
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
+          <Button component="label" variant="outlined" color="inherit" sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4, textTransform: "uppercase", flexShrink: 0 }}>
+            {proofFile ? "Change file" : "Upload receipt"}
+            <input type="file" hidden accept="image/*,application/pdf" onChange={handleFileChange} />
+          </Button>
+          {proofFile ? (
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+              <Chip label={proofFile.name} size="small" color="success" sx={{ maxWidth: "100%" }} />
+              {proofFile.dataUrl?.startsWith("data:image") ? (
+                <Box component="img" src={proofFile.dataUrl} alt="Proof preview" sx={{ height: 40, width: 40, objectFit: "cover", borderRadius: 0.75, border: "1px solid", borderColor: surfaceBorderColor, flexShrink: 0 }} />
+              ) : null}
+            </Stack>
+          ) : (
+            <Typography variant="body2" color="text.secondary">Screenshot or PDF of your transfer.</Typography>
+          )}
         </Stack>
-      ) : (
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Required — upload your transfer receipt.</Typography>
-      )}
 
-      <FormControlLabel
-        control={<Checkbox checked={confirmedTransfer} onChange={(e) => setConfirmedTransfer(e.target.checked)} />}
-        label={<Typography variant="body2">I have transferred the exact amount ({PESO.format(total)}).</Typography>}
-      />
+        <FormControlLabel
+          sx={{
+            alignItems: "flex-start",
+            mx: 0,
+            mt: 2,
+            "& .MuiCheckbox-root": { pt: 0.15, ml: -0.5 },
+          }}
+          control={(
+            <Checkbox
+              checked={confirmedTransfer}
+              onChange={(e) => setConfirmedTransfer(e.target.checked)}
+              size="small"
+            />
+          )}
+          label={(
+            <Typography variant="body2" component="span" sx={{ lineHeight: 1.5 }}>
+              I have transferred the exact amount ({PESO.format(total)})
+              <Box component="span" sx={{ color: "error.main" }}> *</Box>
+            </Typography>
+          )}
+        />
+      </Box>
 
-      <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
+      <Stack direction="row" spacing={1.5} sx={{ mt: 2.5 }}>
         <Button variant="outlined" color="inherit" onClick={onBack} sx={{ borderColor: surfaceBorderColor }}>Back</Button>
         <Button
           variant="contained"
@@ -523,99 +591,26 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
         </Button>
       </Stack>
 
-      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 2 }}>
-        Your order will be marked <strong>Pending Verification</strong> until our team confirms payment.
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.5, lineHeight: 1.45 }}>
+        Marked <strong>Pending Verification</strong> until our team confirms payment.
         {orderIdPreview ? ` Reference: ${orderIdPreview}` : ""}
       </Typography>
-    </Box>
+    </CheckoutStepShell>
   );
 }
 
-const popIn = keyframes`
-  0% { opacity: 0; transform: scale(0.85) translateY(12px); }
-  60% { opacity: 1; transform: scale(1.04) translateY(-4px); }
-  100% { opacity: 1; transform: scale(1) translateY(0); }
-`;
-
-const wave = keyframes`
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(18deg); }
-  75% { transform: rotate(-12deg); }
-`;
-
-function ConfirmationView({ order, panelSx }) {
-  const theme = useTheme();
-
-  return (
-    <>
-      <ConfettiBurst />
-      <Box
-        sx={{
-          ...panelSx,
-          p: { xs: 4, md: 5 },
-          textAlign: "center",
-          maxWidth: 480,
-          width: "100%",
-          animation: `${popIn} 0.55s cubic-bezier(0.34, 1.4, 0.64, 1) both`,
-        }}
-      >
-        <Typography
-          component="span"
-          sx={{
-            display: "block",
-            fontSize: "3rem",
-            lineHeight: 1,
-            mb: 1.5,
-            animation: `${wave} 0.9s ease-in-out 0.35s 2`,
-          }}
-        >
-          🎉
-        </Typography>
-
-        <Typography
-          variant="h3"
-          sx={{
-            fontWeight: 900,
-            background: `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            letterSpacing: "-0.02em",
-          }}
-        >
-          Hooray!
-        </Typography>
-
-        <Typography variant="overline" sx={{ color: "success.main", fontWeight: 800, letterSpacing: 2, fontFamily: MONO_FONT, display: "block", mt: 1.5 }}>
-          Order received
-        </Typography>
-
-        <Typography color="text.secondary" sx={{ mt: 2, lineHeight: 1.6 }}>
-          Your order <strong>{order.id}</strong> is in — we&apos;ll verify your payment and keep you posted.
-        </Typography>
-
-        <Stack spacing={1.5} alignItems="center" sx={{ mt: 3 }}>
-          <Chip label="Pending Verification" color="warning" sx={{ fontWeight: 800, px: 0.5 }} />
-          <Typography sx={{ fontWeight: 800, fontSize: "1.35rem", color: "primary.main" }}>
-            {PESO.format(order.total)}
-          </Typography>
-          {order.balanceDue > 0 ? (
-            <Typography sx={{ color: "text.secondary", fontSize: "0.82rem", fontFamily: MONO_FONT }}>
-              Balance due before release: {PESO.format(order.balanceDue)}
-            </Typography>
-          ) : null}
-        </Stack>
-      </Box>
-    </>
-  );
-}
 
 export default function CheckoutPage() {
   const theme = useTheme();
-  const { surfaces } = useOutletContext();
+  const { mode } = useColorMode();
+  const outletContext = useOutletContext();
+  const surfaces = outletContext?.surfaces ?? getSurfaces(theme, mode === "dark");
   const { panelSx, surfaceBorderColor } = surfaces;
   const { user, isCustomer, loading } = useAuth();
   const { items, subtotal, balanceDue, hasPreorder, clearCart } = useCart();
   const { placeOrder } = useOrders();
+  const { decrementStockForCart } = useInventory();
+  const confirmedOrder = useCheckoutConfirmation();
 
   const [step, setStep] = useState(0);
   const [isGuest, setIsGuest] = useState(true);
@@ -623,7 +618,6 @@ export default function CheckoutPage() {
   const [details, setDetailsState] = useState(EMPTY_DETAILS);
   const [proofFile, setProofFile] = useState(null);
   const [confirmedTransfer, setConfirmedTransfer] = useState(false);
-  const [placedOrder, setPlacedOrder] = useState(null);
   const [busy, setBusy] = useState(false);
   const [paymentError, setPaymentError] = useState("");
 
@@ -647,11 +641,7 @@ export default function CheckoutPage() {
     }
   }, [loading, isCustomer, user, accountSkipped]);
 
-  if (items.length === 0 && !placedOrder) {
-    return <CheckoutEmptyLanding panelSx={panelSx} />;
-  }
-
-  if (placedOrder) {
+  if (confirmedOrder) {
     return (
       <Box
         sx={{
@@ -663,9 +653,13 @@ export default function CheckoutPage() {
           py: { xs: 4, md: 6 },
         }}
       >
-        <ConfirmationView order={placedOrder} panelSx={panelSx} />
+        <CheckoutConfirmation order={confirmedOrder} panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} />
       </Box>
     );
+  }
+
+  if (items.length === 0) {
+    return <CheckoutEmptyLanding panelSx={panelSx} />;
   }
 
   function handleAccountContinue({ name, email, guest } = {}) {
@@ -691,6 +685,8 @@ export default function CheckoutPage() {
         postal: details.postal.trim(),
       };
 
+      const depositPercent = items.find((item) => item.depositPercent)?.depositPercent ?? 30;
+
       const order = placeOrder({
         cartItems: items,
         customer: details.name.trim(),
@@ -705,13 +701,28 @@ export default function CheckoutPage() {
         total,
         fullSubtotal: items.reduce((sum, item) => sum + item.price * item.quantity, 0),
         balanceDue,
+        depositPercent,
         proofOfPayment: proofFile.dataUrl,
         guest: isGuest,
         userId: user?.uid,
       });
 
+      if (order?.id) {
+        writeCheckoutConfirmation({
+          id: order.id,
+          total: order.total ?? 0,
+          balanceDue: order.balanceDue ?? 0,
+          email: order.email ?? "",
+          userId: order.userId ?? null,
+        });
+      } else {
+        setPaymentError("Could not place order. Please try again.");
+        setBusy(false);
+        return;
+      }
+
       clearCart();
-      setPlacedOrder(order);
+      decrementStockForCart(items);
     } catch {
       setPaymentError("Could not place order. Please try again.");
     } finally {
@@ -720,7 +731,7 @@ export default function CheckoutPage() {
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: { xs: 4, md: 6 } }}>
+    <Container maxWidth="md" sx={{ py: { xs: 4, md: 5 } }}>
       <Stack spacing={3}>
         <Box>
           <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2, fontFamily: MONO_FONT }}>Checkout</Typography>
@@ -738,8 +749,8 @@ export default function CheckoutPage() {
           ))}
         </Stepper>
 
-        <Grid container spacing={3}>
-          <Grid size={{ xs: 12, md: 7 }}>
+        <Grid container spacing={3} alignItems="flex-start" justifyContent="center">
+          <Grid size={{ xs: 12, lg: 7 }} sx={{ maxWidth: { lg: 640 }, mx: { lg: 0 }, width: "100%" }}>
             {step === 0 ? (
               <AccountStep
                 panelSx={panelSx}
@@ -775,10 +786,11 @@ export default function CheckoutPage() {
               />
             ) : null}
           </Grid>
-          <Grid size={{ xs: 12, md: 5 }}>
-            <Box sx={{ position: { md: "sticky" }, top: 88 }}>
-              <OrderSummary
-                items={items}
+          <Grid size={{ xs: 12, lg: 5 }} sx={{ maxWidth: { lg: 380 }, width: "100%", mx: { lg: "auto" } }}>
+            <Box sx={{ position: { lg: "sticky" }, top: 88 }}>
+              <OrderSummaryPanel
+                compact
+                items={items.map((item) => ({ ...item, amount: cartItemDueNow(item) }))}
                 subtotal={subtotal}
                 shippingFee={shippingFee}
                 total={total}
