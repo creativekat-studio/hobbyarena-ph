@@ -21,6 +21,7 @@ import { migrateLegacyOrderId } from "./orderIds.js";
 import {
   migrateInlineOrderProof,
   resolveOrderProofUrl,
+  hydrateProofAttachment,
   storeOrderProof,
   stripOrderProofPayload,
 } from "./orderProofStorage.js";
@@ -100,8 +101,17 @@ function normalizeOrder(order) {
       : (lineItems.length === 1 && !entry.lineItemId
         ? { ...entry, lineItemId: lineItems[0].id, lineItemName: entry.lineItemName ?? lineItems[0].name }
         : entry);
+
+    const hydratedAttachment = hydrateProofAttachment(withItem.attachment, proofUrl);
+    if (hydratedAttachment) {
+      return { ...withItem, attachment: hydratedAttachment };
+    }
     if (proofAttachment && index === 0 && !withItem.attachment) {
       return { ...withItem, attachment: proofAttachment };
+    }
+    if (withItem.attachment && !withItem.attachment.url) {
+      const { attachment, ...rest } = withItem;
+      return rest;
     }
     return withItem;
   });
@@ -278,7 +288,7 @@ export function OrdersProvider({ children }) {
       );
     };
 
-    const setPaymentAndStatus = (id, payment, status, lineItemId = null, note = "", attachment) =>
+    const setPaymentAndStatus = (id, payment, status, lineItemId = null, note = "", attachment, draftAllocatedQty = undefined) =>
       setOrders((prev) =>
         prev.map((o) => {
           if (o.id !== id) return o;
@@ -286,14 +296,23 @@ export function OrdersProvider({ children }) {
           const targetId = lineItemId ?? (items.length === 1 ? items[0].id : null);
           if (!targetId) return o;
 
+          const prevItem = items.find((item) => item.id === targetId);
+          if (!prevItem) return o;
+
           const lineItems = items.map((item) =>
-            item.id === targetId ? applyPaymentStatusToLineItem(item, payment, status) : item,
+            item.id === targetId
+              ? applyPaymentStatusToLineItem(item, payment, status, draftAllocatedQty)
+              : item,
           );
           const targetItem = lineItems.find((item) => item.id === targetId);
-          const prevItem = items.find((item) => item.id === targetId);
-          if (!prevItem || (prevItem.payment === payment && prevItem.status === status)) return o;
 
-          const allocationCheck = validateAllocationForStatus(prevItem, status);
+          const statusUnchanged = migrateOrderStatus(prevItem.status) === migrateOrderStatus(status);
+          const paymentUnchanged = prevItem.payment === payment;
+          const allocUnchanged = draftAllocatedQty === undefined
+            || (targetItem.allocatedQty ?? 0) === (prevItem.allocatedQty ?? 0);
+          if (statusUnchanged && paymentUnchanged && allocUnchanged) return o;
+
+          const allocationCheck = validateAllocationForStatus(targetItem, status);
           if (!allocationCheck.ok) return o;
 
           let title = "Order updated";

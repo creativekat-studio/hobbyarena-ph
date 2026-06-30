@@ -386,6 +386,7 @@ export function allocationLabelForItem(item) {
   const allocated = item.allocatedQty ?? 0;
   const status = migrateOrderStatus(item.status);
   if (resolveOrderKindForItem(item) !== "Pre-order") return "—";
+  if (status === "Fulfilled") return `Full (${qty})`;
   if (status !== "Partially Fulfilled & Refunded") return "—";
   if (allocated === 0) return `0 / ${qty}`;
   if (allocated >= qty) return `Full (${qty})`;
@@ -453,25 +454,28 @@ export function validateAllocationForStatus(lineItem, status) {
   }
 
   if (normalized === "Fulfilled") {
-    if (allocated > 0 && allocated < qty) {
-      return {
-        ok: false,
-        message: `Allocated qty must be ${qty} (full order qty) before marking Fulfilled.`,
-      };
-    }
+    return { ok: true };
   }
 
   return { ok: true };
 }
 
-export function applyPaymentStatusToLineItem(item, payment, status) {
+export function applyPaymentStatusToLineItem(item, payment, status, draftAllocatedQty = undefined) {
   const normalized = migrateOrderStatus(status);
   const qty = Math.max(1, item.quantity ?? 1);
   let allocatedQty = item.allocatedQty ?? 0;
   const isPreorder = resolveOrderKindForItem(item) === "Pre-order";
 
-  if (normalized === "Fulfilled" && isPreorder && allocatedQty < qty) {
-    allocatedQty = qty;
+  if (isPreorder) {
+    if (normalized === "Fulfilled") {
+      allocatedQty = qty;
+    } else if (normalized === "Partially Fulfilled & Refunded") {
+      if (draftAllocatedQty != null) {
+        allocatedQty = Math.max(0, Math.min(qty, draftAllocatedQty));
+      }
+    } else if (normalized === "Refunded") {
+      allocatedQty = 0;
+    }
   }
 
   let balanceDue = item.balanceDue;
@@ -496,6 +500,8 @@ export function applyPaymentStatusToLineItem(item, payment, status) {
 
 export function inferLineItemAfterAllocation(item, allocatedQty) {
   const qty = Math.max(1, item.quantity ?? 1);
+  const clamped = Math.max(0, Math.min(qty, allocatedQty));
+  const currentStatus = migrateOrderStatus(item.status);
   const stubOrder = {
     type: resolveOrderKindForItem(item),
     qty,
@@ -504,14 +510,21 @@ export function inferLineItemAfterAllocation(item, allocatedQty) {
     balanceDue: item.balanceDue ?? 0,
     depositPercent: 30,
     payment: item.payment,
-    status: item.status,
+    status: currentStatus,
   };
-  const inferred = inferStatusesAfterAllocation(stubOrder, allocatedQty);
+  const inferred = inferStatusesAfterAllocation(stubOrder, clamped);
+
+  let status = inferred.status;
+  let payment = inferred.payment;
+  if (currentStatus === "Partially Fulfilled & Refunded" && clamped > 0 && clamped < qty) {
+    status = "Partially Fulfilled & Refunded";
+  }
+
   return {
     ...item,
-    allocatedQty: inferred.allocatedQty,
-    payment: inferred.payment,
-    status: inferred.status,
+    allocatedQty: clamped,
+    payment,
+    status,
     balanceDue: inferred.balanceDue,
   };
 }

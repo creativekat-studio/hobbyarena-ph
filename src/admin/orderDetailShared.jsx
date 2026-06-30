@@ -50,6 +50,7 @@ import {
   resolveOrderKindForItem,
   validateAllocationForStatus,
 } from "../data/orderWorkflow.js";
+import { hydrateProofAttachment, resolveOrderProofUrl } from "../lib/orderProofStorage.js";
 
 export { PAYMENT_COLOR, STATUS_COLOR, PAYMENT_OPTIONS, STATUS_OPTIONS };
 
@@ -133,7 +134,7 @@ export function ProofPreview({ proof, surfaceBorderColor, panelSx, large = false
 }
 
 function AttachmentPreviewModal({ open, attachment, onClose, surfaceBorderColor }) {
-  if (!attachment) return null;
+  if (!attachment?.url) return null;
 
   const { url, label, type } = attachment;
 
@@ -298,7 +299,7 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
           </Typography>
         ) : null}
 
-        {entry.attachment ? (
+        {entry.attachment?.url ? (
           <Button
             size="small"
             variant="text"
@@ -382,18 +383,39 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
   function handleSave() {
     if (!dirty) return;
 
-    if (paymentStatusDirty) {
-      const check = validateAllocationForStatus(
-        isPreorder ? { ...lineItem, allocatedQty: effectiveAllocated } : lineItem,
-        draftStatus,
+    const savingPartialRefund = paymentStatusDirty
+      && draftStatus === "Partially Fulfilled & Refunded"
+      && isPreorder;
+
+    if (savingPartialRefund && (parsedQty <= 0 || parsedQty >= maxQty)) {
+      setSaveError(
+        parsedQty >= maxQty
+          ? `Full allocation (${maxQty}) should use Fulfilled status instead.`
+          : "Enter allocated qty (minimum 1) for units being fulfilled.",
       );
+      return;
+    }
+
+    const draftAllocatedForSave = savingPartialRefund || (allocationEditable && paymentStatusDirty)
+      ? parsedQty
+      : undefined;
+
+    const itemForValidation = isPreorder
+      ? {
+          ...lineItem,
+          allocatedQty: draftAllocatedForSave ?? (draftStatus === "Fulfilled" ? maxQty : effectiveAllocated),
+        }
+      : lineItem;
+
+    if (paymentStatusDirty) {
+      const check = validateAllocationForStatus(itemForValidation, draftStatus);
       if (!check.ok) {
         setSaveError(check.message);
         return;
       }
     }
 
-    if (allocationDirty && parsedQty <= 0) {
+    if (allocationDirty && !paymentStatusDirty && parsedQty <= 0) {
       setSaveError("Allocation qty is required (minimum 1).");
       return;
     }
@@ -404,10 +426,9 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
       const attachment = draftAttachment
         ? buildTrailAttachment(draftAttachment.dataUrl, draftAttachment.name)
         : undefined;
-      onSave(orderId, draftPayment, draftStatus, lineItem.id, "", attachment);
+      onSave(orderId, draftPayment, draftStatus, lineItem.id, "", attachment, draftAllocatedForSave);
       setDraftAttachment(null);
-    }
-    if (allocationDirty && setAllocation) {
+    } else if (allocationDirty && setAllocation) {
       setAllocation(orderId, parsedQty, lineItem.id);
     }
   }
@@ -415,7 +436,9 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
   function handleStatusChange(nextStatus) {
     setDraftStatus(nextStatus);
     setSaveError("");
-    if (nextStatus !== "Partially Fulfilled & Refunded") {
+    if (nextStatus === "Fulfilled" && isPreorder) {
+      setDraftQty(String(maxQty));
+    } else if (nextStatus !== "Partially Fulfilled & Refunded") {
       setDraftQty(String(lineItem.allocatedQty ?? 0));
     }
   }
@@ -1104,7 +1127,10 @@ export function OrderTrailPanel({
                   entry={entry}
                   isLast={index === trail.length - 1}
                   surfaceBorderColor={surfaceBorderColor}
-                  onViewAttachment={setPreviewAttachment}
+                  onViewAttachment={(attachment) => {
+                    const hydrated = hydrateProofAttachment(attachment, resolveOrderProofUrl(order));
+                    if (hydrated?.url) setPreviewAttachment(hydrated);
+                  }}
                   lineItemLabel={
                     allItemsView && entry.lineItemName
                       ? trailEntryLineItemLabel(entry, lineItems)
