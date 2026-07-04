@@ -2,6 +2,7 @@ import { initializeApp, getApps } from "firebase/app";
 import { getAuth, connectAuthEmulator } from "firebase/auth";
 import {
   getFirestore,
+  initializeFirestore,
   connectFirestoreEmulator,
 } from "firebase/firestore";
 import { getStorage, connectStorageEmulator } from "firebase/storage";
@@ -47,7 +48,14 @@ export function getFirestoreDb() {
   const firebaseApp = getFirebaseApp();
   if (!firebaseApp) return null;
   if (!db) {
-    db = getFirestore(firebaseApp);
+    // ignoreUndefinedProperties: admin edit forms produce undefined fields
+    // (e.g. depositPercent on sealed items) — Firestore rejects undefined by
+    // default, which silently drops product/order writes.
+    try {
+      db = initializeFirestore(firebaseApp, { ignoreUndefinedProperties: true });
+    } catch {
+      db = getFirestore(firebaseApp);
+    }
     if (shouldUseEmulators()) {
       connectFirestoreEmulator(db, "127.0.0.1", 8080);
     }

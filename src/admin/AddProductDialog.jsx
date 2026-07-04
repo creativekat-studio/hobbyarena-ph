@@ -84,7 +84,7 @@ export default function AddProductDialog({
   surfaceBorderColor,
 }) {
   const isEdit = Boolean(product);
-  const { getProduct } = useInventory();
+  const { inventoryById } = useInventory();
   const { activeLines, activeCategories } = useCatalog();
   const [form, setForm] = useState(EMPTY);
   const [copyFromId, setCopyFromId] = useState("");
@@ -93,19 +93,19 @@ export default function AddProductDialog({
   useEffect(() => {
     if (open) {
       if (isEdit) {
-        const source = getProduct(product.id) ?? product;
+        const source = inventoryById.get(product.id) ?? product;
         setForm(formFromProduct(source));
         setCopyFromId("");
       } else if (copyMode && products.length === 1) {
         setCopyFromId(products[0].id);
-        setForm(formFromCopy(getProduct(products[0].id) ?? products[0]));
+        setForm(formFromCopy(inventoryById.get(products[0].id) ?? products[0]));
       } else {
         setForm(EMPTY);
         setCopyFromId("");
       }
       setError("");
     }
-  }, [open, product, isEdit, copyMode, getProduct, products]);
+  }, [open, product, isEdit, copyMode, inventoryById, products]);
 
   function update(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -118,7 +118,7 @@ export default function AddProductDialog({
       setForm(EMPTY);
       return;
     }
-    const source = getProduct(productId) ?? products.find((row) => row.id === productId);
+    const source = inventoryById.get(productId) ?? products.find((row) => row.id === productId);
     if (source) setForm(formFromCopy(source));
   }
 
@@ -224,7 +224,7 @@ export default function AddProductDialog({
               onChange={(e) => update("line", e.target.value)}
             >
               {activeLines.map((item) => (
-                <MenuItem key={item.id} value={item.name}>{item.name}</MenuItem>
+                <MenuItem key={item.id} value={item.label}>{item.label}</MenuItem>
               ))}
             </TextField>
             <TextField
