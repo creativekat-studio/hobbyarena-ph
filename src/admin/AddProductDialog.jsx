@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  Box,
   Button,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -15,6 +17,8 @@ import {
 import ProductDescriptionEditor, { normalizeDescriptionSections, serializeDescriptionSections } from "../components/ProductDescriptionEditor.jsx";
 import { useCatalog } from "../lib/catalogStore.jsx";
 import { useInventory } from "../lib/inventoryStore.jsx";
+import { useFirebaseData } from "../lib/firebase/config.js";
+import { uploadProductImage } from "../lib/firebase/repositories/uploads.js";
 import { MONO_FONT } from "../theme.js";
 import { DEFAULT_DEPOSIT_PERCENT, fromDatetimeLocalValue, toDatetimeLocalValue } from "../lib/preorder.js";
 
@@ -40,6 +44,15 @@ const EMPTY = {
   category: "tcg",
   descriptionSections: [],
 };
+
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 function formFromProduct(product) {
   if (!product) return EMPTY;
@@ -86,9 +99,12 @@ export default function AddProductDialog({
   const isEdit = Boolean(product);
   const { inventoryById } = useInventory();
   const { activeLines, activeCategories } = useCatalog();
+  const firebaseEnabled = useFirebaseData();
   const [form, setForm] = useState(EMPTY);
   const [copyFromId, setCopyFromId] = useState("");
   const [error, setError] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (open) {
@@ -112,6 +128,35 @@ export default function AddProductDialog({
     setError("");
   }
 
+  async function handleImageChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Image must be a PNG, JPG, or WebP file.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Image must be smaller than 5MB.");
+      return;
+    }
+
+    setError("");
+    setUploading(true);
+    try {
+      // Pre-prod uses Firebase Storage; local dev falls back to an inline data URL.
+      const url = firebaseEnabled
+        ? await uploadProductImage(product?.id, file)
+        : await readAsDataUrl(file);
+      setForm((prev) => ({ ...prev, image: url }));
+    } catch (uploadError) {
+      console.error("[product] Image upload failed:", uploadError);
+      setError("Could not upload the image. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   function handleCopyFromChange(productId) {
     setCopyFromId(productId);
     if (!productId) {
@@ -126,11 +171,16 @@ export default function AddProductDialog({
     setForm(EMPTY);
     setCopyFromId("");
     setError("");
+    setUploading(false);
     onClose();
   }
 
   function handleSubmit(event) {
     event.preventDefault();
+    if (uploading) {
+      setError("Please wait for the image to finish uploading.");
+      return;
+    }
     if (!form.name.trim()) {
       setError("Product name is required.");
       return;
@@ -170,6 +220,26 @@ export default function AddProductDialog({
       return;
     }
     handleClose();
+  }
+
+  let imagePreview;
+  if (uploading) {
+    imagePreview = <CircularProgress size={22} />;
+  } else if (form.image) {
+    imagePreview = (
+      <Box
+        component="img"
+        src={form.image}
+        alt="Product preview"
+        sx={{ width: "100%", height: "100%", objectFit: "cover" }}
+      />
+    );
+  } else {
+    imagePreview = (
+      <Typography sx={{ fontSize: "0.65rem", color: "text.disabled", textAlign: "center", px: 1 }}>
+        No image
+      </Typography>
+    );
   }
 
   return (
@@ -332,14 +402,64 @@ export default function AddProductDialog({
               onChange={(e) => update("reviews", e.target.value)}
             />
           </Stack>
-          <TextField
-            label="Image URL (optional)"
-            fullWidth
-            placeholder="/products/your-image.jpg"
-            value={form.image}
-            onChange={(e) => update("image", e.target.value)}
-            helperText="Leave blank to use a placeholder thumbnail."
-          />
+          <Box>
+            <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, mb: 1, color: "text.secondary" }}>
+              Product image
+            </Typography>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/*"
+              hidden
+              onChange={handleImageChange}
+            />
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Box
+                sx={{
+                  width: 88,
+                  height: 88,
+                  borderRadius: 2,
+                  border: "1px dashed",
+                  borderColor: surfaceBorderColor || "divider",
+                  bgcolor: "action.hover",
+                  overflow: "hidden",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                {imagePreview}
+              </Box>
+              <Stack spacing={0.75} sx={{ minWidth: 0 }}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    disabled={uploading}
+                    onClick={() => fileInputRef.current?.click()}
+                    sx={{ textTransform: "none" }}
+                  >
+                    {form.image ? "Replace image" : "Upload image"}
+                  </Button>
+                  {form.image && !uploading ? (
+                    <Button
+                      variant="text"
+                      size="small"
+                      color="inherit"
+                      onClick={() => update("image", "")}
+                      sx={{ textTransform: "none" }}
+                    >
+                      Remove
+                    </Button>
+                  ) : null}
+                </Stack>
+                <Typography sx={{ fontSize: "0.72rem", color: "text.disabled", lineHeight: 1.4 }}>
+                  PNG, JPG, or WebP · up to 5MB. Stored in Firebase Storage.
+                </Typography>
+              </Stack>
+            </Stack>
+          </Box>
           <ProductDescriptionEditor
             sections={form.descriptionSections}
             onChange={(descriptionSections) => update("descriptionSections", descriptionSections)}
@@ -362,7 +482,7 @@ export default function AddProductDialog({
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2, borderTop: "1px solid", borderColor: surfaceBorderColor }}>
         <Button onClick={handleClose} color="inherit">Cancel</Button>
-        <Button type="submit" variant="contained" color="primary" sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
+        <Button type="submit" variant="contained" color="primary" disabled={uploading} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
           {isEdit ? "Save changes" : "Add product"}
         </Button>
       </DialogActions>
