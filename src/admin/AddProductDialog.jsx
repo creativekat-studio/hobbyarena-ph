@@ -327,7 +327,7 @@ export default function AddProductDialog({
               label="Selling price (₱)"
               type="number"
               fullWidth
-              inputProps={{ min: 0, step: 100 }}
+              inputProps={{ min: 0, step: "any" }}
               value={form.price}
               onChange={(e) => update("price", e.target.value)}
               helperText="Shown to customers on the storefront."
@@ -336,7 +336,7 @@ export default function AddProductDialog({
               label="Cost (₱)"
               type="number"
               fullWidth
-              inputProps={{ min: 0, step: 100 }}
+              inputProps={{ min: 0, step: "any" }}
               value={form.cost}
               onChange={(e) => update("cost", e.target.value)}
               helperText={isEdit ? "What Hobby Arena pays to buy it. Drives net revenue & stock value." : "What Hobby Arena pays to buy it. Defaults to ~72% of price if blank."}
@@ -465,22 +465,23 @@ export default function AddProductDialog({
             onChange={(descriptionSections) => update("descriptionSections", descriptionSections)}
             surfaceBorderColor={surfaceBorderColor}
           />
-          <FormControlLabel
-            control={(
-              <Switch
-                checked={form.published}
-                onChange={(e) => update("published", e.target.checked)}
-                color="primary"
-              />
-            )}
-            label={form.published ? "Published on storefront" : "Draft — hidden from shop"}
-          />
           {error ? (
             <Typography color="error" sx={{ fontSize: "0.85rem" }}>{error}</Typography>
           ) : null}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2, borderTop: "1px solid", borderColor: surfaceBorderColor }}>
+        <FormControlLabel
+          sx={{ mr: "auto" }}
+          control={(
+            <Switch
+              checked={form.published}
+              onChange={(e) => update("published", e.target.checked)}
+              color="primary"
+            />
+          )}
+          label={form.published ? "Published on storefront" : "Draft — hidden from shop"}
+        />
         <Button onClick={handleClose} color="inherit">Cancel</Button>
         <Button type="submit" variant="contained" color="primary" disabled={uploading} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
           {isEdit ? "Save changes" : "Add product"}

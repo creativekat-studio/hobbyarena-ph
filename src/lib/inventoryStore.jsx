@@ -123,7 +123,7 @@ const InventoryContext = createContext(null);
 export function InventoryProvider({ children }) {
   const firebaseEnabled = useFirebaseData();
   const adminWrite = useAdminFirestoreWrite();
-  const [items, setItems] = useState(() => (firebaseEnabled ? seedInventory() : loadInventory()));
+  const [items, setItems] = useState(() => (firebaseEnabled ? [] : loadInventory()));
   const syncingRemote = useRef(false);
 
   useEffect(() => {
