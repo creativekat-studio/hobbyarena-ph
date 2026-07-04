@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { queueInquiryEmails } from "./emailService.js";
 
 /**
  * Inquiries store (contact-form submissions).
@@ -12,26 +13,7 @@ const STORAGE_KEY = "hobbyarena:inquiries";
 
 export const INQUIRY_STATUS = { NEW: "New", READ: "Read", HANDLED: "Handled" };
 
-const SEED = [
-  {
-    id: "q_seed_1",
-    name: "Carlo Mendoza",
-    email: "carlo@example.com",
-    subject: "OP-15 booster box restock?",
-    message: "Hi! Are you restocking the OP-15 booster boxes soon? Want to grab a sealed case.",
-    status: "New",
-    date: "2026-06-15T09:12:00.000Z",
-  },
-  {
-    id: "q_seed_2",
-    name: "Bea Santos",
-    email: "bea@example.com",
-    subject: "Pickup option",
-    message: "Do you offer store pickup in Metro Manila for pre-orders? Thanks!",
-    status: "Read",
-    date: "2026-06-14T14:40:00.000Z",
-  },
-];
+const SEED = [];
 
 function loadInquiries() {
   if (typeof window === "undefined") return SEED;
@@ -55,19 +37,20 @@ export function InquiriesProvider({ children }) {
   }, [inquiries]);
 
   const api = useMemo(() => {
-    const addInquiry = ({ name, email, subject, message }) =>
-      setInquiries((prev) => [
-        {
-          id: `q_${Date.now()}`,
-          name: name.trim(),
-          email: email.trim(),
-          subject: subject.trim(),
-          message: message.trim(),
-          status: INQUIRY_STATUS.NEW,
-          date: new Date().toISOString(),
-        },
-        ...prev,
-      ]);
+    const addInquiry = ({ name, email, subject, message }) => {
+      const inquiry = {
+        id: `q_${Date.now()}`,
+        name: name.trim(),
+        email: email.trim(),
+        subject: subject.trim(),
+        message: message.trim(),
+        status: INQUIRY_STATUS.NEW,
+        date: new Date().toISOString(),
+      };
+      setInquiries((prev) => [inquiry, ...prev]);
+      queueInquiryEmails(inquiry);
+      return inquiry;
+    };
 
     const setStatus = (id, status) =>
       setInquiries((prev) => prev.map((q) => (q.id === id ? { ...q, status } : q)));

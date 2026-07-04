@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   AppBar,
   Badge,
@@ -5,6 +6,9 @@ import {
   Button,
   Chip,
   Container,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Drawer,
   IconButton,
   List,
@@ -22,6 +26,7 @@ import BrandLogo from "../components/BrandLogo.jsx";
 import {
   BoxIcon,
   CardIcon,
+  CogIcon,
   InventoryIcon,
   MailIcon,
   MoonIcon,
@@ -29,6 +34,7 @@ import {
   SunIcon,
   UserIcon,
 } from "../components/icons.jsx";
+import FirebaseStatusCard from "../components/FirebaseStatusCard.jsx";
 import { getSurfaces } from "../lib/surfaces.js";
 import { useColorMode } from "../lib/colorMode.jsx";
 import { useInquiries } from "../lib/inquiriesStore.jsx";
@@ -49,6 +55,7 @@ const NAV = [
   { label: "Classifications", to: "/admin/catalog", icon: CardIcon },
   { label: "Design", to: "/admin/design", icon: SparkleIcon },
   { label: "CMS", to: "/admin/cms", icon: CardIcon },
+  { label: "Emails", to: "/admin/emails", icon: MailIcon },
 ];
 
 export default function AdminLayout() {
@@ -61,6 +68,7 @@ export default function AdminLayout() {
   const isDarkMode = mode === "dark";
   const surfaces = getSurfaces(theme, isDarkMode);
   const { surfaceBorderColor, navbarBackground } = surfaces;
+  const [healthOpen, setHealthOpen] = useState(false);
 
   async function handleSignOut() {
     await signOutAdmin();
@@ -180,6 +188,11 @@ export default function AdminLayout() {
                     <IconButton size="small" onClick={toggle} color="inherit">{isDarkMode ? <SunIcon /> : <MoonIcon />}</IconButton>
                   </Tooltip>
                 )}
+                healthButton={(
+                  <Tooltip title="System health & connection">
+                    <IconButton size="small" onClick={() => setHealthOpen(true)} color="inherit"><CogIcon /></IconButton>
+                  </Tooltip>
+                )}
               />
             </Toolbar>
           </AppBar>
@@ -190,6 +203,13 @@ export default function AdminLayout() {
           </Container>
         </AdminPageHeaderProvider>
       </Box>
+
+      <Dialog open={healthOpen} onClose={() => setHealthOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800 }}>System health</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <FirebaseStatusCard panelSx={surfaces.panelSx} />
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 }

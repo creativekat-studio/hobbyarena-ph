@@ -1,23 +1,19 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
   Button,
   Checkbox,
   Chip,
+  CircularProgress,
   Container,
   Divider,
   FormControlLabel,
   Grid,
   Link,
+  Skeleton,
   Stack,
   Tab,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Tabs,
   TextField,
   Typography,
@@ -28,18 +24,19 @@ import { MONO_FONT, getStatAccents } from "../theme.js";
 import { avatarStyles } from "../lib/surfaces.js";
 import { wider } from "../lib/layout.js";
 import { PESO } from "../components/ProductCard.jsx";
-import { BoltIcon, CardIcon, HeartIcon, SparkleIcon, UserIcon } from "../components/icons.jsx";
+import { CardIcon, HeartIcon, UserIcon } from "../components/icons.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
+import { getCustomerProfile } from "../lib/customersStore.jsx";
 import { useOrders, getOrdersForEmail } from "../lib/ordersStore.jsx";
 import { useWishlist } from "../lib/wishlistStore.jsx";
 import { useCart } from "../lib/cartStore.jsx";
 import { ACCOUNT } from "../data/mockData.js";
-
-import { STATUS_COLOR } from "../data/orderWorkflow.js";
+import { CustomerOrderCard } from "../components/CustomerOrderCard.jsx";
+import { setAuthSurface } from "../auth/authSurface.js";
 
 function AuthCard({ panelSx }) {
   const theme = useTheme();
-  const { signInCustomer, registerCustomer } = useAuth();
+  const { signInCustomer, signInWithGoogle, registerCustomer, authMode } = useAuth();
   const [mode, setMode] = useState("signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -61,6 +58,18 @@ function AuthCard({ panelSx }) {
       }
     } catch (err) {
       setError(err.message || "Something went wrong.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    setError("");
+    setBusy(true);
+    try {
+      await signInWithGoogle();
+    } catch (err) {
+      setError(err.message || "Google sign-in failed.");
     } finally {
       setBusy(false);
     }
@@ -114,6 +123,20 @@ function AuthCard({ panelSx }) {
 
         <Divider sx={{ color: "text.secondary", fontSize: "0.75rem" }}>or</Divider>
 
+        {authMode === "firebase" ? (
+          <Button
+            type="button"
+            variant="outlined"
+            color="inherit"
+            size="large"
+            disabled={busy}
+            onClick={handleGoogleSignIn}
+            sx={{ py: 1.2, borderColor: "divider", textTransform: "none", fontWeight: 700 }}
+          >
+            Continue with Google
+          </Button>
+        ) : null}
+
         <Typography variant="body2" color="text.secondary" textAlign="center">
           {mode === "signin" ? "New to Hobby Arena? " : "Already a member? "}
           <Box component="button" type="button" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(""); }} sx={{ background: "none", border: "none", p: 0, cursor: "pointer", color: "primary.main", fontWeight: 700, textDecoration: "underline", font: "inherit" }}>
@@ -121,7 +144,9 @@ function AuthCard({ panelSx }) {
           </Box>
         </Typography>
         <Typography variant="caption" color="text.secondary" textAlign="center" sx={{ fontFamily: MONO_FONT }}>
-          Demo only — any details sign you in as a customer.
+          {authMode === "firebase"
+            ? "Secured with Firebase Auth — email/password or Google."
+            : "Demo only — any details sign you in as a customer."}
         </Typography>
       </Stack>
     </Box>
@@ -147,22 +172,56 @@ function StatCard({ panelSx, icon, label, value, accent }) {
   );
 }
 
-function Dashboard({ panelSx, surfaceBorderColor }) {
+function ProfileTab({ panelSx, surfaceBorderColor }) {
+  const { user, updateCustomerProfileDetails } = useAuth();
+  const saved = getCustomerProfile(user?.email);
+  const [name, setName] = useState(saved?.name || user?.displayName || "");
+  const [phone, setPhone] = useState(saved?.phone || user?.phone || "");
+  const [status, setStatus] = useState("idle");
+  const [error, setError] = useState("");
+
+  async function handleSave(event) {
+    event.preventDefault();
+    setError("");
+    setStatus("saving");
+    try {
+      await updateCustomerProfileDetails({ name, phone });
+      setStatus("saved");
+    } catch (err) {
+      setError(err.message || "Could not save profile.");
+      setStatus("idle");
+    }
+  }
+
+  return (
+    <Box component="form" onSubmit={handleSave} sx={{ p: 3 }}>
+      <Stack spacing={2} sx={{ maxWidth: 420 }}>
+        {status === "saved" ? <Alert severity="success">Profile saved.</Alert> : null}
+        {error ? <Alert severity="error">{error}</Alert> : null}
+        <TextField label="Full name" fullWidth value={name} onChange={(e) => setName(e.target.value)} required />
+        <TextField label="Email" fullWidth value={user?.email || ""} disabled />
+        <TextField label="Phone" fullWidth value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+63 9XX XXX XXXX" />
+        <Button type="submit" variant="contained" disabled={status === "saving"} sx={{ alignSelf: "flex-start", fontFamily: MONO_FONT, letterSpacing: 0.5 }}>
+          {status === "saving" ? "Saving…" : "Save details"}
+        </Button>
+      </Stack>
+    </Box>
+  );
+}
+
+function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
   const theme = useTheme();
   const accents = getStatAccents(theme);
   const { user, signOutCustomer } = useAuth();
-  const { orders: allOrders } = useOrders();
+  const { orders: allOrders, ordersReady } = useOrders();
   const { items: wishlistItems, remove: removeFromWishlist } = useWishlist();
   const { addItem } = useCart();
   const [tab, setTab] = useState(0);
 
-  const customerOrders = useMemo(() => {
-    const fromStore = getOrdersForEmail(allOrders, user?.email);
-    if (fromStore.length) return fromStore;
-    return ACCOUNT.orders;
-  }, [allOrders, user?.email]);
+  const customerOrders = useMemo(() => getOrdersForEmail(allOrders, user?.email), [allOrders, user?.email]);
   const displayName = user?.displayName || ACCOUNT.name;
   const email = user?.email || ACCOUNT.email;
+  const profileLoading = authLoading && !user;
 
   return (
     <Stack spacing={3}>
@@ -170,15 +229,23 @@ function Dashboard({ panelSx, surfaceBorderColor }) {
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2.5} alignItems={{ xs: "flex-start", sm: "center" }} justifyContent="space-between">
           <Stack direction="row" spacing={2} alignItems="center">
             <Box sx={{ width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1.5rem", ...avatarStyles(theme) }}>
-              {displayName.charAt(0).toUpperCase()}
+              {profileLoading ? "" : displayName.charAt(0).toUpperCase()}
             </Box>
-            <Box>
-              <Typography variant="h5" sx={{ fontWeight: 800 }}>{displayName}</Typography>
-              <Typography color="text.secondary" sx={{ fontSize: "0.88rem" }}>{email}</Typography>
-              <Chip label={ACCOUNT.tier} size="small" color="primary" sx={{ mt: 0.75, fontFamily: MONO_FONT, letterSpacing: 0.5 }} />
-            </Box>
+            {profileLoading ? (
+              <Box>
+                <Skeleton variant="text" width={160} sx={{ fontSize: "1.5rem" }} />
+                <Skeleton variant="text" width={200} sx={{ fontSize: "0.88rem" }} />
+                <Skeleton variant="rounded" width={110} height={24} sx={{ mt: 0.75 }} />
+              </Box>
+            ) : (
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 800 }}>{displayName}</Typography>
+                <Typography color="text.secondary" sx={{ fontSize: "0.88rem" }}>{email}</Typography>
+                <Chip label={ACCOUNT.tier} size="small" color="primary" sx={{ mt: 0.75, fontFamily: MONO_FONT, letterSpacing: 0.5 }} />
+              </Box>
+            )}
           </Stack>
-          <Button variant="outlined" color="inherit" onClick={signOutCustomer} sx={{ borderColor: surfaceBorderColor }}>Sign out</Button>
+          <Button variant="outlined" color="inherit" onClick={signOutCustomer} disabled={profileLoading} sx={{ borderColor: surfaceBorderColor }}>Sign out</Button>
         </Stack>
       </Box>
 
@@ -195,53 +262,32 @@ function Dashboard({ panelSx, surfaceBorderColor }) {
         <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ px: 2, borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
           <Tab label={`Orders (${customerOrders.length})`} sx={{ fontWeight: 700, textTransform: "none" }} />
           <Tab label={`Wishlist (${wishlistItems.length})`} sx={{ fontWeight: 700, textTransform: "none" }} />
+          <Tab label="Profile" sx={{ fontWeight: 700, textTransform: "none" }} />
         </Tabs>
 
         {tab === 0 ? (
           <Stack spacing={2} sx={{ p: 3 }}>
-            {customerOrders.map((order) => {
-              const trail = order.trail ?? [];
-              const last = trail[trail.length - 1];
-              const prev = trail.length > 1 ? trail[trail.length - 2] : null;
-              const lineItems = order.lineItems ?? [];
-              return (
-                <Box key={order.id} sx={{ p: 2.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor, position: "relative" }}>
-                  <Stack direction="row" spacing={1} sx={{ position: "absolute", top: 12, right: 12 }} flexWrap="wrap" useFlexGap>
-                    {prev ? <Chip label={prev.status} size="small" variant="outlined" sx={{ fontSize: "0.65rem" }} /> : null}
-                    {prev ? <Typography sx={{ color: "text.secondary", fontSize: "0.75rem" }}>→</Typography> : null}
-                    <Chip label={order.status} size="small" color={STATUS_COLOR[order.status] || "default"} sx={{ fontWeight: 800 }} />
-                  </Stack>
-                  <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: "0.9rem" }}>{order.id}</Typography>
-                  <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", mt: 0.25 }}>{order.date}</Typography>
-                  {order.type ? (
-                    <Chip
-                      label={order.type}
-                      size="small"
-                      variant="outlined"
-                      color={order.type === "Pre-order" ? "secondary" : "default"}
-                      sx={{ mt: 1, fontFamily: MONO_FONT, fontSize: "0.65rem" }}
-                    />
-                  ) : null}
-                  <Stack spacing={0.75} sx={{ mt: 1.5 }}>
-                    {lineItems.length ? lineItems.map((item) => (
-                      <Stack key={`${order.id}-${item.id}`} direction="row" justifyContent="space-between" spacing={2}>
-                        <Typography sx={{ fontSize: "0.85rem", flex: 1 }}>{item.name}</Typography>
-                        <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.75rem", color: "text.secondary" }}>Qty {item.quantity}</Typography>
-                        <Typography sx={{ fontWeight: 700, fontSize: "0.85rem" }}>{PESO.format(item.price * item.quantity)}</Typography>
-                      </Stack>
-                    )) : (
-                      <Typography sx={{ fontSize: "0.88rem" }}>{order.items}</Typography>
-                    )}
-                  </Stack>
-                  <Stack direction="row" justifyContent="space-between" sx={{ mt: 2, pt: 1.5, borderTop: "1px dashed", borderColor: surfaceBorderColor }}>
-                    <Typography sx={{ fontWeight: 800 }}>Total</Typography>
-                    <Typography sx={{ fontWeight: 800, color: "primary.main" }}>{PESO.format(order.total)}</Typography>
-                  </Stack>
-                </Box>
-              );
-            })}
+            {!ordersReady ? (
+              <Stack spacing={1.5} alignItems="center" sx={{ py: 5, color: "text.secondary" }}>
+                <CircularProgress size={28} />
+                <Typography variant="body2">Loading your orders…</Typography>
+              </Stack>
+            ) : customerOrders.length === 0 ? (
+              <Stack spacing={1.5} alignItems="center" sx={{ py: 5, textAlign: "center", color: "text.secondary" }}>
+                <CardIcon sx={{ fontSize: 40, color: "text.secondary" }} />
+                <Typography>No orders yet.</Typography>
+                <Typography variant="body2">Your order history will appear here after checkout.</Typography>
+              </Stack>
+            ) : customerOrders.map((order) => (
+              <CustomerOrderCard
+                key={order.id}
+                order={order}
+                surfaceBorderColor={surfaceBorderColor}
+              />
+            ))}
           </Stack>
-        ) : wishlistItems.length === 0 ? (
+        ) : tab === 1 ? (
+          wishlistItems.length === 0 ? (
           <Stack spacing={1.5} alignItems="center" sx={{ p: 5, textAlign: "center", color: "text.secondary" }}>
             <HeartIcon sx={{ fontSize: 40, color: "text.secondary" }} />
             <Typography>Your wishlist is empty.</Typography>
@@ -288,6 +334,9 @@ function Dashboard({ panelSx, surfaceBorderColor }) {
               );
             })}
           </Stack>
+        )
+        ) : (
+          <ProfileTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} />
         )}
       </Box>
     </Stack>
@@ -297,12 +346,17 @@ function Dashboard({ panelSx, surfaceBorderColor }) {
 export default function AccountPage() {
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
-  const { isCustomer } = useAuth();
+  const { isCustomer, loading, reconcileCustomerSession } = useAuth();
+
+  useEffect(() => {
+    setAuthSurface("customer");
+    reconcileCustomerSession();
+  }, [reconcileCustomerSession]);
 
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 5, md: 8 } }}>
-      {isCustomer ? (
-        <Dashboard panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} />
+      {isCustomer || loading ? (
+        <Dashboard panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} authLoading={loading && !isCustomer} />
       ) : (
         <Stack spacing={4} alignItems="center">
           <Stack spacing={1} alignItems="center" textAlign="center">

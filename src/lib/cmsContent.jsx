@@ -1,6 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ALL_PRODUCTS, BRAND, TESTIMONIALS } from "../data/mockData.js";
 import { BANK_ACCOUNTS } from "../data/checkoutSettings.js";
+import { useFirebaseData } from "./firebase/config.js";
+import { useAdminFirestoreWrite } from "./firebase/adminWriteAccess.js";
+import { saveCmsContent, subscribeCmsContent } from "./firebase/repositories/cms.js";
 
 /**
  * Lightweight CMS content store.
@@ -153,34 +156,37 @@ function mergeBankDetails(saved) {
   };
 }
 
+function mergeCmsPayload(parsed) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return DEFAULT_CONTENT;
+  return {
+    ...DEFAULT_CONTENT,
+    ...parsed,
+    hero: { ...DEFAULT_CONTENT.hero, ...parsed.hero },
+    homepageSections: {
+      products: { ...DEFAULT_CONTENT.homepageSections.products, ...parsed.homepageSections?.products },
+      preorders: { ...DEFAULT_CONTENT.homepageSections.preorders, ...parsed.homepageSections?.preorders },
+    },
+    social: { ...DEFAULT_CONTENT.social, ...parsed.social },
+    contact: { ...DEFAULT_CONTENT.contact, ...parsed.contact },
+    testimonials: mergeTestimonials(parsed.testimonials),
+    productReviews: { ...DEFAULT_CONTENT.productReviews, ...parsed.productReviews },
+    bankDetails: mergeBankDetails(parsed.bankDetails),
+    banners: (parsed.banners || DEFAULT_CONTENT.banners).map((banner) => {
+      const fallback = DEFAULT_CONTENT.banners.find((b) => b.id === banner.id);
+      const { image: _image, ...rest } = banner;
+      return { ...fallback, ...rest };
+    }),
+    featureDrops: parsed.featureDrops || DEFAULT_CONTENT.featureDrops,
+    announcements: parsed.announcements || DEFAULT_CONTENT.announcements,
+  };
+}
+
 function loadContent() {
   if (typeof window === "undefined") return DEFAULT_CONTENT;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_CONTENT;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return DEFAULT_CONTENT;
-    return {
-      ...DEFAULT_CONTENT,
-      ...parsed,
-      hero: { ...DEFAULT_CONTENT.hero, ...parsed.hero },
-      homepageSections: {
-        products: { ...DEFAULT_CONTENT.homepageSections.products, ...parsed.homepageSections?.products },
-        preorders: { ...DEFAULT_CONTENT.homepageSections.preorders, ...parsed.homepageSections?.preorders },
-      },
-      social: { ...DEFAULT_CONTENT.social, ...parsed.social },
-      contact: { ...DEFAULT_CONTENT.contact, ...parsed.contact },
-      testimonials: mergeTestimonials(parsed.testimonials),
-      productReviews: { ...DEFAULT_CONTENT.productReviews, ...parsed.productReviews },
-      bankDetails: mergeBankDetails(parsed.bankDetails),
-      banners: (parsed.banners || DEFAULT_CONTENT.banners).map((banner) => {
-        const fallback = DEFAULT_CONTENT.banners.find((b) => b.id === banner.id);
-        const { image: _image, ...rest } = banner;
-        return { ...fallback, ...rest };
-      }),
-      featureDrops: parsed.featureDrops || DEFAULT_CONTENT.featureDrops,
-      announcements: parsed.announcements || DEFAULT_CONTENT.announcements,
-    };
+    return mergeCmsPayload(JSON.parse(raw));
   } catch {
     return DEFAULT_CONTENT;
   }
@@ -189,11 +195,65 @@ function loadContent() {
 const CmsContext = createContext(null);
 
 export function CmsProvider({ children }) {
-  const [content, setContent] = useState(loadContent);
+  const firebaseEnabled = useFirebaseData();
+  const adminWrite = useAdminFirestoreWrite();
+  const [content, setContent] = useState(() => (firebaseEnabled ? DEFAULT_CONTENT : loadContent()));
+  const syncingRemote = useRef(false);
+  const saveTimer = useRef(null);
+  const pendingSeed = useRef(null);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(content));
-  }, [content]);
+    if (!firebaseEnabled) return undefined;
+
+    return subscribeCmsContent(
+      (remote) => {
+        syncingRemote.current = true;
+        if (!remote) {
+          const local = loadContent();
+          setContent(local);
+          pendingSeed.current = local;
+        } else {
+          pendingSeed.current = null;
+          setContent(mergeCmsPayload(remote));
+        }
+        queueMicrotask(() => {
+          syncingRemote.current = false;
+        });
+      },
+      (error) => console.error("[cms] Firestore sync failed:", error),
+    );
+  }, [firebaseEnabled]);
+
+  useEffect(() => {
+    if (!firebaseEnabled || !adminWrite.ready || !adminWrite.allowed) return undefined;
+    if (!pendingSeed.current) return undefined;
+
+    const seed = pendingSeed.current;
+    pendingSeed.current = null;
+    saveCmsContent(seed).catch((error) => {
+      console.error("[cms] Failed to seed Firestore:", error);
+    });
+  }, [firebaseEnabled, adminWrite]);
+
+  useEffect(() => {
+    if (syncingRemote.current) return undefined;
+
+    if (!firebaseEnabled) {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(content));
+      return undefined;
+    }
+
+    if (!adminWrite.ready || !adminWrite.allowed) return undefined;
+
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      saveCmsContent(content).catch((error) => {
+        console.error("[cms] Failed to save content:", error);
+      });
+    }, 400);
+
+    return () => clearTimeout(saveTimer.current);
+  }, [content, firebaseEnabled, adminWrite]);
 
   const api = useMemo(() => {
     const setHero = (hero) => setContent((c) => ({ ...c, hero: { ...c.hero, ...hero } }));

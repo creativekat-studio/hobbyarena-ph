@@ -12,6 +12,7 @@ import { getSurfaces } from "../lib/surfaces.js";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { useCart } from "../lib/cartStore.jsx";
 import { useWishlist } from "../lib/wishlistStore.jsx";
+import { useStockHolds } from "../lib/stockHoldStore.jsx";
 import PreorderTermsDialog from "./PreorderTermsDialog.jsx";
 import { CardIcon, HeartIcon, PokeballIcon } from "./icons.jsx";
 import { OFF_WHITE } from "../lib/colors.js";
@@ -40,6 +41,7 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
   const { isCustomer } = useAuth();
   const { addItem, setQuantity, items } = useCart();
   const { canWishlist, isWishlisted, toggle } = useWishlist();
+  const { availableStock } = useStockHolds();
   const [added, setAdded] = useState(false);
   const [wishlisted, setWishlisted] = useState(() => isWishlisted(product.id));
   const [termsOpen, setTermsOpen] = useState(false);
@@ -51,9 +53,10 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
   const isPokemon = product.line?.startsWith("Pokémon");
   const Glyph = isPokemon ? PokeballIcon : CardIcon;
   const isPreorder = product.tag === "Pre-order";
-  const soldOut = !isPreorder && product.stock <= 0;
+  const effectiveStock = isPreorder ? product.stock : availableStock(product.id, product.stock);
+  const soldOut = !isPreorder && effectiveStock <= 0;
   const preorderClosed = isPreorder && getCountdownParts(product.preorderEndsAt)?.expired;
-  const maxQty = isPreorder ? 99 : Math.max(product.stock, 0);
+  const maxQty = isPreorder ? 99 : Math.max(effectiveStock, 0);
 
   let actionLabel = "Add to cart";
   if (isPreorder) actionLabel = "Pre-order";

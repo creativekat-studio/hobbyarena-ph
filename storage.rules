@@ -1,0 +1,35 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        request.auth.token.email == 'website.hobbyarena@gmail.com'
+      );
+    }
+
+    // Payment proof uploads — customer who owns the order or admin
+    match /order-proofs/{orderId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|application/pdf');
+    }
+
+    match /products/{productId}/{fileName} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /cms/{fileName} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

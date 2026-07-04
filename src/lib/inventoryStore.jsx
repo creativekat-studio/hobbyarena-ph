@@ -1,7 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { ALL_PRODUCTS, INVENTORY } from "../data/mockData.js";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { ALL_PRODUCTS } from "../data/mockData.js";
 import { productImage } from "../data/mediaAssets.js";
 import { DEFAULT_DEPOSIT_PERCENT } from "./preorder.js";
+import { seedInventory } from "./inventorySeed.js";
+import { useFirebaseData } from "./firebase/config.js";
+import { useAdminFirestoreWrite } from "./firebase/adminWriteAccess.js";
+import { subscribeProducts, upsertProduct, upsertProducts } from "./firebase/repositories/products.js";
 
 /**
  * Inventory store — stock levels, storefront publish state, and custom products.
@@ -11,15 +15,6 @@ import { DEFAULT_DEPOSIT_PERCENT } from "./preorder.js";
  */
 
 const STORAGE_KEY = "hobbyarena:inventory";
-
-function seedInventory() {
-  return INVENTORY.map((row, index) => ({
-    ...row,
-    image: productImage(row.id),
-    published: index % 5 !== 0,
-    custom: false,
-  }));
-}
 
 function rowToProduct(row) {
   const catalog = ALL_PRODUCTS.find((product) => product.id === row.id);
@@ -126,45 +121,117 @@ function loadInventory() {
 const InventoryContext = createContext(null);
 
 export function InventoryProvider({ children }) {
-  const [items, setItems] = useState(loadInventory);
+  const firebaseEnabled = useFirebaseData();
+  const adminWrite = useAdminFirestoreWrite();
+  const [items, setItems] = useState(() => (firebaseEnabled ? seedInventory() : loadInventory()));
+  const syncingRemote = useRef(false);
 
   useEffect(() => {
+    if (!firebaseEnabled) return undefined;
+
+    const unsubscribe = subscribeProducts(
+      (nextItems) => {
+        syncingRemote.current = true;
+        setItems(nextItems);
+        queueMicrotask(() => {
+          syncingRemote.current = false;
+        });
+      },
+      (error) => {
+        console.error("[inventory] Firestore sync failed:", error);
+      },
+    );
+
+    return unsubscribe;
+  }, [firebaseEnabled]);
+
+  useEffect(() => {
+    if (firebaseEnabled || syncingRemote.current) return;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  }, [items]);
+  }, [items, firebaseEnabled]);
+
+  const persistRows = useCallback(
+    (rows) => {
+      if (!firebaseEnabled || !adminWrite.allowed) return;
+      upsertProducts(rows).catch((error) => {
+        console.error("[inventory] Failed to save products:", error);
+      });
+    },
+    [firebaseEnabled, adminWrite.allowed],
+  );
+
+  const persistRow = useCallback(
+    (row) => {
+      if (!firebaseEnabled || !adminWrite.allowed || !row) return;
+      upsertProduct(row).catch((error) => {
+        console.error("[inventory] Failed to save product:", error);
+      });
+    },
+    [firebaseEnabled, adminWrite.allowed],
+  );
 
   const setPublished = useCallback((id, published) => {
-    setItems((prev) => prev.map((row) => (row.id === id ? { ...row, published } : row)));
-  }, []);
+    setItems((prev) => {
+      const next = prev.map((row) => (row.id === id ? { ...row, published } : row));
+      persistRow(next.find((row) => row.id === id));
+      return next;
+    });
+  }, [persistRow]);
 
   const setPublishedMany = useCallback((ids, published) => {
     const idSet = new Set(ids);
-    setItems((prev) =>
-      prev.map((row) => (idSet.has(row.id) ? { ...row, published } : row)),
-    );
-  }, []);
+    setItems((prev) => {
+      const next = prev.map((row) => (idSet.has(row.id) ? { ...row, published } : row));
+      persistRows(next.filter((row) => idSet.has(row.id)));
+      return next;
+    });
+  }, [persistRows]);
 
   const togglePublished = useCallback((id) => {
-    setItems((prev) =>
-      prev.map((row) => (row.id === id ? { ...row, published: !row.published } : row)),
-    );
-  }, []);
+    setItems((prev) => {
+      const next = prev.map((row) => (row.id === id ? { ...row, published: !row.published } : row));
+      persistRow(next.find((row) => row.id === id));
+      return next;
+    });
+  }, [persistRow]);
 
   const setStock = useCallback((id, stock) => {
-    setItems((prev) =>
-      prev.map((row) => (row.id === id ? { ...row, stock: Math.max(0, stock) } : row)),
-    );
-  }, []);
+    setItems((prev) => {
+      const next = prev.map((row) =>
+        row.id === id ? { ...row, stock: Math.max(0, stock) } : row,
+      );
+      persistRow(next.find((row) => row.id === id));
+      return next;
+    });
+  }, [persistRow]);
 
   const decrementStockForCart = useCallback((cartItems) => {
     setItems((prev) => {
       const qtyById = new Map(cartItems.filter((i) => i.tag !== "Pre-order").map((i) => [i.id, i.quantity]));
-      return prev.map((row) => {
+      const next = prev.map((row) => {
         const qty = qtyById.get(row.id);
         if (!qty || row.type === "Pre-order") return row;
         return { ...row, stock: Math.max(0, row.stock - qty) };
       });
+      persistRows(next.filter((row) => qtyById.has(row.id)));
+      return next;
     });
-  }, []);
+  }, [persistRows]);
+
+  /** Release committed stock back to inventory (e.g. an in-stock order marked Unpaid). */
+  const restockItems = useCallback((entries) => {
+    const list = Array.isArray(entries) ? entries : [entries];
+    setItems((prev) => {
+      const qtyById = new Map(list.filter((i) => i && i.id).map((i) => [i.id, Math.max(0, Number(i.quantity) || 0)]));
+      const next = prev.map((row) => {
+        const qty = qtyById.get(row.id);
+        if (!qty || row.type === "Pre-order") return row;
+        return { ...row, stock: Math.max(0, row.stock + qty) };
+      });
+      persistRows(next.filter((row) => qtyById.has(row.id)));
+      return next;
+    });
+  }, [persistRows]);
 
   const addProduct = useCallback((input) => {
     const name = input.name?.trim();
@@ -207,9 +274,13 @@ export function InventoryProvider({ children }) {
         : {}),
     };
 
-    setItems((prev) => [...prev, row]);
+    setItems((prev) => {
+      const next = [...prev, row];
+      persistRow(row);
+      return next;
+    });
     return row;
-  }, [items.length]);
+  }, [items.length, persistRow]);
 
   const updateProduct = useCallback((id, input) => {
     const name = input.name?.trim();
@@ -224,10 +295,11 @@ export function InventoryProvider({ children }) {
     const stock = Math.max(0, Number(input.stock) || 0);
     const reorderAt = Math.max(0, Number(input.reorderAt) ?? 3);
 
+    let updated = null;
     setItems((prev) =>
       prev.map((row) => {
         if (row.id !== id) return row;
-        return {
+        updated = {
           ...row,
           name,
           line,
@@ -248,10 +320,12 @@ export function InventoryProvider({ children }) {
               ? Math.min(99, Math.max(1, Number(input.depositPercent) || row.depositPercent || DEFAULT_DEPOSIT_PERCENT))
               : undefined,
         };
+        return updated;
       }),
     );
-    return true;
-  }, []);
+    if (updated) persistRow(updated);
+    return Boolean(updated);
+  }, [persistRow]);
 
   const publishedIds = useMemo(
     () => new Set(items.filter((row) => row.published).map((row) => row.id)),
@@ -306,6 +380,7 @@ export function InventoryProvider({ children }) {
       togglePublished,
       setStock,
       decrementStockForCart,
+      restockItems,
       addProduct,
       updateProduct,
     }),
@@ -323,6 +398,7 @@ export function InventoryProvider({ children }) {
       togglePublished,
       setStock,
       decrementStockForCart,
+      restockItems,
       addProduct,
       updateProduct,
     ],

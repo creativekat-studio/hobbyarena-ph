@@ -43,9 +43,6 @@ import {
 } from "../components/icons.jsx";
 import {
   ALL_PRODUCTS,
-  BRAND,
-  PREORDER_PRODUCTS,
-  SEALED_PRODUCTS,
 } from "../data/mockData.js";
 
 const floatY = keyframes`
@@ -422,17 +419,10 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
   const theme = useTheme();
   const brand = getBrand(theme);
   const { getProduct } = useInventory();
-  const activeDrops = featureDrops.filter((d) => d.active);
-  const slides = activeDrops.length ? activeDrops : [{ id: "fallback", productId: SEALED_PRODUCTS[3]?.id, badge: "FEATURED DROP", tier: "ULTRA-PREMIUM", active: true }];
+  const slides = featureDrops.filter((d) => d.active);
   const [index, setIndex] = useState(0);
   const [tilt, setTilt] = useState({ x: -5, y: 3, hovered: false });
   const [paused, setPaused] = useState(false);
-  const current = slides[index % slides.length];
-  const baseProduct = resolveFeatureDropProduct(current);
-  const product = getProduct(baseProduct.id) ?? baseProduct;
-  const isPreorder = product.tag === "Pre-order";
-  const accent = resolveProductAccent(product, theme);
-  const Glyph = product.line?.startsWith("Pokémon") ? PokeballIcon : CardIcon;
 
   useEffect(() => {
     if (slides.length <= 1 || paused) return undefined;
@@ -445,6 +435,15 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
   useEffect(() => {
     if (index >= slides.length) setIndex(0);
   }, [index, slides.length]);
+
+  if (!slides.length) return null;
+
+  const current = slides[index % slides.length];
+  const baseProduct = resolveFeatureDropProduct(current);
+  const product = getProduct(baseProduct.id) ?? baseProduct;
+  const isPreorder = product.tag === "Pre-order";
+  const accent = resolveProductAccent(product, theme);
+  const Glyph = product.line?.startsWith("Pokémon") ? PokeballIcon : CardIcon;
 
   function handleMouseMove(event) {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -692,6 +691,7 @@ export default function HomePage() {
   const sealedProducts = useMemo(() => getPublishedByCategory("sealed"), [getPublishedByCategory]);
   const preorderProducts = useMemo(() => getPublishedByCategory("preorder"), [getPublishedByCategory]);
   const hero = content.hero;
+  const hasHeroShowcase = content.featureDrops.some((d) => d.active);
   const sections = content.homepageSections;
   const announcements = content.announcements.filter((a) => a.active).map((a) => a.text);
   const brand = getBrand(theme);
@@ -717,7 +717,7 @@ export default function HomePage() {
         <Box aria-hidden sx={{ position: "absolute", top: { xs: -120, md: -160 }, right: { xs: -160, md: -100 }, width: { xs: 360, md: 560 }, height: { xs: 360, md: 560 }, borderRadius: "50%", background: `radial-gradient(circle, ${alpha(heroGlow, isDarkMode ? 0.3 : 0.18)} 0%, transparent 65%)`, filter: "blur(20px)", pointerEvents: "none" }} />
         <Container maxWidth="lg" sx={{ pt: { xs: 5, md: 9 }, pb: { xs: 5, md: 7 }, position: "relative" }}>
           <Grid container spacing={{ xs: 4, md: 6 }} alignItems="center">
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid size={{ xs: 12, md: hasHeroShowcase ? 6 : 12 }}>
               <Stack spacing={3}>
                 <Box sx={{ display: "inline-flex", alignSelf: "flex-start", alignItems: "center", gap: 1, px: 1.5, py: 0.5, borderRadius: 1, border: "1px solid", borderColor: alpha(theme.palette.primary.main, 0.45) }}>
                   <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: brand.liveDot, boxShadow: `0 0 8px ${brand.liveDot}`, animation: `${liveDot} 1.6s ease-in-out infinite` }} />
@@ -737,9 +737,11 @@ export default function HomePage() {
               </Stack>
             </Grid>
 
-            <Grid size={{ xs: 12, md: 6 }}>
-              <HeroShowcase panelSx={panelSx} isDarkMode={isDarkMode} featureDrops={content.featureDrops} />
-            </Grid>
+            {hasHeroShowcase ? (
+              <Grid size={{ xs: 12, md: 6 }}>
+                <HeroShowcase panelSx={panelSx} isDarkMode={isDarkMode} featureDrops={content.featureDrops} />
+              </Grid>
+            ) : null}
           </Grid>
         </Container>
       </Box>
@@ -747,29 +749,6 @@ export default function HomePage() {
       <Container maxWidth="lg" sx={{ pb: { xs: 6, md: 10 } }}>
         <Stack spacing={{ xs: 7, md: 11 }}>
           <PromoBanners banners={content.banners} isDarkMode={isDarkMode} surfaceBorderColor={surfaceBorderColor} />
-
-          <Box id={sections.products.anchorId}>
-            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "flex-end" }} spacing={1} sx={{ mb: 4 }}>
-              <Box>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <BoxIcon sx={{ color: "primary.main" }} />
-                  <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2 }}>{sections.products.overline}</Typography>
-                </Stack>
-                <Typography variant="h4" sx={sectionTitleSx}>{sections.products.title}</Typography>
-                {sections.products.subtitle ? (
-                  <Typography color="text.secondary" sx={{ mt: 0.5, maxWidth: wider(520) }}>{sections.products.subtitle}</Typography>
-                ) : null}
-              </Box>
-              <Button component={RouterLink} to="/products" color="primary" sx={{ fontWeight: 700 }}>Shop all →</Button>
-            </Stack>
-            <Grid container spacing={2.5}>
-              {sealedProducts.map((product) => (
-                <Grid size={{ xs: 6, sm: 6, md: 3 }} key={product.id}>
-                  <ProductCard product={product} panelSx={panelSx} isDarkMode={isDarkMode} />
-                </Grid>
-              ))}
-            </Grid>
-          </Box>
 
           <Box id={sections.preorders.anchorId}>
             <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "flex-end" }} spacing={1} sx={{ mb: 4 }}>
@@ -787,6 +766,29 @@ export default function HomePage() {
             </Stack>
             <Grid container spacing={2.5}>
               {preorderProducts.map((product) => (
+                <Grid size={{ xs: 6, sm: 6, md: 3 }} key={product.id}>
+                  <ProductCard product={product} panelSx={panelSx} isDarkMode={isDarkMode} />
+                </Grid>
+              ))}
+            </Grid>
+          </Box>
+
+          <Box id={sections.products.anchorId}>
+            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "flex-end" }} spacing={1} sx={{ mb: 4 }}>
+              <Box>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <BoxIcon sx={{ color: "primary.main" }} />
+                  <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2 }}>{sections.products.overline}</Typography>
+                </Stack>
+                <Typography variant="h4" sx={sectionTitleSx}>{sections.products.title}</Typography>
+                {sections.products.subtitle ? (
+                  <Typography color="text.secondary" sx={{ mt: 0.5, maxWidth: wider(520) }}>{sections.products.subtitle}</Typography>
+                ) : null}
+              </Box>
+              <Button component={RouterLink} to="/products" color="primary" sx={{ fontWeight: 700 }}>Shop all →</Button>
+            </Stack>
+            <Grid container spacing={2.5}>
+              {sealedProducts.map((product) => (
                 <Grid size={{ xs: 6, sm: 6, md: 3 }} key={product.id}>
                   <ProductCard product={product} panelSx={panelSx} isDarkMode={isDarkMode} />
                 </Grid>

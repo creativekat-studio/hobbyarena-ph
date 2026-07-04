@@ -254,12 +254,13 @@ export default function AddProductDialog({
           ) : null}
           <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
             <TextField
-              label="Price (₱)"
+              label="Selling price (₱)"
               type="number"
               fullWidth
               inputProps={{ min: 0, step: 100 }}
               value={form.price}
               onChange={(e) => update("price", e.target.value)}
+              helperText="Shown to customers on the storefront."
             />
             <TextField
               label="Cost (₱)"
@@ -268,7 +269,7 @@ export default function AddProductDialog({
               inputProps={{ min: 0, step: 100 }}
               value={form.cost}
               onChange={(e) => update("cost", e.target.value)}
-              helperText={isEdit ? "Used for stock value stats." : "Defaults to ~72% of price if blank."}
+              helperText={isEdit ? "What Hobby Arena pays to buy it. Drives net revenue & stock value." : "What Hobby Arena pays to buy it. Defaults to ~72% of price if blank."}
             />
           </Stack>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>

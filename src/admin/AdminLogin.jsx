@@ -25,7 +25,7 @@ export default function AdminLogin() {
   const isDarkMode = mode === "dark";
   const surfaces = getSurfaces(theme, isDarkMode);
   const { panelSx, surfaceBorderColor } = surfaces;
-  const { signInAdmin, isAdmin } = useAuth();
+  const { signInAdmin, isAdmin, authMode } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -75,8 +75,10 @@ export default function AdminLogin() {
                 {busy ? "Verifying…" : "▶ Sign in"}
               </Button>
               <Box sx={{ p: 1.5, borderRadius: 1, border: "1px dashed", borderColor: surfaceBorderColor }}>
-                <Typography variant="caption" color="text.secondary" sx={{ fontFamily: MONO_FONT }}>
-                  Demo admin → {ADMIN_HINT.email} / {ADMIN_HINT.password}
+                <Typography variant="caption" color="text.secondary" sx={{ fontFamily: MONO_FONT, display: "block" }}>
+                  {authMode === "firebase"
+                    ? "Use your Firebase admin email. Add it to VITE_ADMIN_EMAILS in .env.local."
+                    : `Demo admin → ${ADMIN_HINT.email} / ${ADMIN_HINT.password}`}
                 </Typography>
               </Box>
               <Button variant="text" color="inherit" onClick={() => navigate("/")} sx={{ color: "text.secondary" }}>

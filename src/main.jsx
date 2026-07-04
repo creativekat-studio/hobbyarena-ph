@@ -12,8 +12,10 @@ import { ShopNavLayoutProvider } from "./lib/shopNavLayout.jsx";
 import { ShopFilterLayoutProvider } from "./lib/shopFilterLayout.jsx";
 import { PreorderDisplayProvider } from "./lib/preorderDisplayLayout.jsx";
 import { CatalogProvider } from "./lib/catalogStore.jsx";
+import { CustomersProvider } from "./lib/customersStore.jsx";
 import { InquiriesProvider } from "./lib/inquiriesStore.jsx";
 import { InventoryProvider } from "./lib/inventoryStore.jsx";
+import { StockHoldProvider } from "./lib/stockHoldStore.jsx";
 import { CartProvider } from "./lib/cartStore.jsx";
 import { OrdersProvider } from "./lib/ordersStore.jsx";
 import { WishlistProvider } from "./lib/wishlistStore.jsx";
@@ -38,6 +40,7 @@ import InventoryPage from "./admin/InventoryPage.jsx";
 import CatalogPage from "./admin/CatalogPage.jsx";
 import DesignPreviewPage from "./admin/DesignPreviewPage.jsx";
 import CmsPage from "./admin/CmsPage.jsx";
+import EmailTemplatesPage from "./admin/EmailTemplatesPage.jsx";
 import RouteErrorFallback from "./components/RouteErrorFallback.jsx";
 import "./styles.css";
 
@@ -76,6 +79,7 @@ const router = createBrowserRouter([
           { path: "/admin/inquiries", element: <InquiriesPage /> },
           { path: "/admin/inventory", element: <InventoryPage /> },
           { path: "/admin/cms", element: <CmsPage /> },
+          { path: "/admin/emails", element: <EmailTemplatesPage /> },
           { path: "/admin/catalog", element: <CatalogPage /> },
           { path: "/admin/design", element: <DesignPreviewPage /> },
         ],
@@ -94,8 +98,10 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           <ShopFilterLayoutProvider>
           <PreorderDisplayProvider>
           <CatalogProvider>
+          <CustomersProvider>
           <InquiriesProvider>
             <InventoryProvider>
+            <StockHoldProvider>
             <CartProvider>
               <OrdersProvider>
                 <AuthProvider>
@@ -105,8 +111,10 @@ ReactDOM.createRoot(document.getElementById("root")).render(
                 </AuthProvider>
               </OrdersProvider>
             </CartProvider>
+            </StockHoldProvider>
             </InventoryProvider>
           </InquiriesProvider>
+          </CustomersProvider>
           </CatalogProvider>
           </PreorderDisplayProvider>
           </ShopFilterLayoutProvider>

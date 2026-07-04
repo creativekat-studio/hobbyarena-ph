@@ -22,6 +22,7 @@ import { OFF_WHITE } from "../lib/colors.js";
 import { productMediaSurface } from "../lib/surfaces.js";
 import { productCategoryLabel, productCategoryPath, productNeighbors } from "../lib/products.js";
 import { useInventory } from "../lib/inventoryStore.jsx";
+import { useStockHolds } from "../lib/stockHoldStore.jsx";
 import { resolveProductAccent, PESO } from "../components/ProductCard.jsx";
 import ProductDescription from "../components/ProductDescription.jsx";
 import PreorderCountdown from "../components/PreorderCountdown.jsx";
@@ -75,6 +76,7 @@ export default function ProductPage() {
   const { addItem, setQuantity, items } = useCart();
   const { canWishlist, isWishlisted, toggle } = useWishlist();
   const { isPublished, getProduct, publishedCatalog } = useInventory();
+  const { availableStock } = useStockHolds();
   const [added, setAdded] = useState(false);
   const [wishlisted, setWishlisted] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -87,9 +89,11 @@ export default function ProductPage() {
   const { prev, next } = productNeighbors(productId, publishedCatalog);
   const accent = product ? resolveProductAccent(product, theme) : theme.palette.primary.main;
   const isPreorder = product?.tag === "Pre-order";
-  const soldOut = product && !isPreorder && product.stock <= 0;
+  // Subtract stock other shoppers are actively holding so racers see it as unavailable.
+  const effectiveStock = product && !isPreorder ? availableStock(product.id, product.stock) : (product?.stock ?? 0);
+  const soldOut = product && !isPreorder && effectiveStock <= 0;
   const preorderClosed = isPreorder && getCountdownParts(product?.preorderEndsAt)?.expired;
-  const maxQty = isPreorder ? 99 : Math.max(product?.stock ?? 0, 0);
+  const maxQty = isPreorder ? 99 : Math.max(effectiveStock, 0);
 
   useEffect(() => {
     if (product) setWishlisted(isWishlisted(product.id));

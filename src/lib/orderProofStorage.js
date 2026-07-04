@@ -1,10 +1,26 @@
 /** Payment proof blobs — stored per order, kept out of the orders list JSON. */
 
+import {
+  isDepositProofTrailEntry,
+  trailEntryShowsAttachment,
+} from "../data/orderWorkflow.js";
+
 const PROOF_KEY_PREFIX = "hobbyarena:order-proof:";
+const BALANCE_PROOF_KEY_PREFIX = "hobbyarena:balance-proof:";
+const REFUND_PROOF_KEY_PREFIX = "hobbyarena:refund-proof:";
 const LEGACY_SESSION_KEY = "hobbyarena:order-proofs";
 
 function proofKey(orderId) {
   return `${PROOF_KEY_PREFIX}${orderId}`;
+}
+
+function balanceProofKey(orderId, lineItemId, proofId) {
+  const base = `${BALANCE_PROOF_KEY_PREFIX}${orderId}:${lineItemId}`;
+  return proofId ? `${base}:${proofId}` : base;
+}
+
+function refundProofKey(orderId, lineItemId) {
+  return `${REFUND_PROOF_KEY_PREFIX}${orderId}:${lineItemId}`;
 }
 
 function isDataUrl(value) {
@@ -86,6 +102,125 @@ export function getOrderProof(orderId) {
   return null;
 }
 
+export function storeBalanceProof(orderId, lineItemId, dataUrl, proofId) {
+  if (!orderId || !lineItemId || !isDataUrl(dataUrl)) return false;
+  try {
+    window.localStorage.setItem(balanceProofKey(orderId, lineItemId, proofId), dataUrl);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Scan for any stored balance proof for this line item (legacy / missing proofId). */
+function scanBalanceProof(orderId, lineItemId) {
+  const prefix = `${BALANCE_PROOF_KEY_PREFIX}${orderId}:${lineItemId}`;
+  let match = null;
+  for (let i = 0; i < window.localStorage.length; i += 1) {
+    const key = window.localStorage.key(i);
+    if (key?.startsWith(prefix)) {
+      const value = window.localStorage.getItem(key);
+      if (isDataUrl(value)) match = value;
+    }
+  }
+  return match;
+}
+
+export function getBalanceProof(orderId, lineItemId, proofId) {
+  if (!orderId || !lineItemId || typeof window === "undefined") return null;
+  try {
+    if (proofId) {
+      const stored = window.localStorage.getItem(balanceProofKey(orderId, lineItemId, proofId));
+      if (isDataUrl(stored)) return stored;
+    }
+    // Legacy base key (proofs saved before multi-proof support).
+    const legacy = window.localStorage.getItem(balanceProofKey(orderId, lineItemId));
+    if (isDataUrl(legacy)) return legacy;
+    // Last resort: any balance proof stored for this line item.
+    return scanBalanceProof(orderId, lineItemId);
+  } catch {
+    return null;
+  }
+}
+
+export function hasBalanceProof(orderId, lineItemId) {
+  return Boolean(getBalanceProof(orderId, lineItemId));
+}
+
+export function storeRefundProof(orderId, lineItemId, dataUrl) {
+  if (!orderId || !lineItemId || !isDataUrl(dataUrl)) return false;
+  try {
+    window.localStorage.setItem(refundProofKey(orderId, lineItemId), dataUrl);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function getRefundProof(orderId, lineItemId) {
+  if (!orderId || !lineItemId || typeof window === "undefined") return null;
+  try {
+    const stored = window.localStorage.getItem(refundProofKey(orderId, lineItemId));
+    return isDataUrl(stored) ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve a trail attachment URL (deposit, per-item balance, or refund proof). */
+export function resolveProofAttachmentUrl(order, entry) {
+  const attachment = entry?.attachment;
+  if (!attachment) return null;
+
+  if (attachment.kind === "balance" && entry.lineItemId) {
+    const balanceProof = getBalanceProof(order?.id, entry.lineItemId, attachment.proofId);
+    if (balanceProof) return balanceProof;
+    // Never fall back to the deposit proof — a missing balance proof shows nothing.
+    return isDataUrl(attachment.url) ? attachment.url : null;
+  }
+
+  if (attachment.kind === "refund" && entry.lineItemId) {
+    const refundProof = getRefundProof(order?.id, entry.lineItemId);
+    if (refundProof) return refundProof;
+    return isDataUrl(attachment.url) ? attachment.url : null;
+  }
+
+  if (isDataUrl(attachment.url)) return attachment.url;
+  return resolveOrderProofUrl(order);
+}
+
+/** Backfill attachment metadata on deposit proof trail rows (e.g. after Firestore sync). */
+export function ensureTrailEntryAttachment(entry, order) {
+  if (!entry) return entry;
+  if (entry.attachment) return entry;
+  if (!isDepositProofTrailEntry(entry) || !orderHasStoredProof(order)) {
+    return entry;
+  }
+
+  return {
+    ...entry,
+    attachment: {
+      label: "Proof of payment",
+      type: "image",
+      stored: true,
+      kind: "deposit",
+    },
+  };
+}
+
+export function prepareTrailForDisplay(trail, order) {
+  return (trail ?? []).map((entry) => {
+    const withAttachment = ensureTrailEntryAttachment(entry, order);
+    if (!withAttachment.attachment || !trailEntryShowsAttachment(withAttachment)) {
+      return withAttachment;
+    }
+
+    const url = resolveProofAttachmentUrl(order, withAttachment);
+    const hydrated = hydrateProofAttachment(withAttachment.attachment, url);
+    return hydrated ? { ...withAttachment, attachment: hydrated } : withAttachment;
+  });
+}
+
 export function orderHasStoredProof(order) {
   if (!order) return false;
   if (order.hasProof) return true;
@@ -110,10 +245,13 @@ export function hydrateProofAttachment(attachment, proofUrl) {
     return attachment;
   }
 
+  // Preserve kind / lineItemId / proofId so the attachment can still be
+  // re-resolved after a Firestore round-trip strips the inline data URL.
   return {
+    ...attachment,
     url: proofUrl,
     label: attachment?.label || "Proof of payment",
-    type: proofUrl.startsWith("data:application/pdf") ? "pdf" : "image",
+    type: attachment?.type || (proofUrl.startsWith("data:application/pdf") ? "pdf" : "image"),
   };
 }
 

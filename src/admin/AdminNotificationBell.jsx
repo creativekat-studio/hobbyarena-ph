@@ -19,6 +19,7 @@ import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
 import { BellIcon, BoxIcon, MailIcon } from "../components/icons.jsx";
 import { INQUIRY_STATUS, useInquiries } from "../lib/inquiriesStore.jsx";
 import { isUnseenOrder, useOrders } from "../lib/ordersStore.jsx";
+import { sortOrdersByOrderNo } from "../lib/orderIds.js";
 
 function formatWhen(value) {
   try {
@@ -49,7 +50,7 @@ export default function AdminNotificationBell({ surfaceBorderColor }) {
   const [menuSnapshot, setMenuSnapshot] = useState({ orders: [], inquiries: [] });
 
   const unseenOrders = useMemo(
-    () => orders.filter(isUnseenOrder).slice(0, 5),
+    () => sortOrdersByOrderNo(orders.filter(isUnseenOrder)).slice(0, 5),
     [orders],
   );
 

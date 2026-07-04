@@ -311,13 +311,17 @@ export function ShopFilterFranchiseTiles({
             key={line.value}
             component="button"
             type="button"
+            aria-label={shortLineLabel(line.label)}
+            title={shortLineLabel(line.label)}
             onClick={() => onLineChange(line.value)}
             sx={{
               ...panelSx,
               flexShrink: 0,
-              width: 96,
-              p: 1.25,
-              textAlign: "center",
+              width: 168,
+              p: 1.75,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
               cursor: "pointer",
               border: "1px solid",
               borderColor: selected ? alpha(primary, 0.55) : surfaceBorderColor,
@@ -328,12 +332,7 @@ export function ShopFilterFranchiseTiles({
               },
             }}
           >
-            <Box sx={{ display: "flex", justifyContent: "center", mb: 0.75 }}>
-              <LineLogo line={line} size={36} />
-            </Box>
-            <Typography sx={{ fontSize: "0.78rem", fontWeight: selected ? 800 : 600, lineHeight: 1.2 }}>
-              {shortLineLabel(line.label)}
-            </Typography>
+            <LineLogo line={line} size={48} />
           </Box>
         );
       })}

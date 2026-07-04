@@ -15,7 +15,7 @@ export default function BrandLogo({ sx, imageSx }) {
         alt="Hobby Arena"
         sx={{
           display: "block",
-          height: { xs: 44, md: 52 },
+          height: { xs: 54, md: 66 },
           width: "auto",
           objectFit: "contain",
           bgcolor: "transparent",

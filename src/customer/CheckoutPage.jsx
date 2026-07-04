@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -32,6 +32,7 @@ import { getSurfaces } from "../lib/surfaces.js";
 import { useCart, cartItemDueNow } from "../lib/cartStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { useInventory } from "../lib/inventoryStore.jsx";
+import { useStockHolds } from "../lib/stockHoldStore.jsx";
 import {
   BANK_ACCOUNTS,
   PROCESSING_HOURS,
@@ -442,7 +443,67 @@ function DetailsStep({ panelSx, surfaceBorderColor, details, setDetails, onBack,
   );
 }
 
-function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proofFile, setProofFile, confirmedTransfer, setConfirmedTransfer, onBack, onPlaceOrder, busy, error }) {
+function formatHoldClock(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function StockHoldBanner({ hold, surfaceBorderColor }) {
+  const theme = useTheme();
+  if (!hold || hold.status === "idle" || hold.status === "none") return null;
+
+  if (hold.status === "held") {
+    return (
+      <Box
+        sx={{
+          mb: 2,
+          p: 1.75,
+          borderRadius: 1,
+          border: "1px solid",
+          borderColor: alpha(theme.palette.warning.main, 0.4),
+          bgcolor: alpha(theme.palette.warning.main, 0.1),
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 1.5,
+        }}
+      >
+        <Box>
+          <Typography sx={{ fontWeight: 800, fontSize: "0.85rem" }}>Stock reserved for you</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", lineHeight: 1.4 }}>
+            Complete payment before the timer runs out or the stock is released to other shoppers.
+          </Typography>
+        </Box>
+        <Typography
+          sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: "1.35rem", color: "warning.main", letterSpacing: 0.5, flexShrink: 0 }}
+        >
+          {formatHoldClock(hold.remainingMs)}
+        </Typography>
+      </Box>
+    );
+  }
+
+  const shortfallNames = (hold.shortfalls || []).map((s) => s.name).filter(Boolean).join(", ");
+  return (
+    <Alert
+      severity="error"
+      sx={{ mb: 2, borderColor: surfaceBorderColor }}
+      action={
+        <Button color="inherit" size="small" onClick={hold.onRetry} sx={{ fontWeight: 700 }}>
+          Re-check
+        </Button>
+      }
+    >
+      {hold.status === "expired"
+        ? "Your 20-minute reservation expired and the stock was released to other shoppers."
+        : `Out of stock — ${shortfallNames || "these items"} were just reserved by another shopper.`}
+    </Alert>
+  );
+}
+
+function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proofFile, setProofFile, confirmedTransfer, setConfirmedTransfer, onBack, onPlaceOrder, busy, error, hold }) {
   const theme = useTheme();
   const banks = useMemo(() => BANK_ACCOUNTS.filter((bank) => bank.active !== false), []);
   const [selectedBankId, setSelectedBankId] = useState(banks[0]?.id ?? "");
@@ -477,6 +538,8 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
           </Typography>
         )}
       />
+
+      <StockHoldBanner hold={hold} surfaceBorderColor={surfaceBorderColor} />
 
       {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
 
@@ -579,11 +642,17 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
         />
       </Box>
 
+      {error ? (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {error}
+        </Alert>
+      ) : null}
+
       <Stack direction="row" spacing={1.5} sx={{ mt: 2.5 }}>
         <Button variant="outlined" color="inherit" onClick={onBack} sx={{ borderColor: surfaceBorderColor }}>Back</Button>
         <Button
           variant="contained"
-          disabled={busy || !proofFile || !confirmedTransfer}
+          disabled={busy || !proofFile || !confirmedTransfer || hold?.status === "blocked" || hold?.status === "expired"}
           onClick={onPlaceOrder}
           sx={{ flexGrow: 1, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}
         >
@@ -609,7 +678,8 @@ export default function CheckoutPage() {
   const { user, isCustomer, loading } = useAuth();
   const { items, subtotal, balanceDue, hasPreorder, clearCart } = useCart();
   const { placeOrder } = useOrders();
-  const { decrementStockForCart } = useInventory();
+  const { decrementStockForCart, getProduct } = useInventory();
+  const { placeHolds, releaseSessionHolds } = useStockHolds();
   const confirmedOrder = useCheckoutConfirmation();
 
   const [step, setStep] = useState(0);
@@ -620,9 +690,58 @@ export default function CheckoutPage() {
   const [confirmedTransfer, setConfirmedTransfer] = useState(false);
   const [busy, setBusy] = useState(false);
   const [paymentError, setPaymentError] = useState("");
+  const [holdState, setHoldState] = useState({ status: "idle", expiresAt: null, shortfalls: [] });
+  const [holdRemaining, setHoldRemaining] = useState(0);
 
   const shippingFee = useMemo(() => calcShipping(), []);
   const total = subtotal + shippingFee;
+
+  // In-stock lines only — pre-orders never reserve stock.
+  const inStockLines = useMemo(
+    () =>
+      items
+        .filter((item) => item.tag !== "Pre-order")
+        .map((item) => ({ productId: item.id, quantity: item.quantity, name: item.name })),
+    [items],
+  );
+
+  const attemptHold = useCallback(() => {
+    if (!inStockLines.length) {
+      setHoldState({ status: "none", expiresAt: null, shortfalls: [] });
+      return;
+    }
+    const result = placeHolds(inStockLines, (productId) => getProduct(productId)?.stock ?? 0);
+    if (result.ok) {
+      setHoldState({ status: "held", expiresAt: result.expiresAt, shortfalls: [] });
+    } else {
+      setHoldState({ status: "blocked", expiresAt: null, shortfalls: result.shortfalls });
+    }
+  }, [inStockLines, placeHolds, getProduct]);
+
+  const attemptHoldRef = useRef(attemptHold);
+  useEffect(() => {
+    attemptHoldRef.current = attemptHold;
+  }, [attemptHold]);
+
+  // Reserve stock once when the shopper reaches the payment step; release when they leave it.
+  useEffect(() => {
+    if (step !== 2) return undefined;
+    attemptHoldRef.current();
+    return () => releaseSessionHolds();
+  }, [step, releaseSessionHolds]);
+
+  // 20-minute countdown for the active hold.
+  useEffect(() => {
+    if (holdState.status !== "held" || !holdState.expiresAt) return undefined;
+    const tick = () => {
+      const remaining = holdState.expiresAt - Date.now();
+      setHoldRemaining(Math.max(0, remaining));
+      if (remaining <= 0) setHoldState((prev) => ({ ...prev, status: "expired" }));
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [holdState.status, holdState.expiresAt]);
 
   function setDetails(patch) {
     setDetailsState((prev) => ({ ...prev, ...patch }));
@@ -676,58 +795,77 @@ export default function CheckoutPage() {
       setPaymentError("Please upload proof of payment.");
       return;
     }
-    setBusy(true);
-    try {
-      const address = {
-        street: details.street.trim(),
-        city: details.city.trim(),
-        province: details.province.trim(),
-        postal: details.postal.trim(),
-      };
-
-      const depositPercent = items.find((item) => item.depositPercent)?.depositPercent ?? 30;
-
-      const order = placeOrder({
-        cartItems: items,
-        customer: details.name.trim(),
-        email: details.email.trim(),
-        phone: details.phone.trim(),
-        fulfillment: "delivery",
-        region: null,
-        address,
-        notes: details.notes,
-        subtotal,
-        shippingFee,
-        total,
-        fullSubtotal: items.reduce((sum, item) => sum + item.price * item.quantity, 0),
-        balanceDue,
-        depositPercent,
-        proofOfPayment: proofFile.dataUrl,
-        guest: isGuest,
-        userId: user?.uid,
-      });
-
-      if (order?.id) {
-        writeCheckoutConfirmation({
-          id: order.id,
-          total: order.total ?? 0,
-          balanceDue: order.balanceDue ?? 0,
-          email: order.email ?? "",
-          userId: order.userId ?? null,
-        });
-      } else {
-        setPaymentError("Could not place order. Please try again.");
-        setBusy(false);
-        return;
-      }
-
-      clearCart();
-      decrementStockForCart(items);
-    } catch {
-      setPaymentError("Could not place order. Please try again.");
-    } finally {
-      setBusy(false);
+    if (holdState.status === "expired") {
+      setPaymentError("Your 20-minute reservation expired and the stock was released. Please re-check availability.");
+      return;
     }
+    if (holdState.status === "blocked") {
+      setPaymentError("Some items are no longer available — they were reserved by another shopper.");
+      return;
+    }
+    setBusy(true);
+    (async () => {
+      try {
+        const address = {
+          street: details.street.trim(),
+          city: details.city.trim(),
+          province: details.province.trim(),
+          postal: details.postal.trim(),
+        };
+
+        const depositPercent = items.find((item) => item.depositPercent)?.depositPercent ?? 30;
+
+        const order = await placeOrder({
+          cartItems: items,
+          customer: details.name.trim(),
+          email: details.email.trim(),
+          phone: details.phone.trim(),
+          fulfillment: "delivery",
+          region: null,
+          address,
+          notes: details.notes,
+          subtotal,
+          shippingFee,
+          total,
+          fullSubtotal: items.reduce((sum, item) => sum + item.price * item.quantity, 0),
+          balanceDue,
+          depositPercent,
+          proofOfPayment: proofFile.dataUrl,
+          guest: isGuest,
+          userId: user?.uid,
+        });
+
+        if (order?.id) {
+          writeCheckoutConfirmation({
+            id: order.id,
+            total: order.total ?? 0,
+            balanceDue: order.balanceDue ?? 0,
+            email: order.email ?? "",
+            userId: order.userId ?? null,
+          });
+        } else {
+          setPaymentError("Could not place order. Please try again.");
+          return;
+        }
+
+        clearCart();
+        decrementStockForCart(items);
+        releaseSessionHolds();
+      } catch (error) {
+        console.error("[checkout] placeOrder failed:", error);
+        const code = error?.code || "";
+        const message = code === "permission-denied"
+          ? "Order could not be saved (permission denied). Check Firestore rules and try again."
+          : code === "invalid-argument"
+            ? "Order could not be saved (invalid data). Please try again or contact support."
+            : String(error?.message || "").includes("timed out")
+              ? "Saving order timed out. Check your internet connection and try again."
+              : error?.message || "Could not place order. Please try again.";
+        setPaymentError(message);
+      } finally {
+        setBusy(false);
+      }
+    })();
   }
 
   return (
@@ -783,6 +921,12 @@ export default function CheckoutPage() {
                 onPlaceOrder={handlePlaceOrder}
                 busy={busy}
                 error={paymentError}
+                hold={{
+                  status: holdState.status,
+                  remainingMs: holdRemaining,
+                  shortfalls: holdState.shortfalls,
+                  onRetry: attemptHold,
+                }}
               />
             ) : null}
           </Grid>

@@ -1,10 +1,13 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_PRODUCT_CATEGORIES,
   DEFAULT_PRODUCT_LINES,
   GENERIC_PRODUCT_TERMS,
   PREORDER_TERMS,
 } from "../data/catalogDefaults.js";
+import { useFirebaseData } from "./firebase/config.js";
+import { useAdminFirestoreWrite } from "./firebase/adminWriteAccess.js";
+import { saveCatalogSettings, subscribeCatalogSettings } from "./firebase/repositories/catalog.js";
 
 const STORAGE_KEY = "hobbyarena:catalog";
 const CATALOG_VERSION = 2;
@@ -29,33 +32,38 @@ function mergeById(stored = [], defaults = []) {
   return [...map.values()];
 }
 
+function mergeCatalogPayload(parsed) {
+  const defaults = defaultCatalog();
+  if (!parsed || typeof parsed !== "object") return defaults;
+  const version = parsed.version ?? 1;
+
+  if (version < CATALOG_VERSION) {
+    return {
+      version: CATALOG_VERSION,
+      lines: mergeById(parsed.lines, defaults.lines),
+      categories: mergeById(parsed.categories, defaults.categories),
+      terms: defaults.terms,
+    };
+  }
+
+  return {
+    version: CATALOG_VERSION,
+    lines: Array.isArray(parsed.lines) && parsed.lines.length ? parsed.lines : defaults.lines,
+    categories: Array.isArray(parsed.categories) && parsed.categories.length ? parsed.categories : defaults.categories,
+    terms: {
+      generic: Array.isArray(parsed.terms?.generic) && parsed.terms.generic.length ? parsed.terms.generic : defaults.terms.generic,
+      preorder: Array.isArray(parsed.terms?.preorder) && parsed.terms.preorder.length ? parsed.terms.preorder : defaults.terms.preorder,
+    },
+  };
+}
+
 function loadCatalog() {
   const defaults = defaultCatalog();
   if (typeof window === "undefined") return defaults;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaults;
-    const parsed = JSON.parse(raw);
-    const version = parsed.version ?? 1;
-
-    if (version < CATALOG_VERSION) {
-      return {
-        version: CATALOG_VERSION,
-        lines: mergeById(parsed.lines, defaults.lines),
-        categories: mergeById(parsed.categories, defaults.categories),
-        terms: defaults.terms,
-      };
-    }
-
-    return {
-      version: CATALOG_VERSION,
-      lines: Array.isArray(parsed.lines) && parsed.lines.length ? parsed.lines : defaults.lines,
-      categories: Array.isArray(parsed.categories) && parsed.categories.length ? parsed.categories : defaults.categories,
-      terms: {
-        generic: Array.isArray(parsed.terms?.generic) && parsed.terms.generic.length ? parsed.terms.generic : defaults.terms.generic,
-        preorder: Array.isArray(parsed.terms?.preorder) && parsed.terms.preorder.length ? parsed.terms.preorder : defaults.terms.preorder,
-      },
-    };
+    return mergeCatalogPayload(JSON.parse(raw));
   } catch {
     return defaults;
   }
@@ -64,11 +72,65 @@ function loadCatalog() {
 const CatalogContext = createContext(null);
 
 export function CatalogProvider({ children }) {
-  const [catalog, setCatalog] = useState(loadCatalog);
+  const firebaseEnabled = useFirebaseData();
+  const adminWrite = useAdminFirestoreWrite();
+  const [catalog, setCatalog] = useState(() => (firebaseEnabled ? defaultCatalog() : loadCatalog()));
+  const syncingRemote = useRef(false);
+  const saveTimer = useRef(null);
+  const pendingSeed = useRef(null);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...catalog, version: CATALOG_VERSION }));
-  }, [catalog]);
+    if (!firebaseEnabled) return undefined;
+
+    return subscribeCatalogSettings(
+      (remote) => {
+        syncingRemote.current = true;
+        if (!remote) {
+          const local = loadCatalog();
+          setCatalog(local);
+          pendingSeed.current = local;
+        } else {
+          pendingSeed.current = null;
+          setCatalog(mergeCatalogPayload(remote));
+        }
+        queueMicrotask(() => {
+          syncingRemote.current = false;
+        });
+      },
+      (error) => console.error("[catalog] Firestore sync failed:", error),
+    );
+  }, [firebaseEnabled]);
+
+  useEffect(() => {
+    if (!firebaseEnabled || !adminWrite.ready || !adminWrite.allowed) return undefined;
+    if (!pendingSeed.current) return undefined;
+
+    const seed = pendingSeed.current;
+    pendingSeed.current = null;
+    saveCatalogSettings({ ...seed, version: CATALOG_VERSION }).catch((error) => {
+      console.error("[catalog] Failed to seed Firestore:", error);
+    });
+  }, [firebaseEnabled, adminWrite]);
+
+  useEffect(() => {
+    if (syncingRemote.current) return undefined;
+
+    if (!firebaseEnabled) {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...catalog, version: CATALOG_VERSION }));
+      return undefined;
+    }
+
+    if (!adminWrite.ready || !adminWrite.allowed) return undefined;
+
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      saveCatalogSettings({ ...catalog, version: CATALOG_VERSION }).catch((error) => {
+        console.error("[catalog] Failed to save settings:", error);
+      });
+    }, 400);
+
+    return () => clearTimeout(saveTimer.current);
+  }, [catalog, firebaseEnabled, adminWrite]);
 
   const activeLines = useMemo(
     () => catalog.lines.filter((line) => line.active !== false),

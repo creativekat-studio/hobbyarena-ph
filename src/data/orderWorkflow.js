@@ -1,21 +1,33 @@
 /** Pre-order + in-stock order lifecycle for admin. */
 
+/** Case 1: 100% stock allocated — customer must pay remaining balance. */
+export const ALLOCATION_FULFILLED_PAY_BALANCE = "Allocation Fulfilled & Pay Balance";
+
 export const PAYMENT_STATUSES = [
   "Pending Verification",
   "DP Paid",
+  "Awaiting Balance Payment",
   "Fully Paid",
   "Rejected",
   "Unpaid",
+  "For Partial Refund",
+  "For Full Refund",
+  "Partially Refunded",
   "Refunded",
 ];
 
 export const ORDER_STATUSES = [
   "Pending Verification",
   "Awaiting Stock",
+  ALLOCATION_FULFILLED_PAY_BALANCE,
   "Fulfilled",
+  "Partially Fulfilled & Pay Balance",
+  "Partially Fulfilled & For Refund",
   "Partially Fulfilled & Refunded",
+  "For Full Refund",
   "Refunded",
   "Ready for Pickup",
+  "Unpaid",
 ];
 
 export const PREORDER_PAYMENT_STATUSES = PAYMENT_STATUSES;
@@ -26,9 +38,13 @@ export const INSTOCK_ORDER_STATUSES = ORDER_STATUSES;
 export const PAYMENT_COLOR = {
   "Pending Verification": "warning",
   "DP Paid": "info",
+  "Awaiting Balance Payment": "warning",
   "Fully Paid": "success",
   Rejected: "error",
   Unpaid: "warning",
+  "For Partial Refund": "warning",
+  "For Full Refund": "error",
+  "Partially Refunded": "info",
   Refunded: "default",
   Mixed: "secondary",
   Deposit: "info",
@@ -37,12 +53,28 @@ export const PAYMENT_COLOR = {
 export const STATUS_COLOR = {
   "Pending Verification": "warning",
   "Awaiting Stock": "default",
+  [ALLOCATION_FULFILLED_PAY_BALANCE]: "warning",
   Fulfilled: "secondary",
+  "Partially Fulfilled & Pay Balance": "warning",
+  "Partially Fulfilled & For Refund": "info",
   "Partially Fulfilled & Refunded": "info",
+  "For Full Refund": "error",
   Refunded: "default",
   "Ready for Pickup": "secondary",
+  Unpaid: "error",
   Mixed: "secondary",
 };
+
+/** Friendly display labels for order statuses (internal values stay unchanged). */
+const ORDER_STATUS_LABELS = {
+  "For Full Refund": "No Allocation, For Full Refund",
+};
+
+/** Display label for an order status; falls back to the (migrated) status value. */
+export function orderStatusLabel(status) {
+  const normalized = migrateOrderStatus(status);
+  return ORDER_STATUS_LABELS[normalized] ?? normalized;
+}
 
 const LEGACY_PAYMENT_MAP = {
   Deposit: "DP Paid",
@@ -73,6 +105,27 @@ export function migratePaymentStatus(payment) {
 
 export function migrateOrderStatus(status) {
   return LEGACY_STATUS_MAP[status] ?? status;
+}
+
+export function isAllocationFulfilledPayBalance(status) {
+  return migrateOrderStatus(status) === ALLOCATION_FULFILLED_PAY_BALANCE;
+}
+
+export function isBalanceDuePreorderStatus(status) {
+  const normalized = migrateOrderStatus(status);
+  return normalized === ALLOCATION_FULFILLED_PAY_BALANCE
+    || normalized === "Partially Fulfilled & Pay Balance";
+}
+
+/** Legacy rows: preorder Fulfilled + Unpaid meant balance due (now a dedicated status). */
+export function migratePreorderBalanceStatus(item) {
+  if (!item || resolveOrderKindForItem(item) !== "Pre-order") return item;
+  const payment = migratePaymentStatus(item.payment);
+  const status = migrateOrderStatus(item.status);
+  if (status === "Fulfilled" && payment === "Unpaid") {
+    return { ...item, status: ALLOCATION_FULFILLED_PAY_BALANCE };
+  }
+  return item;
 }
 
 export function isPreorderOrder(order) {
@@ -106,7 +159,7 @@ export function inferOrderKind(order) {
   const payment = migratePaymentStatus(order?.payment);
   const status = migrateOrderStatus(order?.status);
 
-  if (["DP Paid", "Unpaid"].includes(payment)) return "Pre-order";
+  if (["DP Paid", "Awaiting Balance Payment", "Unpaid"].includes(payment)) return "Pre-order";
   if (status === "Awaiting Stock") return "Pre-order";
   if (order?.lineItems?.some((item) => item.tag === "Pre-order")) return "Pre-order";
   if (order?.lineItems?.some((item) => item.tag !== "Pre-order")) return "In-stock";
@@ -164,10 +217,7 @@ export function inferStatusesAfterAllocation(order, allocatedQty) {
       ? "Partially Fulfilled & Refunded"
       : "Awaiting Stock";
   } else {
-    status = "Fulfilled";
-    if (payment === "DP Paid") {
-      payment = "Unpaid";
-    }
+    status = ALLOCATION_FULFILLED_PAY_BALANCE;
   }
 
   return {
@@ -182,14 +232,17 @@ export function getOrderStage(order) {
   const payment = migratePaymentStatus(order.payment);
   const status = migrateOrderStatus(order.status);
 
-  if (status === "Refunded") return "Refunded";
+  if (status === "Refunded" || status === "For Full Refund") return "Refunded";
 
   if (payment === "Pending Verification") return "Review payment";
   if (isPreorderOrder(order)) {
     if (payment === "DP Paid" && status === "Awaiting Stock") return "Awaiting allocation";
-    if (payment === "Unpaid") return "Collect balance";
+    if (isAllocationFulfilledPayBalance(status) || status === "Partially Fulfilled & Pay Balance") return "Collect balance";
+    if (status === "Partially Fulfilled & For Refund") return "Process refund";
+    if (status === "For Full Refund") return "Process refund";
+    if (payment === "Partially Refunded") return "Partial refund sent";
     if (status === "Ready for Pickup" && payment === "Fully Paid") return "Ready for pickup";
-    if (status === "Fulfilled" && payment === "Unpaid") return "Collect balance";
+    if (status === "Ready for Pickup" && payment === "Partially Refunded") return "Ready for pickup";
     if (status === "Partially Fulfilled & Refunded") return "Partial refund";
   } else {
     if (payment === "Fully Paid" && status === "Awaiting Stock") return "Fulfill order";
@@ -215,7 +268,18 @@ export const ORDER_QUEUES = [
   {
     id: "balance-due",
     label: "Balance due",
-    match: (o) => migratePaymentStatus(o.payment) === "Unpaid",
+    match: (o) => isPreorderOrder(o) && (
+      isBalanceDuePreorderStatus(migrateOrderStatus(o.status))
+      || getOrderLineItems(o).some((item) => isBalanceDuePreorderStatus(item.status))
+    ),
+  },
+  {
+    id: "refund",
+    label: "Refund pending",
+    match: (o) => isPreorderOrder(o) && (
+      migrateOrderStatus(o.status) === "Partially Fulfilled & For Refund"
+      || migrateOrderStatus(o.status) === "For Full Refund"
+    ),
   },
   {
     id: "pickup",
@@ -231,10 +295,29 @@ export function allocationLabel(order) {
   const qty = order.qty ?? 1;
   const allocated = order.allocatedQty ?? 0;
   if (!isPreorderOrder(order)) return "—";
-  if (status !== "Partially Fulfilled & Refunded") return "—";
-  if (allocated === 0) return `0 / ${qty}`;
+  if (!statusNeedsAllocation(status) && status !== "Fulfilled") return "—";
+  if (allocated === 0) return status === "For Full Refund" ? `0 / ${qty}` : "—";
   if (allocated >= qty) return `Full (${qty})`;
   return `${allocated} / ${qty}`;
+}
+
+export function statusNeedsAllocation(status) {
+  const normalized = migrateOrderStatus(status);
+  return [
+    "Partially Fulfilled & Pay Balance",
+    "Partially Fulfilled & For Refund",
+    "Partially Fulfilled & Refunded",
+    "For Full Refund",
+  ].includes(normalized);
+}
+
+export function statusNeedsRefundAmount(status) {
+  const normalized = migrateOrderStatus(status);
+  return [
+    "Partially Fulfilled & For Refund",
+    "Partially Fulfilled & Refunded",
+    "For Full Refund",
+  ].includes(normalized);
 }
 
 export const INSTOCK_FLOW_STEPS = [
@@ -254,6 +337,7 @@ export function activeInstockStep(order) {
     return last;
   }
   if (status === "Fulfilled") return last;
+  if (status === "For Full Refund" || payment === "For Full Refund") return 3;
   if (status === "Ready for Pickup") return 4;
   if (status === "Awaiting Stock" && payment === "Fully Paid") return 3;
   if (payment === "Fully Paid") return 2;
@@ -278,23 +362,48 @@ export function activePreorderStep(order) {
     return last;
   }
 
-  if (status === "Fulfilled" && payment === "Fully Paid") return last;
+  if (status === "Fulfilled") return last;
 
-  if (status === "Ready for Pickup" && payment === "Fully Paid") return 5;
+  // "No Allocation, For Full Refund" is a refund decision taken at the
+  // stock-allocated / balance-collected stage — not a step-one regression.
+  if (status === "For Full Refund" || payment === "For Full Refund") return 4;
 
-  if (payment === "Fully Paid") {
-    if (status === "Fulfilled") return 4;
-    return 5;
-  }
+  if (status === "Ready for Pickup") return 5;
 
-  if (payment === "Unpaid") {
-    if (status === "Fulfilled") return 3;
-    return 2;
-  }
+  if (isBalanceDuePreorderStatus(status)) return 3;
 
-  if (payment === "DP Paid") return 2;
+  if (status === "Awaiting Stock" || payment === "DP Paid" || payment === "Awaiting Balance Payment") return 2;
 
   return 1;
+}
+
+export function getFlowStepsForItem(item) {
+  return resolveOrderKindForItem(item) === "Pre-order" ? PREORDER_FLOW_STEPS : INSTOCK_FLOW_STEPS;
+}
+
+export function getActiveStepForItem(item) {
+  return resolveOrderKindForItem(item) === "Pre-order"
+    ? activePreorderStep(item)
+    : activeInstockStep(item);
+}
+
+/** Customer-facing milestone progress for a single line item. */
+export function getMilestoneProgress(item) {
+  const steps = getFlowStepsForItem(item);
+  const active = getActiveStepForItem(item);
+  const done = active >= steps.length;
+  return {
+    steps,
+    activeStep: Math.min(active, Math.max(steps.length - 1, 0)),
+    nextLabel: done ? null : (steps[active]?.label ?? null),
+    done,
+  };
+}
+
+export function filterTrailForLineItem(trail, lineItemId) {
+  return [...(trail ?? [])]
+    .filter((entry) => !entry.lineItemId || entry.lineItemId === lineItemId)
+    .sort((a, b) => new Date(b.at) - new Date(a.at));
 }
 
 export const PAYMENT_OPTIONS = [...PAYMENT_STATUSES];
@@ -305,25 +414,26 @@ export function resolveOrderKindForItem(item) {
 }
 
 export function normalizeLineItem(item, orderDefaults = {}) {
-  const payment = migratePaymentStatus(item.payment ?? orderDefaults.payment ?? "Pending Verification");
-  const status = migrateOrderStatus(item.status ?? orderDefaults.status ?? "Pending Verification");
-  const quantity = item.quantity ?? 1;
-  const price = item.price ?? 0;
-  const lineTotal = item.lineTotal ?? price * quantity;
+  const migrated = migratePreorderBalanceStatus(item);
+  const payment = migratePaymentStatus(migrated.payment ?? orderDefaults.payment ?? "Pending Verification");
+  const status = migrateOrderStatus(migrated.status ?? orderDefaults.status ?? "Pending Verification");
+  const quantity = migrated.quantity ?? 1;
+  const price = migrated.price ?? 0;
+  const lineTotal = migrated.lineTotal ?? price * quantity;
 
   return {
     allocatedQty: 0,
     balanceDue: 0,
     depositPaid: lineTotal,
-    ...item,
+    ...migrated,
     quantity,
     price,
     lineTotal,
     payment,
     status,
-    allocatedQty: item.allocatedQty ?? 0,
-    balanceDue: item.balanceDue ?? 0,
-    depositPaid: item.depositPaid ?? item.linePaid ?? lineTotal,
+    allocatedQty: migrated.allocatedQty ?? 0,
+    balanceDue: migrated.balanceDue ?? 0,
+    depositPaid: migrated.depositPaid ?? migrated.linePaid ?? lineTotal,
   };
 }
 
@@ -372,13 +482,60 @@ export function syncOrderRollup(lineItems) {
   };
 }
 
-export function buildTrailAttachment(url, label = "Attachment") {
+export function buildTrailAttachment(url, label = "Attachment", kind = null) {
   if (!url) return undefined;
   return {
     url,
     label,
     type: url.startsWith("data:application/pdf") ? "pdf" : "image",
+    ...(kind ? { kind } : {}),
   };
+}
+
+export function buildStoredTrailAttachment({ label, type = "image", kind, lineItemId, proofId }) {
+  return {
+    label,
+    type,
+    kind,
+    lineItemId,
+    ...(proofId ? { proofId } : {}),
+    stored: true,
+  };
+}
+
+export function trailEntryShowsAttachment(entry) {
+  if (!entry?.attachment) return false;
+  return migratePaymentStatus(entry.payment) === "Pending Verification";
+}
+
+/** Initial checkout trail rows that should expose deposit proof when available. */
+export function isDepositProofTrailEntry(entry) {
+  if (!entry) return false;
+  if (migratePaymentStatus(entry.payment) !== "Pending Verification") return false;
+  const title = entry.title || "";
+  const note = entry.note || "";
+  return title === "Order purchased"
+    || title === "Order created by admin"
+    || /uploaded proof of payment/i.test(note);
+}
+
+/** Pre-order line item awaiting balance payment — customer can upload proof. */
+export function itemNeedsBalanceProof(item) {
+  if (resolveOrderKindForItem(item) !== "Pre-order") return false;
+  if (!isBalanceDuePreorderStatus(item.status)) return false;
+  if ((item.balanceDue ?? 0) <= 0) return false;
+  const payment = migratePaymentStatus(item.payment);
+  return payment !== "Fully Paid";
+}
+
+/** Line item with a pending refund — customer can provide QR / bank details. */
+export function itemNeedsRefundDetails(item) {
+  const status = migrateOrderStatus(item.status);
+  const payment = migratePaymentStatus(item.payment);
+  return payment === "For Partial Refund"
+    || payment === "For Full Refund"
+    || status === "For Full Refund"
+    || status === "Partially Fulfilled & For Refund";
 }
 
 export function allocationLabelForItem(item) {
@@ -386,9 +543,10 @@ export function allocationLabelForItem(item) {
   const allocated = item.allocatedQty ?? 0;
   const status = migrateOrderStatus(item.status);
   if (resolveOrderKindForItem(item) !== "Pre-order") return "—";
-  if (status === "Fulfilled") return `Full (${qty})`;
-  if (status !== "Partially Fulfilled & Refunded") return "—";
-  if (allocated === 0) return `0 / ${qty}`;
+  if (status === "Fulfilled" && allocated >= qty) return `Full (${qty})`;
+  if (isAllocationFulfilledPayBalance(status) && allocated >= qty) return `Full (${qty})`;
+  if (!statusNeedsAllocation(status)) return "—";
+  if (allocated === 0) return status === "For Full Refund" ? `0 / ${qty}` : "—";
   if (allocated >= qty) return `Full (${qty})`;
   return `${allocated} / ${qty}`;
 }
@@ -403,11 +561,19 @@ export function refundedAmountForLineItem(item, depositPercent = 30) {
     ? (item.depositPaid ?? Math.round(fullLine * depositPercent / 100))
     : fullLine;
 
-  if (status === "Refunded" || payment === "Refunded") {
+  if (item.refundAmount != null && item.refundAmount >= 0) {
+    return item.refundAmount;
+  }
+
+  if (status === "Refunded" || payment === "Refunded" || status === "For Full Refund") {
     return paidAmount;
   }
 
-  if (status === "Partially Fulfilled & Refunded") {
+  if (
+    status === "Partially Fulfilled & For Refund"
+    || status === "Partially Fulfilled & Refunded"
+    || payment === "Partially Refunded"
+  ) {
     const allocated = item.allocatedQty ?? 0;
     const unallocated = Math.max(0, qty - allocated);
     if (unallocated <= 0) return 0;
@@ -437,7 +603,18 @@ export function validateAllocationForStatus(lineItem, status) {
   const allocated = lineItem.allocatedQty ?? 0;
   const normalized = migrateOrderStatus(status);
 
-  if (normalized === "Partially Fulfilled & Refunded") {
+  if (normalized === "For Full Refund") {
+    if (allocated !== 0) {
+      return { ok: false, message: "Full refund requires 0 allocated units." };
+    }
+    return { ok: true };
+  }
+
+  if (
+    normalized === "Partially Fulfilled & Pay Balance"
+    || normalized === "Partially Fulfilled & For Refund"
+    || normalized === "Partially Fulfilled & Refunded"
+  ) {
     if (allocated <= 0) {
       return {
         ok: false,
@@ -447,9 +624,13 @@ export function validateAllocationForStatus(lineItem, status) {
     if (allocated >= qty) {
       return {
         ok: false,
-        message: `Full allocation (${qty}) should use Fulfilled status instead.`,
+        message: `Full allocation (${qty}) should use ${ALLOCATION_FULFILLED_PAY_BALANCE} instead.`,
       };
     }
+    return { ok: true };
+  }
+
+  if (normalized === ALLOCATION_FULFILLED_PAY_BALANCE) {
     return { ok: true };
   }
 
@@ -460,18 +641,29 @@ export function validateAllocationForStatus(lineItem, status) {
   return { ok: true };
 }
 
-export function applyPaymentStatusToLineItem(item, payment, status, draftAllocatedQty = undefined) {
+export function applyPaymentStatusToLineItem(item, payment, status, draftAllocatedQty = undefined, draftRefundAmount = undefined) {
   const normalized = migrateOrderStatus(status);
   const qty = Math.max(1, item.quantity ?? 1);
   let allocatedQty = item.allocatedQty ?? 0;
   const isPreorder = resolveOrderKindForItem(item) === "Pre-order";
 
   if (isPreorder) {
-    if (normalized === "Fulfilled") {
+    if (normalized === ALLOCATION_FULFILLED_PAY_BALANCE) {
       allocatedQty = qty;
-    } else if (normalized === "Partially Fulfilled & Refunded") {
+    } else if (normalized === "Fulfilled") {
+      // Keep the partial allocation for a partially-refunded fulfillment so the
+      // customer-facing quantity reflects the units actually delivered.
+      const partiallyRefunded =
+        migratePaymentStatus(payment) === "Partially Refunded"
+        || migratePaymentStatus(payment) === "For Partial Refund"
+        || (item.refundAmount ?? 0) > 0;
+      allocatedQty = partiallyRefunded && (item.allocatedQty ?? 0) > 0 ? item.allocatedQty : qty;
+    } else if (statusNeedsAllocation(normalized)) {
       if (draftAllocatedQty != null) {
         allocatedQty = Math.max(0, Math.min(qty, draftAllocatedQty));
+      }
+      if (normalized === "For Full Refund") {
+        allocatedQty = 0;
       }
     } else if (normalized === "Refunded") {
       allocatedQty = 0;
@@ -479,23 +671,49 @@ export function applyPaymentStatusToLineItem(item, payment, status, draftAllocat
   }
 
   let balanceDue = item.balanceDue;
-  if (isPreorder && allocatedQty !== (item.allocatedQty ?? 0)) {
-    balanceDue = balanceAfterAllocation(
-      {
-        type: "Pre-order",
-        qty,
-        total: item.depositPaid ?? item.lineTotal ?? item.price * qty,
-        fullSubtotal: item.lineTotal ?? item.price * qty,
-        balanceDue: item.balanceDue ?? 0,
-        depositPercent: 30,
-        payment,
-        status: normalized,
-      },
-      allocatedQty,
+  if (isPreorder) {
+    const stub = {
+      type: "Pre-order",
+      qty,
+      total: item.depositPaid ?? item.lineTotal ?? item.price * qty,
+      fullSubtotal: item.lineTotal ?? item.price * qty,
+      balanceDue: item.balanceDue ?? 0,
+      depositPercent: 30,
+      payment,
+      status: normalized,
+    };
+    if (
+      normalized === ALLOCATION_FULFILLED_PAY_BALANCE
+      || normalized === "Partially Fulfilled & Pay Balance"
+    ) {
+      balanceDue = balanceAfterAllocation(stub, allocatedQty);
+    } else if (normalized === "Fulfilled") {
+      balanceDue = balanceAfterAllocation(stub, allocatedQty);
+    } else if (
+      normalized === "Partially Fulfilled & For Refund"
+      || normalized === "Partially Fulfilled & Refunded"
+      || normalized === "For Full Refund"
+    ) {
+      balanceDue = 0;
+    }
+  }
+
+  let refundAmount = item.refundAmount;
+  if (draftRefundAmount != null && draftRefundAmount >= 0) {
+    refundAmount = draftRefundAmount;
+  } else if (statusNeedsRefundAmount(normalized)) {
+    refundAmount = refundedAmountForLineItem(
+      { ...item, allocatedQty, payment, status: normalized, refundAmount: undefined },
+      30,
+    );
+  } else if (normalized === "Refunded" || payment === "Refunded") {
+    refundAmount = refundedAmountForLineItem(
+      { ...item, allocatedQty: 0, payment, status: normalized, refundAmount: undefined },
+      30,
     );
   }
 
-  return { ...item, payment, status: normalized, allocatedQty, balanceDue };
+  return { ...item, payment, status: normalized, allocatedQty, balanceDue, refundAmount };
 }
 
 export function inferLineItemAfterAllocation(item, allocatedQty) {

@@ -54,6 +54,7 @@ export function AdminPageHeaderToolbar({
   notificationBell,
   storefrontButton,
   themeToggle,
+  healthButton,
 }) {
   const { header, toolbarSlotRef } = useAdminPageHeaderContext();
 
@@ -129,6 +130,7 @@ export function AdminPageHeaderToolbar({
         {storefrontButton}
         {notificationBell}
         {themeToggle}
+        {healthButton}
       </Stack>
     </Stack>
   );

@@ -157,7 +157,7 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
     setLineItems((prev) => prev.filter((item) => item.id !== id));
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     if (!form.customer.trim()) {
       setError("Customer name is required.");
@@ -172,32 +172,39 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
       return;
     }
 
-    const order = placeOrder({
-      type: form.orderKind,
-      customer: form.customer.trim(),
-      email: form.email.trim(),
-      phone: form.phone.trim(),
-      notes: form.notes.trim(),
-      cartItems: lineItems,
-      subtotal: totals.dueNow,
-      shippingFee: 0,
-      total: totals.total,
-      fullSubtotal: totals.fullSubtotal,
-      balanceDue: totals.balanceDue,
-      manual: true,
-      initialPayment: form.payment,
-      initialStatus: form.status,
-    });
+    try {
+      const order = await placeOrder({
+        type: form.orderKind,
+        customer: form.customer.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        notes: form.notes.trim(),
+        cartItems: lineItems,
+        subtotal: totals.dueNow,
+        shippingFee: 0,
+        total: totals.total,
+        fullSubtotal: totals.fullSubtotal,
+        balanceDue: totals.balanceDue,
+        manual: true,
+        initialPayment: form.payment,
+        initialStatus: form.status,
+      });
 
-    if (order && form.deductStock && form.orderKind === "In-stock") {
-      decrementStockForCart(lineItems);
-    }
+      if (order && form.deductStock && form.orderKind === "In-stock") {
+        decrementStockForCart(lineItems);
+      }
 
-    if (order) {
-      onCreated?.(order.id);
-      handleClose();
-    } else {
-      setError("Could not create order. Try again.");
+      if (order) {
+        onCreated?.(order.id);
+        handleClose();
+      } else {
+        setError("Could not create order. Try again.");
+      }
+    } catch (error) {
+      console.error("[admin] placeOrder failed:", error);
+      setError(error?.code === "permission-denied"
+        ? "Could not save order to Firestore. Deploy security rules and try again."
+        : "Could not create order. Try again.");
     }
   }
 

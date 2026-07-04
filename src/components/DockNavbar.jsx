@@ -345,11 +345,11 @@ export default function DockNavbar({ surfaces, onOpenCart, onOpenSearch }) {
             >
               <BrandLogo
                 sx={{
-                  fontSize: 34,
+                  fontSize: 46,
                   color: "primary.main",
                   filter: useImageLogo ? undefined : `drop-shadow(0 0 12px ${alpha(gold, 0.5)})`,
                 }}
-                imageSx={{ height: 48 }}
+                imageSx={{ height: 62 }}
               />
             </Stack>
 
@@ -437,11 +437,11 @@ export default function DockNavbar({ surfaces, onOpenCart, onOpenSearch }) {
               >
                 <BrandLogo
                   sx={{
-                    fontSize: 28,
+                    fontSize: 38,
                     color: "primary.main",
                     filter: useImageLogo ? undefined : `drop-shadow(0 0 12px ${alpha(gold, 0.5)})`,
                   }}
-                  imageSx={{ height: 40 }}
+                  imageSx={{ height: 52 }}
                 />
               </Stack>
               <Stack direction="row" spacing={0.5} alignItems="center">

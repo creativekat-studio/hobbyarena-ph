@@ -85,7 +85,7 @@ export default function CustomerNavbar({ surfaces, onOpenCart, onOpenSearch }) {
         }}
       >
         <Container maxWidth="lg">
-          <Toolbar disableGutters sx={{ minHeight: { xs: 62, md: 72 }, gap: 1.5 }}>
+          <Toolbar disableGutters sx={{ minHeight: { xs: 68, md: 84 }, gap: 1.5 }}>
             <IconButton
               color="inherit"
               onClick={() => setMobileOpen(true)}
@@ -104,14 +104,14 @@ export default function CustomerNavbar({ surfaces, onOpenCart, onOpenSearch }) {
             >
               <BrandLogo
                 sx={{
-                  fontSize: { xs: 30, md: 36 },
+                  fontSize: { xs: 40, md: 50 },
                   color: "primary.main",
                   filter: useImageLogo ? undefined : `drop-shadow(0 0 12px ${alpha(theme.palette.primary.main, 0.5)})`,
                 }}
               />
               {!useImageLogo ? (
                 <Stack sx={{ minWidth: 0, display: { xs: "none", sm: "flex" } }}>
-                  <Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1, letterSpacing: "-0.02em" }}>
+                  <Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1, letterSpacing: "-0.02em", fontSize: { xs: "1.6rem", md: "1.95rem" } }}>
                     Hobby Arena
                   </Typography>
                   <Typography variant="caption" sx={{ color: "text.secondary", fontFamily: MONO_FONT, letterSpacing: 0.8, fontSize: "0.58rem", lineHeight: 1.3, maxWidth: 220 }}>

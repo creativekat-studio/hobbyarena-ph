@@ -148,7 +148,7 @@ Use this after pulling the latest changes. Mark **Pass**, **Fail**, or **N/A**, 
 |------|--------|
 | Manual add order by admin | Not yet implemented |
 | Custom product description editor in inventory | Partial — uses existing description sections |
-| Real email sending | Mock acknowledgement stored on order only |
+| Real email sending | Resend via `/api` — order acknowledgement + inquiry notifications |
 | Dashboard KPIs from live orders | Still uses static analytics seed data |
 
 ---

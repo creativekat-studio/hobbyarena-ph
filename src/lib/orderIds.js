@@ -31,3 +31,14 @@ export function migrateLegacyOrderId(order) {
     })),
   };
 }
+
+/** Newest / highest order number first (HA-yyyymmdd####). */
+export function compareOrdersByOrderNo(a, b) {
+  const idA = String(a?.id ?? a ?? "");
+  const idB = String(b?.id ?? b ?? "");
+  return idB.localeCompare(idA, undefined, { numeric: true });
+}
+
+export function sortOrdersByOrderNo(orders) {
+  return [...orders].sort(compareOrdersByOrderNo);
+}

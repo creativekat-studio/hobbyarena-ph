@@ -4,6 +4,7 @@ import {
   Button,
   Chip,
   Dialog,
+  DialogActions,
   DialogContent,
   DialogTitle,
   Grid,
@@ -35,6 +36,8 @@ import {
   INSTOCK_FLOW_STEPS,
   activePreorderStep,
   activeInstockStep,
+  getFlowStepsForItem,
+  getActiveStepForItem,
   allocationLabelForItem,
   buildTrailAttachment,
   getOrderLineItems,
@@ -44,13 +47,18 @@ import {
   lineItemTrailLabel,
   migrateOrderStatus,
   optionsIncludingCurrent,
+  orderStatusLabel,
   refundedAmountForLineItem,
   refundedAmountForOrder,
   resolveOrderKind,
   resolveOrderKindForItem,
   validateAllocationForStatus,
+  statusNeedsAllocation,
+  statusNeedsRefundAmount,
+  ALLOCATION_FULFILLED_PAY_BALANCE,
+  trailEntryShowsAttachment,
 } from "../data/orderWorkflow.js";
-import { hydrateProofAttachment, resolveOrderProofUrl } from "../lib/orderProofStorage.js";
+import { hydrateProofAttachment, resolveProofAttachmentUrl, ensureTrailEntryAttachment } from "../lib/orderProofStorage.js";
 
 export { PAYMENT_COLOR, STATUS_COLOR, PAYMENT_OPTIONS, STATUS_OPTIONS };
 
@@ -299,12 +307,12 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
           </Typography>
         ) : null}
 
-        {entry.attachment?.url ? (
+        {trailEntryShowsAttachment(entry) ? (
           <Button
             size="small"
             variant="text"
             startIcon={<AttachmentIcon sx={{ fontSize: 14 }} />}
-            onClick={() => onViewAttachment(entry.attachment)}
+            onClick={() => onViewAttachment(entry.attachment, entry)}
             sx={{
               mt: 0.5,
               px: 0,
@@ -316,11 +324,86 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
               justifyContent: "flex-start",
             }}
           >
-            {entry.attachment.label || "View attachment"}
+            {entry.attachment?.label || "View proof of payment"}
           </Button>
         ) : null}
       </Box>
     </Stack>
+  );
+}
+
+function MilestoneNode({ caption, label, accent, active }) {
+  const color = accent ?? "text.secondary";
+  return (
+    <Box
+      sx={{
+        flex: "1 1 0",
+        minWidth: 0,
+        textAlign: "center",
+        px: 1.5,
+        py: 1.5,
+        borderRadius: 2,
+        border: "1.5px solid",
+        borderColor: active ? `${accent}.main` : "divider",
+        bgcolor: active
+          ? (theme) => alpha(theme.palette[accent].main, 0.1)
+          : "background.paper",
+      }}
+    >
+      <Typography
+        sx={{
+          fontSize: "0.58rem",
+          fontFamily: MONO_FONT,
+          letterSpacing: 1,
+          textTransform: "uppercase",
+          color: active ? `${color}.main` : "text.disabled",
+          mb: 0.5,
+        }}
+      >
+        {caption}
+      </Typography>
+      <Typography
+        sx={{
+          fontWeight: 800,
+          fontSize: "0.9rem",
+          lineHeight: 1.2,
+          color: active ? `${accent}.main` : "text.primary",
+        }}
+      >
+        {label}
+      </Typography>
+    </Box>
+  );
+}
+
+function StepJourney({ fromLabel, toLabel, accent = "primary" }) {
+  return (
+    <Box
+      sx={{
+        mt: 2,
+        p: 1.75,
+        borderRadius: 2.5,
+        border: "1px solid",
+        borderColor: (theme) => alpha(theme.palette[accent].main, 0.35),
+        bgcolor: (theme) => alpha(theme.palette[accent].main, 0.04),
+      }}
+    >
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <MilestoneNode caption="Now" label={fromLabel} accent="info" />
+        <Typography
+          sx={{
+            flex: "0 0 auto",
+            color: `${accent}.main`,
+            fontWeight: 900,
+            fontSize: "1.5rem",
+            lineHeight: 1,
+          }}
+        >
+          →
+        </Typography>
+        <MilestoneNode caption="New status" label={toLabel} accent={accent} active />
+      </Box>
+    </Box>
   );
 }
 
@@ -334,13 +417,16 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
   const [draftPayment, setDraftPayment] = useState(lineItem.payment);
   const [draftStatus, setDraftStatus] = useState(lineItem.status);
   const [draftQty, setDraftQty] = useState(String(lineItem.allocatedQty ?? 0));
+  const [draftRefund, setDraftRefund] = useState(String(lineItem.refundAmount ?? ""));
   const [draftAttachment, setDraftAttachment] = useState(null);
   const [saveError, setSaveError] = useState("");
+  const [confirmTransition, setConfirmTransition] = useState(null);
 
   useEffect(() => {
     setDraftPayment(lineItem.payment);
     setDraftStatus(lineItem.status);
     setDraftQty(String(lineItem.allocatedQty ?? 0));
+    setDraftRefund(lineItem.refundAmount != null ? String(lineItem.refundAmount) : "");
     setDraftAttachment(null);
     setSaveError("");
   }, [lineItem.id, lineItem.payment, lineItem.status, lineItem.allocatedQty]);
@@ -362,17 +448,36 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
   }
 
   const parsedQty = Math.max(0, Math.min(maxQty, Number(draftQty) || 0));
-  const allocationEditable = draftStatus === "Partially Fulfilled & Refunded";
+  const allocationEditable = statusNeedsAllocation(draftStatus);
   const showAllocationField = isPreorder && setAllocation && allocationEditable;
-  const showRefundedAmount = draftStatus === "Refunded" || draftPayment === "Refunded";
+  const showRefundField = isPreorder && statusNeedsRefundAmount(draftStatus);
+  const showRefundedAmount = draftStatus === "Refunded" || draftPayment === "Refunded" || draftPayment === "Partially Refunded";
   const refundedAmount = refundedAmountForLineItem(lineItem, depositPercent);
-  const previewRefundedAmount = allocationEditable && parsedQty > 0 && parsedQty < maxQty
-    ? refundedAmountForLineItem({ ...lineItem, allocatedQty: parsedQty, status: draftStatus }, depositPercent)
+  const previewRefundedAmount = showRefundField && parsedQty >= 0
+    ? refundedAmountForLineItem(
+      { ...lineItem, allocatedQty: draftStatus === "For Full Refund" ? 0 : parsedQty, status: draftStatus, refundAmount: draftRefund !== "" ? Number(draftRefund) : undefined },
+      depositPercent,
+    )
     : refundedAmount;
-  const effectiveAllocated = allocationEditable ? parsedQty : (lineItem.allocatedQty ?? 0);
+  const effectiveAllocated = allocationEditable
+    ? parsedQty
+    : (draftStatus === ALLOCATION_FULFILLED_PAY_BALANCE || draftStatus === "Fulfilled")
+      ? maxQty
+      : (lineItem.allocatedQty ?? 0);
+  const parsedRefund = draftRefund === "" ? undefined : Math.max(0, Number(draftRefund) || 0);
+
+  // Pre-fill the auto-calculated refund when the field first appears empty (stays editable).
+  useEffect(() => {
+    if (showRefundField && draftRefund === "") {
+      setDraftRefund(String(computeAutoRefund(parsedQty, draftStatus)));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showRefundField, draftStatus]);
+
   const paymentStatusDirty = draftPayment !== lineItem.payment || draftStatus !== lineItem.status;
   const allocationDirty = showAllocationField && parsedQty !== (lineItem.allocatedQty ?? 0);
-  const dirty = paymentStatusDirty || allocationDirty;
+  const refundDirty = showRefundField && parsedRefund !== undefined && parsedRefund !== (lineItem.refundAmount ?? previewRefundedAmount);
+  const dirty = paymentStatusDirty || allocationDirty || refundDirty;
 
   const allocationHint = validateAllocationForStatus(
     isPreorder ? { ...lineItem, allocatedQty: effectiveAllocated } : lineItem,
@@ -383,27 +488,38 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
   function handleSave() {
     if (!dirty) return;
 
-    const savingPartialRefund = paymentStatusDirty
-      && draftStatus === "Partially Fulfilled & Refunded"
-      && isPreorder;
+    const savingPartialAllocation = paymentStatusDirty && isPreorder && statusNeedsAllocation(draftStatus);
+    const savingFullRefund = paymentStatusDirty && draftStatus === "For Full Refund";
 
-    if (savingPartialRefund && (parsedQty <= 0 || parsedQty >= maxQty)) {
+    if (savingPartialAllocation && !savingFullRefund && (parsedQty <= 0 || parsedQty >= maxQty)) {
       setSaveError(
         parsedQty >= maxQty
-          ? `Full allocation (${maxQty}) should use Fulfilled status instead.`
+          ? `Full allocation (${maxQty}) should use ${ALLOCATION_FULFILLED_PAY_BALANCE} instead.`
           : "Enter allocated qty (minimum 1) for units being fulfilled.",
       );
       return;
     }
 
-    const draftAllocatedForSave = savingPartialRefund || (allocationEditable && paymentStatusDirty)
-      ? parsedQty
+    if (savingFullRefund && parsedQty !== 0) {
+      setSaveError("Full refund requires 0 allocated units.");
+      return;
+    }
+
+    const draftAllocatedForSave = draftStatus === ALLOCATION_FULFILLED_PAY_BALANCE
+      ? maxQty
+      : savingPartialAllocation || (allocationEditable && paymentStatusDirty)
+        ? (savingFullRefund ? 0 : parsedQty)
+        : undefined;
+
+    const draftRefundForSave = showRefundField && (refundDirty || paymentStatusDirty)
+      ? (parsedRefund ?? previewRefundedAmount)
       : undefined;
 
     const itemForValidation = isPreorder
       ? {
           ...lineItem,
-          allocatedQty: draftAllocatedForSave ?? (draftStatus === "Fulfilled" ? maxQty : effectiveAllocated),
+          allocatedQty: draftAllocatedForSave
+            ?? ((draftStatus === "Fulfilled" || draftStatus === ALLOCATION_FULFILLED_PAY_BALANCE) ? maxQty : effectiveAllocated),
         }
       : lineItem;
 
@@ -422,33 +538,102 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
 
     setSaveError("");
 
+    // Warn when a payment/status change moves the order backward or skips ≥2 steps.
+    if (paymentStatusDirty) {
+      const transition = evaluateStepTransition(draftAllocatedForSave);
+      if (transition) {
+        setConfirmTransition({ ...transition, draftAllocatedForSave, draftRefundForSave });
+        return;
+      }
+    }
+
+    commitSave(draftAllocatedForSave, draftRefundForSave);
+  }
+
+  function commitSave(draftAllocatedForSave, draftRefundForSave) {
     if (paymentStatusDirty && onSave) {
       const attachment = draftAttachment
         ? buildTrailAttachment(draftAttachment.dataUrl, draftAttachment.name)
         : undefined;
-      onSave(orderId, draftPayment, draftStatus, lineItem.id, "", attachment, draftAllocatedForSave);
+      onSave(orderId, draftPayment, draftStatus, lineItem.id, "", attachment, draftAllocatedForSave, draftRefundForSave);
       setDraftAttachment(null);
     } else if (allocationDirty && setAllocation) {
       setAllocation(orderId, parsedQty, lineItem.id);
     }
   }
 
-  function handleStatusChange(nextStatus) {
-    setDraftStatus(nextStatus);
+  function evaluateStepTransition(draftAllocatedForSave) {
+    // Full refund is a legitimate refund decision at the allocation/balance
+    // stage, not a workflow regression — never warn on it.
+    if (migrateOrderStatus(draftStatus) === "For Full Refund") return null;
+
+    const steps = getFlowStepsForItem(lineItem);
+    const fromStep = getActiveStepForItem(lineItem);
+    const nextItem = {
+      ...lineItem,
+      payment: draftPayment,
+      status: draftStatus,
+      allocatedQty: draftAllocatedForSave ?? lineItem.allocatedQty ?? 0,
+    };
+    const toStep = getActiveStepForItem(nextItem);
+
+    if (toStep < fromStep) return { kind: "back", fromStep, toStep, steps };
+    if (toStep - fromStep >= 2) return { kind: "skip", fromStep, toStep, steps };
+    return null;
+  }
+
+  function handleConfirmTransition() {
+    const pending = confirmTransition;
+    setConfirmTransition(null);
+    if (pending) commitSave(pending.draftAllocatedForSave, pending.draftRefundForSave);
+  }
+
+  function computeAutoRefund(qty, status) {
+    return refundedAmountForLineItem(
+      { ...lineItem, allocatedQty: status === "For Full Refund" ? 0 : qty, status, refundAmount: undefined },
+      depositPercent,
+    );
+  }
+
+  function handleAllocationChange(value) {
+    setDraftQty(value);
     setSaveError("");
-    if (nextStatus === "Fulfilled" && isPreorder) {
-      setDraftQty(String(maxQty));
-    } else if (nextStatus !== "Partially Fulfilled & Refunded") {
-      setDraftQty(String(lineItem.allocatedQty ?? 0));
+    if (statusNeedsRefundAmount(draftStatus)) {
+      const qty = Math.max(0, Math.min(maxQty, Number(value) || 0));
+      setDraftRefund(String(computeAutoRefund(qty, draftStatus)));
     }
   }
 
-  const thirdColumn = showAllocationField || showRefundedAmount;
+  function handleStatusChange(nextStatus) {
+    setDraftStatus(nextStatus);
+    setSaveError("");
+    let nextQty = Number(draftQty) || lineItem.allocatedQty || 0;
+    if (nextStatus === "Fulfilled" && isPreorder) {
+      nextQty = maxQty;
+      setDraftQty(String(maxQty));
+    } else if (nextStatus === ALLOCATION_FULFILLED_PAY_BALANCE && isPreorder) {
+      nextQty = maxQty;
+      setDraftQty(String(maxQty));
+    } else if (nextStatus === "For Full Refund") {
+      nextQty = 0;
+      setDraftQty("0");
+    } else if (!statusNeedsAllocation(nextStatus)) {
+      nextQty = lineItem.allocatedQty ?? 0;
+      setDraftQty(String(nextQty));
+    }
+    if (statusNeedsRefundAmount(nextStatus)) {
+      setDraftRefund(String(computeAutoRefund(nextQty, nextStatus)));
+    }
+  }
+
+  const showRefundedOnly = showRefundedAmount && !showAllocationField && !showRefundField;
+  const secondRowCount = [showAllocationField, showRefundField, showRefundedOnly].filter(Boolean).length;
+  const secondRowSize = secondRowCount <= 1 ? 12 : 12 / secondRowCount;
 
   return (
     <Stack spacing={1.5}>
-      <Grid container spacing={2} alignItems="flex-start">
-        <Grid size={{ xs: 12, sm: thirdColumn ? 4 : 6 }}>
+      <Grid container spacing={1.5} alignItems="flex-start">
+        <Grid size={{ xs: 12, sm: 6 }}>
           <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", mb: 1 }}>
             Payment status
             <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
@@ -467,22 +652,22 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
             ))}
           </Select>
         </Grid>
-        <Grid size={{ xs: 12, sm: thirdColumn ? 4 : 6 }}>
+        <Grid size={{ xs: 12, sm: 6 }}>
           <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", mb: 1 }}>Order status</Typography>
           <Select
             fullWidth
             size="small"
             value={draftStatus}
             onChange={(e) => handleStatusChange(e.target.value)}
-            renderValue={(value) => <Chip label={value} size="small" color={STATUS_COLOR[value] || "default"} variant="outlined" />}
+            renderValue={(value) => <Chip label={orderStatusLabel(value)} size="small" color={STATUS_COLOR[value] || "default"} variant="outlined" />}
           >
             {statusOptions.map((status) => (
-              <MenuItem key={status} value={status}>{status}</MenuItem>
+              <MenuItem key={status} value={status}>{orderStatusLabel(status)}</MenuItem>
             ))}
           </Select>
         </Grid>
         {showAllocationField ? (
-          <Grid size={{ xs: 12, sm: 4 }}>
+          <Grid size={{ xs: 12, sm: secondRowSize }}>
             <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", mb: 1 }}>
               Stock allocation
               <Box component="span" sx={{ color: "error.main", ml: 0.25 }}>*</Box>
@@ -493,20 +678,32 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
               fullWidth
               label={`Allocated (max ${maxQty})`}
               value={draftQty}
-              onChange={(e) => {
-                setDraftQty(e.target.value);
-                setSaveError("");
-              }}
+              onChange={(e) => handleAllocationChange(e.target.value)}
               inputProps={{ min: 1, max: maxQty }}
             />
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: "block", fontFamily: MONO_FONT }}>
-              Current: {allocationLabelForItem(lineItem)}
-              {previewRefundedAmount > 0 ? ` · Refunded ${PESO.format(previewRefundedAmount)}` : ""}
-            </Typography>
           </Grid>
         ) : null}
-        {showRefundedAmount && !showAllocationField ? (
-          <Grid size={{ xs: 12, sm: 4 }}>
+        {showRefundField ? (
+          <Grid size={{ xs: 12, sm: secondRowSize }}>
+            <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", mb: 1 }}>
+              Refund amount
+            </Typography>
+            <TextField
+              size="small"
+              type="number"
+              fullWidth
+              label="Refund (PHP)"
+              value={draftRefund}
+              onChange={(e) => {
+                setDraftRefund(e.target.value);
+                setSaveError("");
+              }}
+              inputProps={{ min: 0 }}
+            />
+          </Grid>
+        ) : null}
+        {showRefundedOnly ? (
+          <Grid size={{ xs: 12, sm: secondRowSize }}>
             <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", mb: 1 }}>
               Refunded amount
             </Typography>
@@ -580,6 +777,48 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
           Save changes
         </Button>
       </Stack>
+
+      <Dialog open={Boolean(confirmTransition)} onClose={() => setConfirmTransition(null)} maxWidth="sm" fullWidth>
+        {confirmTransition ? (
+          <>
+            <DialogTitle sx={{ fontWeight: 800 }}>
+              {confirmTransition.kind === "back" ? "Move this item backward?" : "Skip ahead?"}
+            </DialogTitle>
+            <DialogContent>
+              {confirmTransition.kind === "back" ? (
+                <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
+                  This order is already <strong>{orderStatusLabel(lineItem.status)}</strong>.
+                  {" "}Are you sure you want to return it to{" "}
+                  <strong>{orderStatusLabel(draftStatus)}</strong>?
+                </Typography>
+              ) : (
+                <>
+                  <Typography variant="body2" color="text.secondary">
+                    This change jumps past one or more stages. Double-check before continuing.
+                  </Typography>
+                  <StepJourney
+                    fromLabel={orderStatusLabel(lineItem.status)}
+                    toLabel={orderStatusLabel(draftStatus)}
+                    accent="primary"
+                  />
+                  <Typography sx={{ mt: 2.5, fontWeight: 700 }}>Do you wish to continue?</Typography>
+                </>
+              )}
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2 }}>
+              <Button color="inherit" onClick={() => setConfirmTransition(null)}>Cancel</Button>
+              <Button
+                variant="contained"
+                color={confirmTransition.kind === "back" ? "warning" : "primary"}
+                onClick={handleConfirmTransition}
+                sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase" }}
+              >
+                Continue
+              </Button>
+            </DialogActions>
+          </>
+        ) : null}
+      </Dialog>
     </Stack>
   );
 }
@@ -609,7 +848,7 @@ function LineItemSelectorOption({ item, index }) {
           sx={{ height: 22, fontSize: "0.68rem", fontWeight: 700 }}
         />
         <Chip
-          label={status}
+          label={orderStatusLabel(status)}
           size="small"
           color={STATUS_COLOR[status] || "default"}
           variant="outlined"
@@ -999,9 +1238,10 @@ export function OrderTrailPanel({
 
   const trail = useMemo(
     () => [...(order.trail ?? [])]
+      .map((entry) => ensureTrailEntryAttachment(entry, order))
       .filter((entry) => !trailFilterId || !entry.lineItemId || entry.lineItemId === trailFilterId)
       .sort((a, b) => new Date(b.at) - new Date(a.at)),
-    [order.trail, trailFilterId],
+    [order, order.trail, trailFilterId],
   );
 
   const handleAddNote = () => {
@@ -1127,8 +1367,12 @@ export function OrderTrailPanel({
                   entry={entry}
                   isLast={index === trail.length - 1}
                   surfaceBorderColor={surfaceBorderColor}
-                  onViewAttachment={(attachment) => {
-                    const hydrated = hydrateProofAttachment(attachment, resolveOrderProofUrl(order));
+                  onViewAttachment={(attachment, entry) => {
+                    if (!trailEntryShowsAttachment(entry)) return;
+                    const hydrated = hydrateProofAttachment(
+                      attachment,
+                      resolveProofAttachmentUrl(order, entry),
+                    );
                     if (hydrated?.url) setPreviewAttachment(hydrated);
                   }}
                   lineItemLabel={

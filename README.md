@@ -53,10 +53,62 @@ Open the printed local URL (Vite picks a free port, e.g. `http://localhost:5174`
 ## Scripts
 
 ```bash
-npm run dev      # start the dev server
-npm run build    # production build to dist/
-npm run preview  # preview the production build
+npm run dev       # storefront at http://localhost:5173 (fastest for UI work)
+npm run dev:full  # Vite + /api on http://localhost:3000 (for testing Resend emails)
+npm run build     # production build to dist/
+npm run preview   # preview the production build
 ```
+
+**Local dev tip:** If `dev:full` shows a blank page, stop it (Ctrl+C), restart once, and open the exact URL printed in the terminal (usually `http://localhost:3000`). The catch-all SPA rewrite no longer blocks Vite assets in dev.
+
+**Alternative for emails:** Run two terminals — `yarn dev:full` for API, then `yarn dev` for the UI. Emails will send via the proxy to port 3000.
+
+## Email (Resend)
+
+Transactional email is wired for:
+
+- **Order acknowledgement** — customer + admin notification after checkout
+- **Contact inquiries** — admin notification + customer auto-reply
+
+### 1. Local env
+
+Copy `.env.example` to `.env.local` and fill in your values:
+
+```bash
+cp .env.example .env.local
+```
+
+| Variable | Where to put it |
+|----------|-----------------|
+| `RESEND_API_KEY` | `.env.local` locally · Vercel → Project → Settings → Environment Variables |
+| `RESEND_FROM_EMAIL` | Use `Hobby Arena <onboarding@resend.dev>` until your domain is verified in Resend |
+| `ADMIN_NOTIFICATION_EMAIL` | Where new orders/inquiries should alert you (e.g. `hello@hobbyarena.ph`) |
+
+**Never commit `.env.local` or paste your API key in chat.**
+
+### 2. Resend dashboard
+
+1. [resend.com](https://resend.com) → **API Keys** → create key → paste into `RESEND_API_KEY`
+2. For production sending from `@hobbyarena.ph`, add and verify your domain under **Domains**
+3. Until verified, test with `onboarding@resend.dev` as the from address (Resend only delivers to your account email in test mode)
+
+### 3. Test locally
+
+```bash
+npm run dev:full
+```
+
+Place a test order or submit the contact form. Check Resend → **Logs** for delivery status.
+
+### 4. Deploy to Vercel
+
+Add the same three env vars in the Vercel project settings, then redeploy:
+
+```bash
+npx vercel deploy --prod
+```
+
+API routes live in `/api` and stay server-side — the Resend key is never exposed to the browser.
 
 ## Project structure
 
@@ -84,11 +136,19 @@ src/
     ├── DashboardPage.jsx, InventoryPage.jsx, CmsPage.jsx
 ```
 
-## Next steps (when wiring Firebase)
+## Next steps (Firebase)
 
-1. `npm install firebase`; create `src/lib/firebase.js` with your config.
-2. Replace the mock internals in `AuthProvider.jsx` with Firebase Auth calls; read `role` from `getIdTokenResult()` custom claims.
-3. Set the `admin` custom claim via the Admin SDK (Cloud Function) for staff accounts.
-4. Move products/inventory/orders into Firestore; replace `data/*.js` reads with queries.
-5. Add Firestore/Storage Security Rules enforcing the `admin` claim for all writes.
-```
+**Setup guide:** [docs/FIREBASE-SETUP.md](docs/FIREBASE-SETUP.md)
+
+1. Create Firebase project + add web app config to `.env.local`
+2. Enable Firestore (test mode) + Storage + Email/Password Auth
+3. Admin Dashboard → **Test Firestore connection**
+4. Deploy `firestore.rules` + `storage.rules` when Auth is wired
+5. Migrate stores one by one; set `VITE_DATA_SOURCE=firebase` when ready
+
+Legacy checklist:
+
+1. `firebase` SDK is installed; see `src/lib/firebase.js`
+2. Replace mock internals in `AuthProvider.jsx` with Firebase Auth; read `role` from `getIdTokenResult()` custom claims
+3. Set the `admin` custom claim via Admin SDK for staff accounts
+4. Move products/inventory/orders into Firestore; replace `data/*.js` reads with queries

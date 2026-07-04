@@ -34,9 +34,8 @@ import { PESO } from "../components/ProductCard.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
 import { computeDashboardAnalytics } from "../lib/dashboardAnalytics.js";
-import { STATUS_COLOR as ORDER_STATUS_COLOR } from "../data/orderWorkflow.js";
+import { STATUS_COLOR as ORDER_STATUS_COLOR, orderStatusLabel } from "../data/orderWorkflow.js";
 import { useOrders } from "../lib/ordersStore.jsx";
-
 const PERIOD_PRESETS = [
   { key: "1D", label: "1D" },
   { key: "1W", label: "1W" },
@@ -101,12 +100,20 @@ function CardEmptyState({ message, hint, minHeight = 220 }) {
   );
 }
 
-function KpiCard({ panelSx, label, value, delta, periodLabel }) {
+function KpiCard({ panelSx, label, value, delta, periodLabel, subLabel, subValue }) {
   const positive = delta >= 0;
   return (
     <Box sx={{ ...panelSx, p: 2.5, height: "100%" }}>
       <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", fontWeight: 600 }}>{label}</Typography>
       <Typography sx={{ fontWeight: 800, fontSize: "1.6rem", mt: 0.5 }}>{value}</Typography>
+      {subValue ? (
+        <Typography sx={{ color: "text.secondary", fontSize: "0.82rem", mt: 0.35 }}>
+          {subLabel}: <Box component="span" sx={{ fontWeight: 700, color: "text.primary" }}>{subValue}</Box>
+        </Typography>
+      ) : null}
+      {subLabel && !subValue ? (
+        <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", mt: 0.35 }}>{subLabel}</Typography>
+      ) : null}
       <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
         <Typography sx={{ color: positive ? "success.main" : "error.main", fontWeight: 800, fontSize: "0.8rem", fontFamily: MONO_FONT }}>
           {positive ? "▲" : "▼"} {Math.abs(delta)}%
@@ -295,10 +302,11 @@ export default function DashboardPage() {
       ) : null}
 
       <Grid container spacing={2}>
-        <Grid size={{ xs: 6, md: 3 }}><KpiCard panelSx={panelSx} label={`Revenue (${revenuePeriodLabel})`} value={PESO.format(kpis.revenue)} delta={kpis.revenueDelta} periodLabel={periodLabel} /></Grid>
-        <Grid size={{ xs: 6, md: 3 }}><KpiCard panelSx={panelSx} label="Orders" value={kpis.orders} delta={kpis.ordersDelta} periodLabel={periodLabel} /></Grid>
-        <Grid size={{ xs: 6, md: 3 }}><KpiCard panelSx={panelSx} label="Customers" value={kpis.customers.toLocaleString()} delta={kpis.customersDelta} periodLabel={periodLabel} /></Grid>
-        <Grid size={{ xs: 6, md: 3 }}><KpiCard panelSx={panelSx} label="Avg. order" value={PESO.format(kpis.avgOrder)} delta={kpis.avgOrderDelta} periodLabel={periodLabel} /></Grid>
+        <Grid size={{ xs: 6, sm: 4, md: 2.4 }}><KpiCard panelSx={panelSx} label={`Revenue (${revenuePeriodLabel})`} value={PESO.format(kpis.revenue)} delta={kpis.revenueDelta} periodLabel={periodLabel} /></Grid>
+        <Grid size={{ xs: 6, sm: 4, md: 2.4 }}><KpiCard panelSx={panelSx} label="Net revenue" value={PESO.format(kpis.netRevenue)} delta={kpis.netRevenueDelta} periodLabel={periodLabel} subLabel="After cost & refunds" /></Grid>
+        <Grid size={{ xs: 6, sm: 4, md: 2.4 }}><KpiCard panelSx={panelSx} label="Orders" value={kpis.orders} delta={kpis.ordersDelta} periodLabel={periodLabel} /></Grid>
+        <Grid size={{ xs: 6, sm: 4, md: 2.4 }}><KpiCard panelSx={panelSx} label="Customers" value={kpis.customers.toLocaleString()} delta={kpis.customersDelta} periodLabel={periodLabel} /></Grid>
+        <Grid size={{ xs: 6, sm: 4, md: 2.4 }}><KpiCard panelSx={panelSx} label="Avg. order" value={PESO.format(kpis.avgOrder)} delta={kpis.avgOrderDelta} periodLabel={periodLabel} /></Grid>
       </Grid>
 
       <Grid container spacing={2.5}>
@@ -409,7 +417,7 @@ export default function DashboardPage() {
                 <TableCell>{order.customer}</TableCell>
                 <TableCell sx={{ color: "text.secondary", display: { xs: "none", sm: "table-cell" } }}>{order.date}</TableCell>
                 <TableCell align="right" sx={{ fontWeight: 700 }}>{PESO.format(order.total)}</TableCell>
-                <TableCell align="right"><Chip label={order.status} size="small" color={ORDER_STATUS_COLOR[order.status] || "default"} variant="outlined" /></TableCell>
+                <TableCell align="right"><Chip label={orderStatusLabel(order.status)} size="small" color={ORDER_STATUS_COLOR[order.status] || "default"} variant="outlined" /></TableCell>
               </TableRow>
             ))}
             {recentOrders.length === 0 ? (

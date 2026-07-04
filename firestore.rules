@@ -1,0 +1,90 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        request.auth.token.email == 'website.hobbyarena@gmail.com'
+      );
+    }
+
+    function isOwner(email) {
+      return isSignedIn() && request.auth.token.email == email;
+    }
+
+    function customerBalanceProofUpdate() {
+      return isSignedIn()
+        && resource.data.email == request.auth.token.email
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'trail', 'notificationSeen', 'updatedAt'
+        ])
+        && request.resource.data.trail.size() == resource.data.trail.size() + 1;
+    }
+
+    // Setup health check — admins only once auth is wired
+    match /_meta/{docId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Storefront CMS + catalog settings
+    match /cms/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /catalog/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Products / inventory
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /inventory/{itemId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Customer profiles
+    match /customers/{customerId} {
+      allow read: if isAdmin() || (isSignedIn() && customerId == request.auth.uid);
+      allow create: if isSignedIn() && customerId == request.auth.uid;
+      allow update: if isAdmin() || (isSignedIn() && customerId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    // Orders — checkout creates docs; customers can append balance-proof trail entries
+    match /orders/{orderId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.email == request.auth.token.email);
+      allow create: if true;
+      allow update: if isAdmin() || customerBalanceProofUpdate();
+      allow delete: if isAdmin();
+    }
+
+    // Contact form inquiries — anyone can submit; admin manages
+    match /inquiries/{inquiryId} {
+      allow read: if isAdmin();
+      allow create: if true;
+      allow update, delete: if isAdmin();
+    }
+
+    // Stock holds — short-lived checkout reservations (in-stock races).
+    // Non-sensitive; guests can checkout, so anyone may read/place/release a hold.
+    // Expired holds are ignored by clients and cleaned up opportunistically.
+    match /stockHolds/{holdId} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

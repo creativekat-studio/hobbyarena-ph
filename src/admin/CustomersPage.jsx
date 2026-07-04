@@ -22,7 +22,8 @@ import { avatarStyles } from "../lib/surfaces.js";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import { CardIcon, SearchIcon, SparkleIcon, UserIcon } from "../components/icons.jsx";
-import { CUSTOMERS } from "../data/mockData.js";
+import { useCustomers } from "../lib/customersStore.jsx";
+import { useOrders } from "../lib/ordersStore.jsx";
 
 const FILTERS = [
   { id: "all", label: "All" },
@@ -30,6 +31,12 @@ const FILTERS = [
   { id: "active", label: "Active" },
   { id: "dormant", label: "Dormant" },
 ];
+
+const AUTH_PROVIDER_LABEL = {
+  google: "Google",
+  password: "Email",
+  unknown: "Web",
+};
 
 function StatCard({ panelSx, icon, label, value, accent }) {
   const theme = useTheme();
@@ -50,16 +57,60 @@ function StatCard({ panelSx, icon, label, value, accent }) {
   );
 }
 
+function customerStatus(orderCount, lastOrderDate) {
+  if (!orderCount) return "New";
+  if (!lastOrderDate) return "Active";
+  const days = (Date.now() - new Date(lastOrderDate).getTime()) / (1000 * 60 * 60 * 24);
+  return days > 90 ? "Dormant" : "Active";
+}
+
 export default function CustomersPage() {
   const theme = useTheme();
   const accents = getStatAccents(theme);
   const { surfaces } = useOutletContext();
   const { panelSx } = surfaces;
+  const { customers } = useCustomers();
+  const { orders } = useOrders();
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
 
+  const enrichedCustomers = useMemo(() => {
+    const ordersByEmail = new Map();
+    orders.forEach((order) => {
+      const key = String(order.email || "").trim().toLowerCase();
+      if (!key) return;
+      const current = ordersByEmail.get(key) || { count: 0, totalSpent: 0, lastOrderDate: null };
+      const orderTotal = Number(order.total) || 0;
+      const orderDate = order.date || null;
+      ordersByEmail.set(key, {
+        count: current.count + 1,
+        totalSpent: current.totalSpent + orderTotal,
+        lastOrderDate:
+          !current.lastOrderDate || (orderDate && orderDate > current.lastOrderDate)
+            ? orderDate
+            : current.lastOrderDate,
+      });
+    });
+
+    return customers.map((customer) => {
+      const stats = ordersByEmail.get(String(customer.email || "").trim().toLowerCase()) || {
+        count: 0,
+        totalSpent: 0,
+        lastOrderDate: null,
+      };
+      const status = customerStatus(stats.count, stats.lastOrderDate);
+      return {
+        ...customer,
+        orders: stats.count,
+        totalSpent: stats.totalSpent,
+        status,
+        signInMethod: AUTH_PROVIDER_LABEL[customer.authProvider] || AUTH_PROVIDER_LABEL.unknown,
+      };
+    });
+  }, [customers, orders]);
+
   const rows = useMemo(() => {
-    return CUSTOMERS.filter((c) => {
+    return enrichedCustomers.filter((c) => {
       const matchesQuery =
         !query.trim() ||
         c.name.toLowerCase().includes(query.toLowerCase()) ||
@@ -76,22 +127,24 @@ export default function CustomersPage() {
           return true;
       }
     });
-  }, [filter, query]);
+  }, [enrichedCustomers, filter, query]);
 
   const stats = useMemo(() => {
-    const optIn = CUSTOMERS.filter((c) => c.marketingOptIn).length;
-    const ltv = CUSTOMERS.reduce((sum, c) => sum + c.totalSpent, 0);
+    const optIn = enrichedCustomers.filter((c) => c.marketingOptIn).length;
+    const ltv = enrichedCustomers.reduce((sum, c) => sum + c.totalSpent, 0);
+    const total = enrichedCustomers.length;
     return {
-      total: CUSTOMERS.length,
+      total,
       optIn,
-      optInPct: Math.round((optIn / CUSTOMERS.length) * 100),
+      optInPct: total ? Math.round((optIn / total) * 100) : 0,
       ltv,
+      avgSpend: total ? Math.round(ltv / total) : 0,
     };
-  }, []);
+  }, [enrichedCustomers]);
 
   function exportMarketingList() {
-    const list = CUSTOMERS.filter((c) => c.marketingOptIn);
-    const csv = ["name,email", ...list.map((c) => `${c.name},${c.email}`)].join("\n");
+    const list = enrichedCustomers.filter((c) => c.marketingOptIn);
+    const csv = ["name,email", ...list.map((c) => `"${c.name}","${c.email}"`)].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -106,9 +159,9 @@ export default function CustomersPage() {
       <AdminPageHeader
         eyebrow="People"
         title="Customers"
-        subtitle="Customer accounts and marketing consent."
+        subtitle="Accounts created via Google or email sign-in on the storefront."
         action={(
-          <Button variant="contained" color="primary" onClick={exportMarketingList} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.78rem" }}>
+          <Button variant="contained" color="primary" onClick={exportMarketingList} disabled={!stats.optIn} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.78rem" }}>
             Export opt-in list
           </Button>
         )}
@@ -118,7 +171,7 @@ export default function CustomersPage() {
         <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={UserIcon} label="Customers" value={stats.total} accent={accents[0]} /></Grid>
         <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={SparkleIcon} label="Marketing opt-in" value={`${stats.optIn} (${stats.optInPct}%)`} accent={accents[1]} /></Grid>
         <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Lifetime value" value={PESO.format(stats.ltv)} accent={theme.palette.success.main} /></Grid>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Avg. spend" value={PESO.format(Math.round(stats.ltv / stats.total))} accent={accents[3]} /></Grid>
+        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Avg. spend" value={PESO.format(stats.avgSpend)} accent={accents[3]} /></Grid>
       </Grid>
 
       <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
@@ -146,6 +199,7 @@ export default function CustomersPage() {
               <TableRow>
                 <TableCell sx={{ fontWeight: 800 }}>Customer</TableCell>
                 <TableCell sx={{ fontWeight: 800, display: { xs: "none", sm: "table-cell" } }}>Joined</TableCell>
+                <TableCell sx={{ fontWeight: 800, display: { xs: "none", md: "table-cell" } }}>Sign-in</TableCell>
                 <TableCell sx={{ fontWeight: 800 }} align="right">Orders</TableCell>
                 <TableCell sx={{ fontWeight: 800 }} align="right">Total spent</TableCell>
                 <TableCell sx={{ fontWeight: 800 }} align="center">Marketing</TableCell>
@@ -154,7 +208,7 @@ export default function CustomersPage() {
             </TableHead>
             <TableBody>
               {rows.map((customer) => (
-                <TableRow key={customer.id} hover>
+                <TableRow key={customer.id || customer.uid || customer.email} hover>
                   <TableCell>
                     <Stack direction="row" spacing={1.5} alignItems="center">
                       <Box sx={{ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, ...avatarStyles(theme) }}>
@@ -167,6 +221,7 @@ export default function CustomersPage() {
                     </Stack>
                   </TableCell>
                   <TableCell sx={{ color: "text.secondary", display: { xs: "none", sm: "table-cell" } }}>{customer.joined}</TableCell>
+                  <TableCell sx={{ color: "text.secondary", display: { xs: "none", md: "table-cell" } }}>{customer.signInMethod}</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700, fontFamily: MONO_FONT }}>{customer.orders}</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700 }}>{PESO.format(customer.totalSpent)}</TableCell>
                   <TableCell align="center">
@@ -179,7 +234,9 @@ export default function CustomersPage() {
               ))}
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} sx={{ textAlign: "center", py: 5, color: "text.secondary" }}>No customers match your filters.</TableCell>
+                  <TableCell colSpan={7} sx={{ textAlign: "center", py: 5, color: "text.secondary" }}>
+                    No customers yet. Accounts appear here after Google or email sign-up on the storefront.
+                  </TableCell>
                 </TableRow>
               ) : null}
             </TableBody>

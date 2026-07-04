@@ -1,3 +1,6 @@
+import { sortOrdersByOrderNo } from "./orderIds.js";
+import { migratePaymentStatus } from "../data/orderWorkflow.js";
+
 const PERIOD_DAYS = {
   "1D": 1,
   "1W": 7,
@@ -74,13 +77,32 @@ function parseOrderDate(order) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-import { migratePaymentStatus } from "../data/orderWorkflow.js";
-
 function orderRevenue(order) {
   const payment = migratePaymentStatus(order.payment);
   if (payment === "Fully Paid") return order.fullSubtotal ?? order.total ?? 0;
-  if (payment === "DP Paid") return order.total ?? 0;
+  if (payment === "DP Paid" || payment === "Awaiting Balance Payment") return order.total ?? 0;
   return 0;
+}
+
+function orderCogs(order) {
+  if (orderRevenue(order) <= 0) return 0;
+  const items = order.lineItems?.length
+    ? order.lineItems
+    : [{ name: order.items || "Unknown", quantity: order.qty || 1, price: order.total, lineTotal: order.fullSubtotal ?? order.total }];
+
+  return items.reduce((sum, item) => {
+    const unitCost = item.cost != null && item.cost !== ""
+      ? Math.max(0, Number(item.cost) || 0)
+      : Math.round((item.price ?? 0) * 0.72);
+    return sum + unitCost * (item.quantity ?? 1);
+  }, 0);
+}
+
+function orderNetRevenue(order) {
+  const revenue = orderRevenue(order);
+  const cogs = orderCogs(order);
+  const refunds = Number(order.refundAmount) || 0;
+  return Math.max(0, revenue - cogs - refunds);
 }
 
 function filterOrdersByRange(orders, start, end) {
@@ -335,6 +357,8 @@ export function computeDashboardAnalytics(orders, period = "1M", now = new Date(
 
   const currentRevenue = current.reduce((sum, o) => sum + orderRevenue(o), 0);
   const previousRevenue = previous.reduce((sum, o) => sum + orderRevenue(o), 0);
+  const currentNetRevenue = current.reduce((sum, o) => sum + orderNetRevenue(o), 0);
+  const previousNetRevenue = previous.reduce((sum, o) => sum + orderNetRevenue(o), 0);
   const currentCustomers = uniqueCustomers(current);
   const previousCustomers = uniqueCustomers(previous);
   const avgOrder = current.length ? Math.round(currentRevenue / current.length) : 0;
@@ -354,12 +378,7 @@ export function computeDashboardAnalytics(orders, period = "1M", now = new Date(
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 5);
 
-  const recentOrders = [...orders]
-    .sort((a, b) => {
-      const da = parseOrderDate(a)?.getTime() ?? 0;
-      const db = parseOrderDate(b)?.getTime() ?? 0;
-      return db - da;
-    })
+  const recentOrders = sortOrdersByOrderNo(orders)
     .slice(0, 5)
     .map((o) => ({
       id: o.id,
@@ -373,6 +392,8 @@ export function computeDashboardAnalytics(orders, period = "1M", now = new Date(
     kpis: {
       revenue: currentRevenue,
       revenueDelta: pctDelta(currentRevenue, previousRevenue),
+      netRevenue: currentNetRevenue,
+      netRevenueDelta: pctDelta(currentNetRevenue, previousNetRevenue),
       orders: current.length,
       ordersDelta: pctDelta(current.length, previous.length),
       customers: currentCustomers,
