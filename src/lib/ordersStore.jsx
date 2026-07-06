@@ -4,6 +4,7 @@ import { getDataSource } from "./firebase/config.js";
 import { getFirebaseAuth } from "./firebase/app.js";
 import { subscribeAllOrders, subscribeCustomerOrders, createOrder, upsertOrder } from "./firebase/repositories/orders.js";
 import { isAdminAccount } from "./firebase/auth.js";
+import { shouldExposeAdminSession } from "../auth/authSurface.js";
 import {
   balanceAfterAllocation,
   getOrderLineItems,
@@ -252,7 +253,9 @@ export function OrdersProvider({ children }) {
 
       try {
         const token = await user.getIdTokenResult();
-        const admin = isAdminAccount(user.email, token.claims);
+        const admin = shouldExposeAdminSession({
+          isAdmin: isAdminAccount(user.email, token.claims),
+        });
 
         unsubFirestore = admin
           ? subscribeAllOrders(
@@ -458,16 +461,20 @@ export function OrdersProvider({ children }) {
         ),
       };
 
-      const created = { ...order, ...syncOrderRollup(lineItems) };
+      let created = { ...order, ...syncOrderRollup(lineItems) };
       setOrders((current) => [order, ...current]);
 
       if (firebaseEnabled) {
         placingOrderRef.current = true;
         try {
-          await createOrder(created);
+          const saved = await createOrder(created);
+          if (saved.id !== created.id) {
+            setOrders((current) => current.map((o) => (o.id === created.id ? saved : o)));
+            created = saved;
+          }
           console.info("[orders] Saved to Firestore:", created.id);
           if (proofUrl) {
-            queueMicrotask(() => storeOrderProof(id, proofUrl));
+            queueMicrotask(() => storeOrderProof(created.id, proofUrl));
           }
         } catch (error) {
           console.error("[orders] Failed to save new order to Firestore:", error);

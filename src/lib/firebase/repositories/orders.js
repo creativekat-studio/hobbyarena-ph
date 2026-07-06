@@ -156,23 +156,69 @@ export function subscribeCustomerOrders(email, onData, onError) {
   );
 }
 
-/** Create a new order — uses create rule (no merge). */
-export async function createOrder(order) {
+function incrementOrderId(id) {
+  const match = String(id).match(/^(HA-\d{8})(\d{4})$/);
+  if (!match) return id;
+  return `${match[1]}${String(Number(match[2]) + 1).padStart(4, "0")}`;
+}
+
+function retagOrderId(order, newId) {
+  const oldId = order.id;
+  if (!oldId || newId === oldId) return order;
+
+  return {
+    ...order,
+    id: newId,
+    trail: Array.isArray(order.trail)
+      ? order.trail.map((entry) => ({
+          ...entry,
+          id: entry.id?.includes(oldId) ? entry.id.replace(oldId, newId) : entry.id,
+        }))
+      : order.trail,
+    emails: Array.isArray(order.emails)
+      ? order.emails.map((entry) => ({
+          ...entry,
+          subject: entry.subject?.replaceAll?.(oldId, newId) ?? entry.subject?.split(oldId).join(newId),
+          body: entry.body?.replaceAll?.(oldId, newId) ?? entry.body?.split(oldId).join(newId),
+        }))
+      : order.emails,
+  };
+}
+
+function isOrderIdCollision(error) {
+  const code = String(error?.code || "");
+  return code === "permission-denied" || code === "already-exists";
+}
+
+/** Create a new order — uses create rule (no merge). Retries with the next daily sequence on ID collision. */
+export async function createOrder(order, { maxAttempts = 30 } = {}) {
   const db = getFirestoreDb();
   if (!db || !order?.id) throw new Error("Firestore is not configured.");
 
-  const payload = prepareOrderDoc(order);
-  const ref = orderRef(db, order.id);
+  let current = order;
 
-  await withTimeout(
-    setDoc(ref, {
-      ...payload,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    }),
-    SAVE_TIMEOUT_MS,
-    "Order save",
-  );
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const payload = prepareOrderDoc(current);
+    const ref = orderRef(db, current.id);
+
+    try {
+      await withTimeout(
+        setDoc(ref, {
+          ...payload,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }),
+        SAVE_TIMEOUT_MS,
+        "Order save",
+      );
+      return current;
+    } catch (error) {
+      if (!isOrderIdCollision(error) || attempt === maxAttempts - 1) throw error;
+      current = retagOrderId(current, incrementOrderId(current.id));
+    }
+  }
+
+  throw new Error("Could not allocate a unique order ID.");
 }
 
 export async function upsertOrder(order) {

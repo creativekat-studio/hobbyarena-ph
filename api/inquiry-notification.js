@@ -1,5 +1,5 @@
-import { Resend } from "resend";
 import { buildAdminInquiryEmail, buildInquiryAutoReply } from "./_lib/inquiryEmail.js";
+import { dispatchEmail } from "./_lib/dispatchEmail.js";
 import { getEmailConfig, isValidEmail } from "./_lib/emailConfig.js";
 
 function readInquiry(body) {
@@ -25,38 +25,39 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Invalid inquiry payload." });
     }
 
-    const { apiKey, from, adminEmail } = getEmailConfig();
-    const resend = new Resend(apiKey);
+    const { adminEmail } = getEmailConfig();
     const adminContent = buildAdminInquiryEmail(inquiry);
     const autoReply = buildInquiryAutoReply(inquiry);
 
     const [adminResult, customerResult] = await Promise.all([
-      resend.emails.send({
-        from,
+      dispatchEmail({
         to: adminEmail,
         subject: adminContent.subject,
         html: adminContent.html,
         text: adminContent.text,
         replyTo: inquiry.email,
+        meta: { kind: "inquiry_admin", inquiryEmail: inquiry.email },
       }),
-      resend.emails.send({
-        from,
+      dispatchEmail({
         to: inquiry.email,
         subject: autoReply.subject,
         html: autoReply.html,
         text: autoReply.text,
+        meta: { kind: "inquiry_auto_reply", inquiryEmail: inquiry.email },
       }),
     ]);
 
-    if (adminResult.error) {
-      return res.status(502).json({ error: adminResult.error.message || "Failed to send admin notification." });
+    if (!adminResult.ok) {
+      return res.status(502).json({ error: adminResult.error?.message || "Failed to send admin notification." });
     }
 
     return res.status(200).json({
       ok: true,
-      adminMessageId: adminResult.data?.id ?? null,
-      customerMessageId: customerResult.error ? null : customerResult.data?.id ?? null,
-      customerSkipped: Boolean(customerResult.error),
+      adminMessageId: adminResult.messageId ?? null,
+      customerMessageId: customerResult.ok ? customerResult.messageId ?? null : null,
+      adminSimulated: Boolean(adminResult.simulated),
+      customerSimulated: Boolean(customerResult.simulated),
+      customerSkipped: Boolean(customerResult.skipped),
     });
   } catch (error) {
     console.error("inquiry-notification:", error);

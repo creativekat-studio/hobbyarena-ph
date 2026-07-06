@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
+import { shouldExposeAdminSession } from "../../auth/authSurface.js";
 import { getFirebaseAuth } from "./app.js";
 import { isAdminAccount } from "./auth.js";
 import { useFirebaseData } from "./config.js";
@@ -19,7 +20,8 @@ export function subscribeAdminWriteAccess(onAccess) {
     }
     try {
       const token = await user.getIdTokenResult();
-      onAccess(isAdminAccount(user.email, token.claims));
+      const profile = { isAdmin: isAdminAccount(user.email, token.claims) };
+      onAccess(shouldExposeAdminSession(profile));
     } catch {
       onAccess(false);
     }

@@ -42,7 +42,6 @@ export default function AdminLogin() {
     setBusy(true);
     try {
       await signInAdmin(email, password);
-      navigate(location.state?.from?.pathname || "/admin", { replace: true });
     } catch (err) {
       setError(err.message || "Sign in failed.");
     } finally {
@@ -77,7 +76,7 @@ export default function AdminLogin() {
               <Box sx={{ p: 1.5, borderRadius: 1, border: "1px dashed", borderColor: surfaceBorderColor }}>
                 <Typography variant="caption" color="text.secondary" sx={{ fontFamily: MONO_FONT, display: "block" }}>
                   {authMode === "firebase"
-                    ? "Use your Firebase admin email. Add it to VITE_ADMIN_EMAILS in .env.local."
+                    ? "Firebase email/password only. Allowed admin: website.hobbyarena@gmail.com (see VITE_ADMIN_EMAILS). Set or reset the password in Firebase Console → Authentication."
                     : `Demo admin → ${ADMIN_HINT.email} / ${ADMIN_HINT.password}`}
                 </Typography>
               </Box>

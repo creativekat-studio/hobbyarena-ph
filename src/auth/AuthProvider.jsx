@@ -7,6 +7,7 @@ import {
   firebaseSignInAdmin,
   firebaseSignInCustomer,
   firebaseSignInWithGoogle,
+  isAdminAccount,
   firebaseSignOut,
   mapAuthError,
   subscribeToAuthChanges,
@@ -178,6 +179,9 @@ export function AuthProvider({ children }) {
     if (firebaseEnabled) {
       try {
         setAuthSurface("customer");
+        if (isAdminAccount(email.trim())) {
+          throw new Error("This email is reserved for admin. Sign in at /admin/login instead.");
+        }
         const user = await firebaseSignInCustomer(email, password);
         return publishCustomerSession(user);
       } catch (error) {
@@ -227,6 +231,9 @@ export function AuthProvider({ children }) {
     if (firebaseEnabled) {
       try {
         setAuthSurface("customer");
+        if (isAdminAccount(email.trim())) {
+          throw new Error("This email is reserved for admin. Sign in at /admin/login instead.");
+        }
         const user = await firebaseRegisterCustomer({ name, email, password });
         upsertCustomerProfile({
           uid: user.uid,
@@ -278,8 +285,14 @@ export function AuthProvider({ children }) {
     if (firebaseEnabled) {
       try {
         setAuthSurface("admin");
-        return await firebaseSignInAdmin(email, password);
+        const nextAdmin = await firebaseSignInAdmin(email, password);
+        setAdmin(nextAdmin);
+        setCustomer(null);
+        return nextAdmin;
       } catch (error) {
+        if (error?.message === "This account does not have admin access.") {
+          throw error;
+        }
         throw new Error(mapAuthError(error));
       }
     }

@@ -9,8 +9,12 @@ import {
 } from "firebase/auth";
 import { getFirebaseAuth, isFirebaseConfigured } from "./app.js";
 import { ROLES } from "../../auth/roles.js";
+import { shouldExposeAdminSession } from "../../auth/authSurface.js";
 
 const googleProvider = new GoogleAuthProvider();
+
+const ADMIN_CUSTOMER_BLOCK =
+  "This email is reserved for admin. Sign in at /admin/login instead.";
 
 export function useFirebaseAuth() {
   return isFirebaseConfigured();
@@ -30,12 +34,18 @@ export function isAdminAccount(email, claims = {}) {
   return adminEmails().includes(normalized);
 }
 
+export function assertNotAdminCustomerEmail(email) {
+  if (isAdminAccount(email)) {
+    throw new Error(ADMIN_CUSTOMER_BLOCK);
+  }
+}
+
 export function mapAuthError(error) {
   const code = error?.code || "";
   const messages = {
     "auth/invalid-credential": "Invalid email or password.",
     "auth/wrong-password": "Invalid email or password.",
-    "auth/user-not-found": "No account found with this email.",
+    "auth/user-not-found": "No admin account found for this email.",
     "auth/email-already-in-use": "An account with this email already exists.",
     "auth/weak-password": "Password must be at least 6 characters.",
     "auth/too-many-requests": "Too many attempts. Try again later.",
@@ -103,7 +113,7 @@ export function subscribeToAuthChanges(onCustomer, onAdmin, onReady) {
     try {
       const customer = await buildCustomerUser(firebaseUser);
       onCustomer(customer);
-      if (customer.isAdmin) {
+      if (shouldExposeAdminSession(customer)) {
         onAdmin({
           uid: customer.uid,
           email: customer.email,
@@ -123,6 +133,7 @@ export function subscribeToAuthChanges(onCustomer, onAdmin, onReady) {
 }
 
 export async function firebaseSignInCustomer(email, password) {
+  assertNotAdminCustomerEmail(email);
   const auth = getFirebaseAuth();
   if (!auth) throw new Error("Firebase Auth is not configured.");
   const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
@@ -130,6 +141,7 @@ export async function firebaseSignInCustomer(email, password) {
 }
 
 export async function firebaseRegisterCustomer({ name, email, password }) {
+  assertNotAdminCustomerEmail(email);
   const auth = getFirebaseAuth();
   if (!auth) throw new Error("Firebase Auth is not configured.");
   const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
@@ -141,7 +153,12 @@ export async function firebaseSignInWithGoogle() {
   const auth = getFirebaseAuth();
   if (!auth) throw new Error("Firebase Auth is not configured.");
   const credential = await signInWithPopup(auth, googleProvider);
-  return buildCustomerUser(credential.user);
+  const user = await buildCustomerUser(credential.user);
+  if (user.isAdmin) {
+    await signOut(auth);
+    throw new Error(ADMIN_CUSTOMER_BLOCK);
+  }
+  return user;
 }
 
 export async function firebaseSignInAdmin(email, password) {

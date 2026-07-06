@@ -119,6 +119,14 @@ const DEFAULT_CONTENT = {
     hours: BRAND.hours,
     handle: "@hobbyarena.ph",
   },
+  storefront: {
+    landingMode: false,
+    landingTagline: "Something new is coming",
+    landingHeadline: "We're building something new.",
+    landingMessage:
+      "Hobby Arena is getting a major upgrade. Follow us for updates — sealed drops, pre-orders, and the thrill of the pull are on the way.",
+    landingCtaLabel: "Stay in the loop",
+  },
 };
 
 function mergeTestimonials(saved) {
@@ -171,6 +179,7 @@ function mergeCmsPayload(parsed) {
     testimonials: mergeTestimonials(parsed.testimonials),
     productReviews: { ...DEFAULT_CONTENT.productReviews, ...parsed.productReviews },
     bankDetails: mergeBankDetails(parsed.bankDetails),
+    storefront: { ...DEFAULT_CONTENT.storefront, ...parsed.storefront },
     banners: (parsed.banners || DEFAULT_CONTENT.banners).map((banner) => {
       const fallback = DEFAULT_CONTENT.banners.find((b) => b.id === banner.id);
       const { image: _image, ...rest } = banner;
@@ -192,15 +201,46 @@ function loadContent() {
   }
 }
 
+function cacheContentLocally(payload) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    // Ignore quota errors — remote sync remains authoritative.
+  }
+}
+
+const STOREFRONT_EDIT_GRACE_MS = 3000;
+
+function persistCmsContent(payload, firebaseEnabled, adminWrite) {
+  cacheContentLocally(payload);
+  if (!firebaseEnabled) return Promise.resolve();
+  if (!adminWrite.ready || !adminWrite.allowed) return Promise.resolve();
+  return saveCmsContent(payload);
+}
+
 const CmsContext = createContext(null);
 
 export function CmsProvider({ children }) {
   const firebaseEnabled = useFirebaseData();
   const adminWrite = useAdminFirestoreWrite();
-  const [content, setContent] = useState(() => (firebaseEnabled ? DEFAULT_CONTENT : loadContent()));
+  const [content, setContent] = useState(() => loadContent());
+  const [hydrated, setHydrated] = useState(!firebaseEnabled);
   const syncingRemote = useRef(false);
   const saveTimer = useRef(null);
   const pendingSeed = useRef(null);
+  const lastStorefrontEditAt = useRef(0);
+  const firebaseEnabledRef = useRef(firebaseEnabled);
+  const adminWriteRef = useRef(adminWrite);
+
+  firebaseEnabledRef.current = firebaseEnabled;
+  adminWriteRef.current = adminWrite;
+
+  const flushContent = useCallback((payload) => {
+    persistCmsContent(payload, firebaseEnabledRef.current, adminWriteRef.current).catch((error) => {
+      console.error("[cms] Failed to save content:", error);
+    });
+  }, []);
 
   useEffect(() => {
     if (!firebaseEnabled) return undefined;
@@ -214,8 +254,16 @@ export function CmsProvider({ children }) {
           pendingSeed.current = local;
         } else {
           pendingSeed.current = null;
-          setContent(mergeCmsPayload(remote));
+          setContent((prev) => {
+            const merged = mergeCmsPayload(remote);
+            const keepLocalStorefront =
+              Date.now() - lastStorefrontEditAt.current < STOREFRONT_EDIT_GRACE_MS;
+            const next = keepLocalStorefront ? { ...merged, storefront: prev.storefront } : merged;
+            cacheContentLocally(next);
+            return next;
+          });
         }
+        setHydrated(true);
         queueMicrotask(() => {
           syncingRemote.current = false;
         });
@@ -239,7 +287,7 @@ export function CmsProvider({ children }) {
     if (syncingRemote.current) return undefined;
 
     if (!firebaseEnabled) {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(content));
+      cacheContentLocally(content);
       return undefined;
     }
 
@@ -259,6 +307,14 @@ export function CmsProvider({ children }) {
     const setHero = (hero) => setContent((c) => ({ ...c, hero: { ...c.hero, ...hero } }));
     const setSocial = (social) => setContent((c) => ({ ...c, social: { ...c.social, ...social } }));
     const setContact = (contact) => setContent((c) => ({ ...c, contact: { ...c.contact, ...contact } }));
+    const setStorefront = (patch) => {
+      lastStorefrontEditAt.current = Date.now();
+      setContent((c) => {
+        const next = { ...c, storefront: { ...c.storefront, ...patch } };
+        flushContent(next);
+        return next;
+      });
+    };
     const setHomepageSection = (key, patch) =>
       setContent((c) => ({
         ...c,
@@ -365,6 +421,7 @@ export function CmsProvider({ children }) {
       setHero,
       setSocial,
       setContact,
+      setStorefront,
       setHomepageSection,
       setProductReviews,
       setTestimonials,
@@ -386,9 +443,9 @@ export function CmsProvider({ children }) {
       removeAnnouncement,
       reset,
     };
-  }, []);
+  }, [flushContent]);
 
-  const value = useMemo(() => ({ content, ...api }), [content, api]);
+  const value = useMemo(() => ({ content, hydrated, ...api }), [content, hydrated, api]);
 
   return <CmsContext.Provider value={value}>{children}</CmsContext.Provider>;
 }

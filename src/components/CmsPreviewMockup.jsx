@@ -18,6 +18,7 @@ import {
 } from "./StorefrontMockupParts.jsx";
 
 export const CMS_TAB_LABELS = [
+  "Site mode",
   "Homepage",
   "Banners",
   "Announcements",
@@ -27,12 +28,13 @@ export const CMS_TAB_LABELS = [
 ];
 
 const TAB_SECTIONS = {
-  0: new Set(["hero", "featureDrop", "featuredProducts", "featuredPreorders"]),
-  1: new Set(["promoBanners"]),
-  2: new Set(["announcements"]),
-  3: new Set(["reviews"]),
-  4: new Set(["bankDetails"]),
-  5: new Set(["footer", "contactMap"]),
+  0: new Set(["landing"]),
+  1: new Set(["hero", "featureDrop", "featuredProducts", "featuredPreorders"]),
+  2: new Set(["promoBanners"]),
+  3: new Set(["announcements"]),
+  4: new Set(["reviews"]),
+  5: new Set(["bankDetails"]),
+  6: new Set(["footer", "contactMap"]),
 };
 
 function SectionHeader({ overline, title }) {
@@ -110,7 +112,7 @@ function MockContactLayout({ contact, panelSx, isDarkMode, surfaceBorderColor, a
 export default function CmsPreviewMockup({ panelSx, surfaceBorderColor, activeTab = 0 }) {
   const theme = useTheme();
   const { content } = useCms();
-  const { hero, homepageSections, featureDrops, banners, announcements, testimonials, bankDetails, contact } = content;
+  const { hero, homepageSections, featureDrops, banners, announcements, testimonials, bankDetails, contact, storefront } = content;
   const { panelSx: cardPanelSx, isDarkMode } = useStorefrontMockSurfaces();
 
   const activeSections = TAB_SECTIONS[activeTab] ?? new Set();
@@ -121,8 +123,9 @@ export default function CmsPreviewMockup({ panelSx, surfaceBorderColor, activeTa
   const activeDrop = featureDrops.find((drop) => drop.active) ?? featureDrops[0];
   const dropProduct = activeDrop ? ALL_PRODUCTS.find((p) => p.id === activeDrop.productId) : null;
   const storefrontBg = theme.palette.background.default;
-  const previewUrl = activeTab === 5 ? "hobbyarena.ph/contact" : "hobbyarena.ph/";
-  const isContactView = activeTab === 5;
+  const previewUrl = activeTab === 6 ? "hobbyarena.ph/contact" : activeTab === 0 ? "hobbyarena.ph" : "hobbyarena.ph/";
+  const isContactView = activeTab === 6;
+  const isLandingView = activeTab === 0;
 
   return (
     <Box sx={{ ...panelSx, p: { xs: 1.5, md: 2 }, height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -132,7 +135,32 @@ export default function CmsPreviewMockup({ panelSx, surfaceBorderColor, activeTa
         url={previewUrl}
         contentSx={{ bgcolor: storefrontBg, flex: 1, minHeight: 320, maxHeight: { xs: 480, lg: "calc(100dvh - 140px)" }, overflowY: "auto" }}
       >
-        {isContactView ? (
+        {isLandingView ? (
+          <WireSection active={isActive("landing")} sx={{ p: 2.5, minHeight: 280, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+            <Typography sx={{ fontWeight: 900, fontSize: "1.05rem", lineHeight: 1.15, maxWidth: 220, mb: 0.75 }}>
+              {truncate(storefront.landingHeadline, 48)}
+            </Typography>
+            <Typography sx={{ fontSize: "0.58rem", color: "text.secondary", lineHeight: 1.45, maxWidth: 200, mb: 1.25 }}>
+              {truncate(storefront.landingMessage, 120)}
+            </Typography>
+            <Box sx={{ ...cardPanelSx, px: 1.5, py: 1, width: "100%", maxWidth: 180 }}>
+              <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.45rem", fontWeight: 800, color: "primary.main", mb: 0.5 }}>
+                {truncate(storefront.landingCtaLabel, 24).toUpperCase()}
+              </Typography>
+              <Stack direction="row" spacing={0.5} justifyContent="center">
+                {[1, 2, 3].map((i) => (
+                  <Box key={i} sx={{ width: 18, height: 18, borderRadius: "50%", border: "1px solid", borderColor: alpha(theme.palette.text.primary, 0.15) }} />
+                ))}
+              </Stack>
+            </Box>
+            <Chip
+              label={storefront.landingMode ? "Live on hobbyarena.ph" : "Storefront live"}
+              size="small"
+              color={storefront.landingMode ? "warning" : "success"}
+              sx={{ mt: 1.25, fontFamily: MONO_FONT, fontSize: "0.45rem", fontWeight: 700 }}
+            />
+          </WireSection>
+        ) : isContactView ? (
           <MockContactLayout contact={contact} panelSx={cardPanelSx} isDarkMode={isDarkMode} surfaceBorderColor={surfaceBorderColor} active={isActive("footer") || isActive("contactMap")} />
         ) : (
           <>
@@ -240,14 +268,21 @@ export default function CmsPreviewMockup({ panelSx, surfaceBorderColor, activeTa
             bgcolor: alpha(theme.palette.primary.main, 0.1),
           }}
         />
-        {activeTab === 0 ? (
+        {activeTab === 1 ? (
           <Chip label={`${featureDrops.filter((d) => d.active).length} active drops`} size="small" sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", border: "1px solid", borderColor: surfaceBorderColor }} />
         ) : null}
-        {activeTab === 1 ? (
+        {activeTab === 2 ? (
           <Chip label={`${activeBanners.length} active banners`} size="small" sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", border: "1px solid", borderColor: surfaceBorderColor }} />
         ) : null}
-        {activeTab === 2 ? (
+        {activeTab === 3 ? (
           <Chip label={`${announcements.filter((a) => a.active).length} live items`} size="small" sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", border: "1px solid", borderColor: surfaceBorderColor }} />
+        ) : null}
+        {activeTab === 0 ? (
+          <Chip
+            label={storefront.landingMode ? "Landing on production" : "Full shop on production"}
+            size="small"
+            sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", border: "1px solid", borderColor: surfaceBorderColor }}
+          />
         ) : null}
       </Stack>
     </Box>

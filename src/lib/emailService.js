@@ -75,6 +75,30 @@ export async function sendInquiryEmails(inquiry) {
   });
 }
 
+export async function fetchEmailOutboxStatus() {
+  const response = await fetch("/api/email-outbox?status=1");
+  if (!response.ok) return { simulate: false, count: 0 };
+  return response.json();
+}
+
+export async function fetchEmailOutbox() {
+  const response = await fetch("/api/email-outbox");
+  if (!response.ok) throw new Error("Could not load email outbox.");
+  return response.json();
+}
+
+export async function fetchEmailOutboxEntry(id) {
+  const response = await fetch(`/api/email-outbox?id=${encodeURIComponent(id)}`);
+  if (!response.ok) throw new Error("Could not load email.");
+  return response.json();
+}
+
+export async function clearEmailOutbox() {
+  const response = await fetch("/api/email-outbox", { method: "DELETE" });
+  if (!response.ok) throw new Error("Could not clear outbox.");
+  return response.json();
+}
+
 export function queueOrderAcknowledgement(order, onResult) {
   if (!order?.email) return;
 

@@ -3,6 +3,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { getDataSource, useFirebaseData } from "./firebase/config.js";
 import { getFirebaseAuth } from "./firebase/app.js";
 import { isAdminAccount } from "./firebase/auth.js";
+import { shouldExposeAdminSession } from "../auth/authSurface.js";
 import {
   seedCustomersIfEmpty,
   subscribeAllCustomers,
@@ -190,7 +191,9 @@ export function CustomersProvider({ children }) {
 
       try {
         const token = await user.getIdTokenResult();
-        const admin = isAdminAccount(user.email, token.claims);
+        const admin = shouldExposeAdminSession({
+          isAdmin: isAdminAccount(user.email, token.claims),
+        });
 
         if (admin) {
           unsubFirestore = subscribeAllCustomers(

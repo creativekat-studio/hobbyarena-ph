@@ -5,26 +5,58 @@ import { Outlet, useLocation } from "react-router-dom";
 import { getSurfaces } from "../lib/surfaces.js";
 import { useColorMode } from "../lib/colorMode.jsx";
 import { useCms } from "../lib/cmsContent.jsx";
+import { shouldShowLandingPage } from "../lib/siteAccess.js";
 import StorefrontNavbar from "../components/StorefrontNavbar.jsx";
 import CartDrawer from "./CartDrawer.jsx";
 import SearchDialog from "../components/SearchDialog.jsx";
 import StorefrontFooter from "../components/StorefrontFooter.jsx";
+import LandingPage from "./LandingPage.jsx";
 
 export default function CustomerLayout() {
   const theme = useTheme();
   const { mode } = useColorMode();
   const isDarkMode = mode === "dark";
-  const { content } = useCms();
+  const { content, hydrated } = useCms();
   const location = useLocation();
   const surfaces = getSurfaces(theme, isDarkMode);
   const [cartOpen, setCartOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const showLanding = hydrated && shouldShowLandingPage(content.storefront?.landingMode, location.search);
 
   useEffect(() => {
     setSearchOpen(false);
   }, [location.pathname]);
 
   const showGlobalFooter = !["/checkout"].includes(location.pathname);
+
+  if (!hydrated) {
+    return (
+      <Box
+        sx={{
+          minHeight: "100dvh",
+          bgcolor: "background.default",
+          backgroundImage: surfaces.pageBackground,
+          backgroundAttachment: { xs: "scroll", md: "fixed" },
+        }}
+      />
+    );
+  }
+
+  if (showLanding) {
+    return (
+      <Box
+        sx={{
+          minHeight: "100dvh",
+          bgcolor: "background.default",
+          color: "text.primary",
+          backgroundImage: surfaces.pageBackground,
+          backgroundAttachment: { xs: "scroll", md: "fixed" },
+        }}
+      >
+        <LandingPage surfaces={surfaces} />
+      </Box>
+    );
+  }
 
   return (
     <Box

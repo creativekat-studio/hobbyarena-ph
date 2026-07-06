@@ -26,6 +26,7 @@ import {
   clearEmailBodyOverride,
 } from "../lib/emailTemplatesStore.js";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
+import EmailSimInbox from "./EmailSimInbox.jsx";
 
 const PREVIEW_EMAIL = "preview@hobbyarena.ph";
 
@@ -179,7 +180,12 @@ function EmailEditor({ emailType, draft, onDraftChange, surfaceBorderColor, test
         order: buildSampleOrder(testEmail),
         bodyOverride: draft,
       });
-      if (result?.skipped) {
+      if (result?.simulated) {
+        onTestResult({
+          ok: true,
+          message: `Test "${ORDER_STATUS_EMAIL_LABELS[emailType]}" captured in Simulated inbox (to ${testEmail}).`,
+        });
+      } else if (result?.skipped) {
         onTestResult({ ok: true, warning: result.skipReason || "Sent, but Resend test mode limits delivery." });
       } else {
         onTestResult({ ok: true, message: `Test "${ORDER_STATUS_EMAIL_LABELS[emailType]}" email sent to ${testEmail}.` });
@@ -273,6 +279,7 @@ export default function EmailTemplatesPage() {
   const [testEmail, setTestEmail] = useState(admin?.email || "");
   const [feedback, setFeedback] = useState(null);
   const [activeType, setActiveType] = useState(EMAIL_TYPES[0]);
+  const [pageMode, setPageMode] = useState("templates");
   const draftsRef = useRef(null);
   if (draftsRef.current === null) {
     draftsRef.current = Object.fromEntries(EMAIL_TYPES.map((type) => [type, getEditableEmailBody(type)]));
@@ -297,9 +304,22 @@ export default function EmailTemplatesPage() {
       <AdminPageHeader
         eyebrow="Settings"
         title="Email templates"
-        subtitle="Edit the message body for each order-status email and preview it live. The branded header, item card, and milestones stay fixed — you're just rewriting the body."
+        subtitle="Edit order-status copy, preview layouts, and review simulated emails captured during local development."
       />
 
+      <Tabs
+        value={pageMode}
+        onChange={(_, value) => setPageMode(value)}
+        sx={{ ...panelSx, minHeight: 48, px: 1 }}
+      >
+        <Tab value="templates" label="Templates" sx={{ fontWeight: 700, textTransform: "none" }} />
+        <Tab value="inbox" label="Simulated inbox" sx={{ fontWeight: 700, textTransform: "none" }} />
+      </Tabs>
+
+      {pageMode === "inbox" ? (
+        <EmailSimInbox panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} />
+      ) : (
+        <>
       <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
         <Typography sx={{ fontWeight: 800, fontSize: "0.9rem", mb: 1 }}>Test recipient</Typography>
         <TextField
@@ -309,7 +329,7 @@ export default function EmailTemplatesPage() {
           value={testEmail}
           onChange={(e) => setTestEmail(e.target.value.trim())}
           placeholder="you@example.com"
-          helperText="Test emails send real messages via Resend. In Resend test mode, delivery is limited to your Resend account email."
+          helperText="With simulation on, test sends are captured in the Simulated inbox tab. With simulation off, Resend delivers to your account email in test mode."
         />
         {feedback ? (
           <Alert
@@ -377,6 +397,8 @@ export default function EmailTemplatesPage() {
           </Box>
         </Box>
       </Box>
+        </>
+      )}
     </Stack>
   );
 }

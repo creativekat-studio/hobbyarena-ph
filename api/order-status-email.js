@@ -1,15 +1,6 @@
-import { Resend } from "resend";
 import { buildOrderStatusEmail } from "./_lib/orderStatusEmail.js";
-import { getEmailConfig, isValidEmail } from "./_lib/emailConfig.js";
-
-function isResendSandboxRestriction(error) {
-  const message = String(error?.message || "").toLowerCase();
-  return (
-    message.includes("only send testing emails")
-    || message.includes("verify a domain")
-    || message.includes("not authorized to send")
-  );
-}
+import { dispatchEmail } from "./_lib/dispatchEmail.js";
+import { isValidEmail } from "./_lib/emailConfig.js";
 
 function readPayload(body) {
   if (!body || typeof body !== "object") return null;
@@ -81,34 +72,29 @@ export default async function handler(req, res) {
       });
     }
 
-    const { apiKey, from } = getEmailConfig();
-    const resend = new Resend(apiKey);
-
-    const result = await resend.emails.send({
-      from,
+    const result = await dispatchEmail({
       to: payload.order.email,
       subject: content.subject,
       html: content.html,
       text: content.text,
+      meta: {
+        kind: "order_status",
+        emailType: payload.emailType,
+        orderId: payload.order.id,
+      },
     });
 
-    if (result.error) {
-      if (isResendSandboxRestriction(result.error)) {
-        return res.status(200).json({
-          ok: true,
-          skipped: true,
-          skipReason:
-            "Resend test mode only delivers to your Resend account email. Verify a domain at resend.com/domains to email customers.",
-          emailType: payload.emailType,
-        });
-      }
-      return res.status(502).json({ error: result.error.message || "Failed to send status email." });
+    if (!result.ok) {
+      return res.status(502).json({ error: result.error?.message || "Failed to send status email." });
     }
 
     return res.status(200).json({
       ok: true,
-      messageId: result.data?.id ?? null,
+      messageId: result.messageId ?? null,
       emailType: payload.emailType,
+      simulated: Boolean(result.simulated),
+      skipped: Boolean(result.skipped),
+      skipReason: result.skipReason || null,
     });
   } catch (error) {
     console.error("order-status-email:", error);

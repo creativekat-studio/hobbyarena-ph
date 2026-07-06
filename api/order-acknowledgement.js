@@ -1,5 +1,5 @@
-import { Resend } from "resend";
 import { buildAdminOrderNotificationEmail, buildOrderAcknowledgementEmail } from "./_lib/orderEmail.js";
+import { dispatchEmail } from "./_lib/dispatchEmail.js";
 import { getEmailConfig, isValidEmail } from "./_lib/emailConfig.js";
 
 function readOrder(body) {
@@ -37,15 +37,6 @@ function readOrder(body) {
   };
 }
 
-function isResendSandboxRestriction(error) {
-  const message = String(error?.message || "").toLowerCase();
-  return (
-    message.includes("only send testing emails")
-    || message.includes("verify a domain")
-    || message.includes("not authorized to send")
-  );
-}
-
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -57,49 +48,40 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Invalid order payload." });
     }
 
-    const { apiKey, from, adminEmail } = getEmailConfig();
-    const resend = new Resend(apiKey);
+    const { adminEmail } = getEmailConfig();
     const customerEmail = buildOrderAcknowledgementEmail(order);
     const adminEmailContent = buildAdminOrderNotificationEmail(order);
 
     const [customerResult, adminResult] = await Promise.all([
-      resend.emails.send({
-        from,
+      dispatchEmail({
         to: order.email,
         subject: customerEmail.subject,
         html: customerEmail.html,
         text: customerEmail.text,
+        meta: { kind: "order_ack_customer", orderId: order.id },
       }),
-      resend.emails.send({
-        from,
+      dispatchEmail({
         to: adminEmail,
         subject: adminEmailContent.subject,
         html: adminEmailContent.html,
         text: adminEmailContent.text,
         replyTo: order.email,
+        meta: { kind: "order_ack_admin", orderId: order.id },
       }),
     ]);
 
-    if (customerResult.error) {
-      if (isResendSandboxRestriction(customerResult.error) && !adminResult.error) {
-        return res.status(200).json({
-          ok: true,
-          customerMessageId: null,
-          customerSkipped: true,
-          customerSkipReason:
-            "Resend test mode (onboarding@resend.dev) only delivers to your Resend account email. Verify a domain at resend.com/domains to email customers.",
-          adminMessageId: adminResult.data?.id ?? null,
-        });
-      }
-      return res.status(502).json({ error: customerResult.error.message || "Failed to send customer email." });
+    if (!customerResult.ok) {
+      return res.status(502).json({ error: customerResult.error?.message || "Failed to send customer email." });
     }
 
     return res.status(200).json({
       ok: true,
-      customerMessageId: customerResult.data?.id ?? null,
-      adminMessageId: adminResult.error ? null : adminResult.data?.id ?? null,
-      adminSkipped: Boolean(adminResult.error),
-      customerSkipped: false,
+      customerMessageId: customerResult.messageId ?? null,
+      adminMessageId: adminResult.ok ? adminResult.messageId ?? null : null,
+      customerSimulated: Boolean(customerResult.simulated),
+      adminSimulated: Boolean(adminResult.simulated),
+      customerSkipped: Boolean(customerResult.skipped),
+      adminSkipped: Boolean(adminResult.skipped),
     });
   } catch (error) {
     console.error("order-acknowledgement:", error);

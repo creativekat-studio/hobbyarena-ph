@@ -20,12 +20,29 @@ export function clearAuthSurface() {
   window.sessionStorage.removeItem(AUTH_SURFACE_KEY);
 }
 
+export function isAdminPortalPath(pathname) {
+  return pathname.startsWith("/admin") && pathname !== "/admin/login";
+}
+
 /**
- * Admin Firebase accounts only appear on the storefront after an explicit customer sign-in.
- * Regular customers always show when Firebase has an active session.
+ * Admin portal session — only after explicit /admin/login, or when reloading
+ * an admin URL with an existing Firebase admin session.
+ */
+export function shouldExposeAdminSession(profile) {
+  if (!profile?.isAdmin) return false;
+  if (getAuthSurface() === "admin") return true;
+  if (typeof window !== "undefined" && isAdminPortalPath(window.location.pathname)) {
+    setAuthSurface("admin");
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Storefront customer session. Admin emails are reserved for /admin/login only.
  */
 export function shouldExposeCustomerSession(profile) {
   if (!profile) return false;
-  if (!profile.isAdmin) return true;
-  return getAuthSurface() === "customer";
+  if (profile.isAdmin) return false;
+  return true;
 }

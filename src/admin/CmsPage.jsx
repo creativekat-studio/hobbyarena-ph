@@ -6,6 +6,7 @@ import {
   Grid,
   IconButton,
   InputAdornment,
+  Link,
   MenuItem,
   Stack,
   Switch,
@@ -21,6 +22,7 @@ import { PESO } from "../components/ProductCard.jsx";
 import { FacebookIcon, InstagramIcon, TiktokIcon, SparkleIcon, BoxIcon } from "../components/icons.jsx";
 import { OFF_WHITE } from "../lib/colors.js";
 import { useCms } from "../lib/cmsContent.jsx";
+import { PREVIEW_STOREFRONT_URL } from "../lib/siteAccess.js";
 import { ALL_PRODUCTS } from "../data/mockData.js";
 import CmsPreviewMockup from "../components/CmsPreviewMockup.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
@@ -39,6 +41,99 @@ function SectionHeader({ title, action }) {
     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
       <AdminSectionTitle variant="h6">{title}</AdminSectionTitle>
       {action}
+    </Stack>
+  );
+}
+
+function SiteModeTab({ panelSx, surfaceBorderColor }) {
+  const theme = useTheme();
+  const { content, setStorefront } = useCms();
+  const storefront = content.storefront;
+
+  return (
+    <Stack spacing={2.5}>
+      <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
+        <SectionHeader title="Public landing page" />
+        <Typography sx={{ color: "text.secondary", fontSize: "0.85rem", mb: 2.5, lineHeight: 1.55 }}>
+          When enabled, visitors on your production domain (and localhost while testing) see a &ldquo;coming soon&rdquo; page
+          instead of the full shop. The Vercel preview site always shows the full storefront. Append{" "}
+          <Box component="code" sx={{ fontFamily: MONO_FONT, fontSize: "0.8rem" }}>?storefront=1</Box> to any URL to
+          preview the full shop while landing mode is on.
+        </Typography>
+        <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2.5 }}>
+          <Switch
+            checked={storefront.landingMode}
+            onChange={(e) => setStorefront({ landingMode: e.target.checked })}
+            color="primary"
+          />
+          <Box>
+            <Typography sx={{ fontWeight: 700 }}>
+              {storefront.landingMode ? "Landing page live on production" : "Full storefront live on production"}
+            </Typography>
+            <Typography sx={{ color: "text.secondary", fontSize: "0.82rem", mt: 0.25 }}>
+              Preview always available at{" "}
+              <Link href={PREVIEW_STOREFRONT_URL} target="_blank" rel="noopener noreferrer" sx={{ fontWeight: 700 }}>
+                {PREVIEW_STOREFRONT_URL.replace(/^https?:\/\//, "")}
+              </Link>
+            </Typography>
+          </Box>
+        </Stack>
+        <Stack spacing={2}>
+          <TextField
+            label="Tagline"
+            fullWidth
+            value={storefront.landingTagline}
+            onChange={(e) => setStorefront({ landingTagline: e.target.value })}
+          />
+          <TextField
+            label="Headline"
+            fullWidth
+            value={storefront.landingHeadline}
+            onChange={(e) => setStorefront({ landingHeadline: e.target.value })}
+          />
+          <TextField
+            label="Message"
+            fullWidth
+            multiline
+            minRows={3}
+            value={storefront.landingMessage}
+            onChange={(e) => setStorefront({ landingMessage: e.target.value })}
+          />
+          <TextField
+            label="Social section label"
+            fullWidth
+            value={storefront.landingCtaLabel}
+            onChange={(e) => setStorefront({ landingCtaLabel: e.target.value })}
+            helperText="Social links come from the Social & Contact tab."
+          />
+        </Stack>
+      </Box>
+
+      <Box
+        sx={{
+          ...panelSx,
+          p: { xs: 2, md: 2.5 },
+          borderColor: alpha(theme.palette.info.main, 0.35),
+          bgcolor: alpha(theme.palette.info.main, 0.06),
+        }}
+      >
+        <Typography sx={{ fontWeight: 800, fontSize: "0.88rem", mb: 0.75 }}>How it works</Typography>
+        <Stack spacing={0.75} sx={{ color: "text.secondary", fontSize: "0.84rem", lineHeight: 1.5 }}>
+          <Typography sx={{ fontSize: "inherit" }}>
+            <strong style={{ color: theme.palette.text.primary }}>hobbyarena.ph</strong> — shows landing page when toggle is on
+          </Typography>
+          <Typography sx={{ fontSize: "inherit" }}>
+            <strong style={{ color: theme.palette.text.primary }}>localhost</strong> — follows the toggle (use{" "}
+            <code>?storefront=1</code> to bypass landing locally)
+          </Typography>
+          <Typography sx={{ fontSize: "inherit" }}>
+            <strong style={{ color: theme.palette.text.primary }}>hobbyarena.vercel.app</strong> — always shows full shop for testing
+          </Typography>
+          <Typography sx={{ fontSize: "inherit" }}>
+            <strong style={{ color: theme.palette.text.primary }}>/admin</strong> — always accessible on any domain
+          </Typography>
+        </Stack>
+      </Box>
     </Stack>
   );
 }
@@ -448,7 +543,7 @@ function SocialContactTab({ panelSx }) {
   );
 }
 
-const TABS = ["Homepage", "Banners", "Announcements", "Reviews", "Bank details", "Social & Contact"];
+const TABS = ["Site mode", "Homepage", "Banners", "Announcements", "Reviews", "Bank details", "Social & Contact"];
 
 export default function CmsPage() {
   const { surfaces } = useOutletContext();
@@ -488,12 +583,13 @@ export default function CmsPage() {
                 <Tab key={label} label={label} sx={{ fontWeight: 700, textTransform: "none" }} />
               ))}
             </Tabs>
-            {tab === 0 ? <HomepageTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
-            {tab === 1 ? <BannersTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
-            {tab === 2 ? <AnnouncementsTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
-            {tab === 3 ? <TestimonialsTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
-            {tab === 4 ? <BankDetailsTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
-            {tab === 5 ? <SocialContactTab panelSx={panelSx} /> : null}
+            {tab === 0 ? <SiteModeTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
+            {tab === 1 ? <HomepageTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
+            {tab === 2 ? <BannersTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
+            {tab === 3 ? <AnnouncementsTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
+            {tab === 4 ? <TestimonialsTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
+            {tab === 5 ? <BankDetailsTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}
+            {tab === 6 ? <SocialContactTab panelSx={panelSx} /> : null}
           </Stack>
         </Grid>
         <Grid size={{ xs: 12, lg: 6 }} order={{ xs: 2, lg: 2 }} sx={{ display: "flex", minHeight: 0 }}>

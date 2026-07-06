@@ -4,6 +4,9 @@
   "framework": "vite",
   "devCommand": "vite --port $PORT",
   "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    {
+      "source": "/((?!api/|src/|@|node_modules/|assets/|products/)(?!.*\\..*).*)",
+      "destination": "/index.html"
+    }
   ]
 }
