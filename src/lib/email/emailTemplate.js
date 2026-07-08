@@ -17,8 +17,9 @@ export const EMAIL_BRAND = {
     faint: "#B8BFCA",
     border: "#E6E8EC",
     ink: "#0B1538",
-    gold: "#B8921E",
-    accent: "#7C3AED",
+    gold: "#C9A227",
+    navy: "#2563EB",
+    accent: "#0B1538",
   },
 };
 
@@ -158,7 +159,7 @@ export function defaultFooterNote() {
 }
 
 /**
- * Stacked CTA buttons for balance payment or refund detail submission.
+ * Side-by-side CTA buttons for balance payment or refund detail submission.
  * @param {{ caption?: string; accountLabel: string; accountHref: string; messengerLabel: string; messengerHref: string }} options
  */
 export function customerResponseButtons({
@@ -169,30 +170,31 @@ export function customerResponseButtons({
   messengerHref,
 }) {
   const c = EMAIL_BRAND.colors;
-  const buttonBase = `display:block;width:100%;max-width:320px;margin:0 auto;padding:13px 20px;border-radius:8px;font-family:${FONT};font-size:14px;font-weight:700;line-height:1.35;text-align:center;text-decoration:none;box-sizing:border-box`;
-
+  const buttonBase = `display:block;width:100%;padding:12px 14px;border-radius:8px;font-family:${FONT};font-size:13px;font-weight:700;line-height:1.35;text-align:center;text-decoration:none;box-sizing:border-box`;
   const linkAttrs = 'target="_blank" rel="noopener noreferrer"';
 
-  const accountButton = `
-    <a href="${escapeHtml(accountHref)}" ${linkAttrs} style="${buttonBase};background:${c.accent};color:#FFFFFF;border:1px solid ${c.accent}">
+  const primaryButton = `
+    <a href="${escapeHtml(accountHref)}" ${linkAttrs} style="${buttonBase};background:${c.ink};color:#FFFFFF;border:1px solid ${c.ink}">
       ${escapeHtml(accountLabel)}
     </a>
   `;
-  const messengerButton = `
-    <a href="${escapeHtml(messengerHref)}" ${linkAttrs} style="${buttonBase};background:#0084FF;color:#FFFFFF;border:1px solid #0084FF">
+  const secondaryButton = `
+    <a href="${escapeHtml(messengerHref)}" ${linkAttrs} style="${buttonBase};background:${c.gold};color:${c.ink};border:1px solid ${c.gold}">
       ${escapeHtml(messengerLabel)}
     </a>
   `;
 
   return `
-    <div style="margin:8px 0 20px;padding:18px 16px;border-radius:10px;background:${c.page};border:1px solid ${c.border}">
-      ${caption ? `<p style="margin:0 0 14px;font-family:${FONT};font-size:14px;line-height:1.6;color:${c.muted};text-align:center">${escapeHtml(caption)}</p>` : ""}
+    <div style="margin:16px 0 20px;padding:16px;border-radius:10px;background:${c.page};border:1px solid ${c.border}">
+      ${caption ? `<p style="margin:0 0 12px;font-family:${FONT};font-size:14px;line-height:1.6;color:${c.muted};text-align:center">${escapeHtml(caption)}</p>` : ""}
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
         <tr>
-          <td align="center" style="padding:0 0 10px">${accountButton}</td>
-        </tr>
-        <tr>
-          <td align="center" style="padding:0">${messengerButton}</td>
+          <td width="50%" align="center" valign="top" style="padding:0 6px 0 0">
+            ${primaryButton}
+          </td>
+          <td width="50%" align="center" valign="top" style="padding:0 0 0 6px">
+            ${secondaryButton}
+          </td>
         </tr>
       </table>
     </div>

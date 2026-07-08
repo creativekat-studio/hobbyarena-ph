@@ -544,10 +544,10 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     </p>
     ${orderMeta(order)}
     ${bodyLead(template.lead(order))}
-    ${itemFocusBlock(order)}
+    ${!showSummary ? itemFocusBlock(order) : ""}
     ${bodyOverride ? renderOverrideBody(order, bodyOverride) : bodyText(template.body(order))}
-    ${customerActionButtonsBlock(emailType)}
     ${showSummary ? invoiceSummary(order) : ""}
+    ${customerActionButtonsBlock(emailType)}
     ${showMilestones ? preorderMilestones(item, emailType) : ""}
   `;
 
