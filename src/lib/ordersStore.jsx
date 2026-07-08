@@ -219,7 +219,6 @@ function buildStatusEmailTrailEntry(emailType, orderEmail, lineItems, { ok, resu
   const primary = items[0];
   const payment = primary ? migratePaymentStatus(primary.payment) : "";
   const status = primary ? migrateOrderStatus(primary.status) : "";
-  const statusPart = [payment, status].filter(Boolean).join(" · ");
 
   const emailLineItems = items.map((item) => ({
     lineItemId: item.id,
@@ -231,14 +230,8 @@ function buildStatusEmailTrailEntry(emailType, orderEmail, lineItems, { ok, resu
   }));
 
   const skipped = Boolean(result?.skipped);
-  let prefix;
-  if (!ok) prefix = "Email failed";
-  else if (skipped) prefix = "Email skipped";
-  else prefix = "Email sent";
-
-  const title = statusPart
-    ? `${prefix} · ${statusPart} to ${orderEmail}`
-    : `${prefix} to ${orderEmail}`;
+  const verb = !ok ? "Failed" : skipped ? "Skipped" : "Sent";
+  const title = orderEmail ? `Email ${verb} to ${orderEmail}` : `Email ${verb}`;
 
   const noteParts = [];
   if (!ok && error) noteParts.push(String(error));

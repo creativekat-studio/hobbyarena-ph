@@ -237,18 +237,32 @@ function trailEntryLineItemLabel(entry, lineItems) {
   return short;
 }
 
-function emailTrailLineItemText(row, lineItems) {
+function emailTrailHeadline(entry) {
+  const verb = entry.emailStatus === "failed"
+    ? "Failed"
+    : entry.emailStatus === "skipped"
+      ? "Skipped"
+      : "Sent";
+  const email = entry.emailTo || "";
+  return email ? `Email ${verb} to ${email}` : `Email ${verb}`;
+}
+
+function emailTrailStatusLine(entry) {
+  const emailLineItems = entry.emailLineItems ?? [];
+  const payment = migratePaymentStatus(entry.payment || emailLineItems[0]?.payment);
+  const status = orderStatusLabel(migrateOrderStatus(entry.status || emailLineItems[0]?.status));
+  return [payment, status].filter(Boolean).join(" · ");
+}
+
+function emailTrailLineItemText(row) {
   const baseName = shortLineItemName(row.lineItemName || "");
   if (!baseName) return "";
 
   const legacyQtyMatch = String(row.lineItemName || "").match(/ ×(\d+)$/);
   const qty = row.quantity ?? (legacyQtyMatch ? Number(legacyQtyMatch[1]) : 1);
   const allocated = row.allocatedQty ?? 0;
-  const qtyLabel = `×${qty} / ${allocated}`;
 
-  const index = lineItems.findIndex((item) => item.id === row.lineItemId);
-  if (index >= 0) return `Item ${index + 1} · ${baseName} ${qtyLabel}`;
-  return `${baseName} ${qtyLabel}`;
+  return `- ${baseName} ×${qty} / ${allocated}`;
 }
 
 function orderTrailSuffix(selectedItemId, activeLineItem, lineItems) {
@@ -278,6 +292,7 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
   const meta = trailMetaLine(entry);
   const emailLineItems = entry.emailLineItems ?? [];
   const isEmailEntry = emailLineItems.length > 0;
+  const emailStatusLine = isEmailEntry ? emailTrailStatusLine(entry) : "";
   const at = new Date(entry.at);
   const timeLabel = at.toLocaleString(undefined, {
     month: "numeric",
@@ -340,7 +355,7 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
         }}
       >
         <Typography sx={{ fontWeight: 700, fontSize: "0.84rem", lineHeight: 1.35 }}>
-          {entry.title}
+          {isEmailEntry ? emailTrailHeadline(entry) : entry.title}
           {meta && !isEmailEntry ? (
             <Typography component="span" sx={{ fontWeight: 500, color: "text.secondary", fontFamily: MONO_FONT, fontSize: "0.72rem" }}>
               {" "}· {meta}
@@ -350,12 +365,17 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
 
         {isEmailEntry ? (
           <Stack spacing={0.35} sx={{ mt: 0.5 }}>
+            {emailStatusLine ? (
+              <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontFamily: MONO_FONT, lineHeight: 1.35 }}>
+                {emailStatusLine}
+              </Typography>
+            ) : null}
             {emailLineItems.map((row) => (
               <Typography
                 key={row.lineItemId}
                 sx={{ fontSize: "0.72rem", color: "text.secondary", fontFamily: MONO_FONT, lineHeight: 1.35 }}
               >
-                {emailTrailLineItemText(row, lineItems)}
+                {emailTrailLineItemText(row)}
               </Typography>
             ))}
           </Stack>
