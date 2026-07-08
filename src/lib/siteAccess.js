@@ -19,9 +19,16 @@ function hasStorefrontOverride(search = "") {
   return params.has("storefront");
 }
 
+/** Paths that must stay reachable while landing mode is on (order emails, checkout). */
+const LANDING_BYPASS_PATHS = ["/account", "/checkout"];
+
 /** Production (and localhost) show the landing page when landing mode is enabled in CMS. */
-export function shouldShowLandingPage(landingModeEnabled, search = "") {
+export function shouldShowLandingPage(landingModeEnabled, search = "", pathname = "") {
   if (!landingModeEnabled) return false;
   if (hasStorefrontOverride(search)) return false;
+  const path = pathname || "";
+  if (LANDING_BYPASS_PATHS.some((allowed) => path === allowed || path.startsWith(`${allowed}/`))) {
+    return false;
+  }
   return !isPreviewHost();
 }

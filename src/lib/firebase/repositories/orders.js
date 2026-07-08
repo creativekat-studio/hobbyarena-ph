@@ -11,7 +11,7 @@ import {
 import { COLLECTIONS } from "../../../data/firestoreSchema.js";
 import { getFirestoreDb } from "../app.js";
 import { sanitizeForFirestore } from "../sanitize.js";
-import { stripOrderProofPayload } from "../../orderProofStorage.js";
+import { stripOrderProofPayload, uploadOrderProofAttachments } from "../../orderProofStorage.js";
 import { sortOrdersByOrderNo } from "../../orderIds.js";
 
 const SAVE_TIMEOUT_MS = 25_000;
@@ -73,6 +73,12 @@ export function compactOrderForFirestore(order) {
                 stored: true,
                 kind: entry.attachment.kind ?? null,
                 lineItemId: entry.attachment.lineItemId ?? entry.lineItemId ?? null,
+                ...(entry.attachment.proofId ? { proofId: entry.attachment.proofId } : {}),
+                ...(entry.attachment.storageUrl
+                  ? { storageUrl: entry.attachment.storageUrl, purged: false }
+                  : entry.attachment.purged
+                    ? { purged: true }
+                    : {}),
               },
             }
           : {}),
@@ -198,6 +204,7 @@ export async function createOrder(order, { maxAttempts = 30 } = {}) {
   let current = order;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    current = await uploadOrderProofAttachments(current);
     const payload = prepareOrderDoc(current);
     const ref = orderRef(db, current.id);
 
@@ -225,15 +232,49 @@ export async function upsertOrder(order) {
   const db = getFirestoreDb();
   if (!db || !order?.id) throw new Error("Firestore is not configured.");
 
+  const withProofs = await uploadOrderProofAttachments(order);
+
   await withTimeout(
     setDoc(
-      orderRef(db, order.id),
-      { ...prepareOrderDoc(order), updatedAt: serverTimestamp() },
+      orderRef(db, withProofs.id),
+      { ...prepareOrderDoc(withProofs), updatedAt: serverTimestamp() },
       { merge: true },
     ),
     SAVE_TIMEOUT_MS,
     "Order update",
   );
+
+  return withProofs;
+}
+
+/** Customer self-service — append trail entries (balance proof, etc.) without touching other order fields. */
+export async function patchCustomerOrderTrail(order) {
+  const db = getFirestoreDb();
+  if (!db || !order?.id) throw new Error("Firestore is not configured.");
+
+  const withProofs = await uploadOrderProofAttachments(order);
+  const compact = compactOrderForFirestore(withProofs);
+  const latestEntry = compact.trail?.[compact.trail.length - 1];
+  const needsProof = latestEntry?.attachment && !latestEntry.attachment.storageUrl && !latestEntry.attachment.purged;
+  if (needsProof) {
+    throw new Error("Could not upload proof to storage. Try a smaller image or PDF.");
+  }
+
+  await withTimeout(
+    setDoc(
+      orderRef(db, withProofs.id),
+      {
+        trail: compact.trail,
+        notificationSeen: compact.notificationSeen,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    ),
+    SAVE_TIMEOUT_MS,
+    "Order update",
+  );
+
+  return withProofs;
 }
 
 export async function upsertOrders(orders) {

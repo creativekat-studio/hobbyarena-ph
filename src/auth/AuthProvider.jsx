@@ -235,7 +235,7 @@ export function AuthProvider({ children }) {
           throw new Error("This email is reserved for admin. Sign in at /admin/login instead.");
         }
         const user = await firebaseRegisterCustomer({ name, email, password });
-        upsertCustomerProfile({
+        await upsertCustomerProfile({
           uid: user.uid,
           email: user.email,
           name: name.trim(),
@@ -338,7 +338,7 @@ export function AuthProvider({ children }) {
 
   const updateCustomerProfileDetails = useCallback(async (patch) => {
     if (!customer?.email) throw new Error("Not signed in.");
-    const saved = updateCustomerProfile(customer.email, patch);
+    const saved = await updateCustomerProfile(customer.email, { ...patch, uid: customer.uid });
     const nextUser = {
       ...customer,
       displayName: saved.name || customer.displayName,

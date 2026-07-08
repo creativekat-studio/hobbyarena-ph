@@ -1,4 +1,4 @@
-import { formatPeso } from "./emailConfig.js";
+import { formatPeso, getSupportEmail } from "./emailUtils.js";
 import {
   EMAIL_BRAND,
   bodyLead,
@@ -86,7 +86,7 @@ export function buildOrderAcknowledgementEmail(order) {
     "",
     ...totalRows.map((row) => `${row.label}: ${row.value}`),
     "",
-    "Questions? Reply to this email.",
+    `Questions? Email us at ${getSupportEmail()}.`,
     "",
     `— ${EMAIL_BRAND.name}`,
   ].join("\n");

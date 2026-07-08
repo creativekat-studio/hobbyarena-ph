@@ -19,6 +19,7 @@ import { useCatalog } from "../lib/catalogStore.jsx";
 import { useInventory } from "../lib/inventoryStore.jsx";
 import { useFirebaseData } from "../lib/firebase/config.js";
 import { uploadProductImage } from "../lib/firebase/repositories/uploads.js";
+import { compressProductImageFile } from "../lib/imageCompression.js";
 import { MONO_FONT } from "../theme.js";
 import { DEFAULT_DEPOSIT_PERCENT, fromDatetimeLocalValue, toDatetimeLocalValue } from "../lib/preorder.js";
 
@@ -144,10 +145,10 @@ export default function AddProductDialog({
     setError("");
     setUploading(true);
     try {
-      // Pre-prod uses Firebase Storage; local dev falls back to an inline data URL.
+      const compressedFile = await compressProductImageFile(file);
       const url = firebaseEnabled
-        ? await uploadProductImage(product?.id, file)
-        : await readAsDataUrl(file);
+        ? await uploadProductImage(product?.id, compressedFile)
+        : await readAsDataUrl(compressedFile);
       setForm((prev) => ({ ...prev, image: url }));
     } catch (uploadError) {
       console.error("[product] Image upload failed:", uploadError);

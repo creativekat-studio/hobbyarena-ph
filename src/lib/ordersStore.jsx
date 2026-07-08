@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { onAuthStateChanged } from "firebase/auth";
 import { getDataSource } from "./firebase/config.js";
 import { getFirebaseAuth } from "./firebase/app.js";
-import { subscribeAllOrders, subscribeCustomerOrders, createOrder, upsertOrder } from "./firebase/repositories/orders.js";
+import { subscribeAllOrders, subscribeCustomerOrders, createOrder, upsertOrder, patchCustomerOrderTrail } from "./firebase/repositories/orders.js";
 import { isAdminAccount } from "./firebase/auth.js";
 import { shouldExposeAdminSession } from "../auth/authSurface.js";
 import {
@@ -19,6 +19,7 @@ import {
   migrateOrderStatus,
   migratePaymentStatus,
   normalizeLineItem,
+  isDepositProofTrailEntry,
   trailEntryShowsAttachment,
   resolveOrderKind,
   resolveOrderKindForItem,
@@ -37,11 +38,16 @@ import {
   storeOrderProof,
   storeBalanceProof,
   storeRefundProof,
+  storeTrailEntryProof,
   stripOrderProofPayload,
+  orderNeedsProofBackfill,
+  orderHasLocalProofData,
+  stageTrailProofBlob,
 } from "./orderProofStorage.js";
 import { queueOrderAcknowledgement, queueOrderStatusEmail } from "./emailService.js";
-import { resolveOrderStatusEmailType, buildLineItemEmailContext } from "./orderEmailTriggers.js";
+import { resolveOrderStatusEmailTypeForCurrentState, ORDER_STATUS_EMAIL_LABELS } from "./orderEmailTriggers.js";
 import { getEmailBodyOverride } from "./emailTemplatesStore.js";
+import { normalizeProofDataUrl } from "./imageCompression.js";
 import { useInventory } from "./inventoryStore.jsx";
 
 const STORAGE_KEY = "hobbyarena:orders";
@@ -120,9 +126,8 @@ function normalizeOrder(order) {
     }
 
     // Balance/refund proofs resolve to their own file only — never the deposit.
-    const kind = withAttachment.attachment.kind;
-    const isDepositKind = !kind || kind === "deposit";
-    const url = isDepositKind
+    const useDepositFallback = isDepositProofTrailEntry(withAttachment);
+    const url = useDepositFallback
       ? (resolveProofAttachmentUrl(migrated, withAttachment) || proofUrl)
       : resolveProofAttachmentUrl(migrated, withAttachment);
     const hydratedAttachment = hydrateProofAttachment(withAttachment.attachment, url);
@@ -177,10 +182,22 @@ function summarizeItems(cartItems) {
 }
 
 function attachmentFromProof(proofUrl, label = "Proof of payment") {
-  return buildTrailAttachment(proofUrl, label);
+  return buildTrailAttachment(proofUrl, label, "deposit");
 }
 
-function buildTrailEntry({ title, status, payment, note, attachment, lineItemId, lineItemName }) {
+function buildTrailEntry({
+  title,
+  status,
+  payment,
+  note,
+  attachment,
+  lineItemId,
+  lineItemName,
+  emailType,
+  emailTo,
+  emailLineItems,
+  emailStatus,
+}) {
   return {
     id: `trail-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     at: new Date().toISOString(),
@@ -190,7 +207,47 @@ function buildTrailEntry({ title, status, payment, note, attachment, lineItemId,
     note: note || "",
     ...(attachment ? { attachment } : {}),
     ...(lineItemId ? { lineItemId, lineItemName } : {}),
+    ...(emailType ? { emailType } : {}),
+    ...(emailTo ? { emailTo } : {}),
+    ...(emailLineItems?.length ? { emailLineItems } : {}),
+    ...(emailStatus ? { emailStatus } : {}),
   };
+}
+
+function buildStatusEmailTrailEntry(emailType, orderEmail, lineItems, { ok, result, error }) {
+  const label = ORDER_STATUS_EMAIL_LABELS[emailType] || emailType;
+  const items = Array.isArray(lineItems) ? lineItems : [];
+  const primary = items[0];
+  const emailLineItems = items.map((item) => ({
+    lineItemId: item.id,
+    lineItemName: lineItemTrailLabel(item),
+    payment: migratePaymentStatus(item.payment),
+    status: migrateOrderStatus(item.status),
+  }));
+
+  const skipped = Boolean(result?.skipped);
+  let title;
+  if (!ok) title = `Email failed · ${label}`;
+  else if (skipped) title = `Email skipped · ${label}`;
+  else title = `Email sent · ${label}`;
+
+  const noteParts = [`To ${orderEmail}`];
+  emailLineItems.forEach((row) => {
+    noteParts.push(`${row.lineItemName} — ${row.payment} · ${row.status}`);
+  });
+  if (!ok && error) noteParts.push(String(error));
+  if (skipped && result?.skipReason) noteParts.push(String(result.skipReason));
+
+  return buildTrailEntry({
+    title,
+    status: primary ? migrateOrderStatus(primary.status) : undefined,
+    payment: primary ? migratePaymentStatus(primary.payment) : undefined,
+    note: noteParts.join("\n"),
+    emailType,
+    emailTo: orderEmail,
+    emailLineItems,
+    emailStatus: ok ? (skipped ? "skipped" : "sent") : "failed",
+  });
 }
 
 function mockOrderEmail(order, kind) {
@@ -201,6 +258,29 @@ function mockOrderEmail(order, kind) {
     ? `Hi ${order.customer}, we received your pre-order ${order.id}. We'll confirm once payment is verified. Balance due: ₱${order.balanceDue ?? 0}.`
     : `Hi ${order.customer}, thank you for your order ${order.id}. We'll confirm once we receive and verify your payment.`;
   return { id: `email-${Date.now()}`, at: new Date().toISOString(), subject, body, kind, status: "pending", provider: "resend" };
+}
+
+function buildStatusEmailRecord(emailType, orderEmail, { ok, result, error }) {
+  const skipped = Boolean(result?.skipped);
+  const label = ORDER_STATUS_EMAIL_LABELS[emailType] || emailType;
+  return {
+    id: `email-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    at: new Date().toISOString(),
+    to: orderEmail,
+    subject: label,
+    body: label,
+    kind: emailType,
+    status: ok ? (skipped ? "skipped" : "sent") : "failed",
+    provider: "resend",
+    messageId: result?.messageId ?? null,
+    error: ok ? (skipped ? result?.skipReason : undefined) : error,
+    sentAt: ok && !skipped ? new Date().toISOString() : undefined,
+  };
+}
+
+function notifyAdminEmailSent(detail) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("hobbyarena:email-sent", { detail }));
 }
 
 
@@ -214,6 +294,29 @@ export function OrdersProvider({ children }) {
   const syncingRemote = useRef(false);
   const ordersRef = useRef(orders);
   const placingOrderRef = useRef(false);
+  const proofBackfillRef = useRef(new Set());
+
+  const maybeBackfillOrderProofs = (remoteOrders) => {
+    if (!firebaseEnabled) return;
+    const pending = remoteOrders.filter((order) => {
+      if (proofBackfillRef.current.has(order.id)) return false;
+      return orderNeedsProofBackfill(order) && orderHasLocalProofData(order);
+    });
+    if (!pending.length) return;
+
+    pending.forEach((order) => proofBackfillRef.current.add(order.id));
+    pending.forEach((order) => {
+      upsertOrder(order)
+        .then((saved) => {
+          if (!saved?.trail?.some((entry) => entry.attachment?.storageUrl)) return;
+          setOrders((current) => current.map((row) => (row.id === saved.id ? { ...row, ...saved } : row)));
+        })
+        .catch((error) => {
+          proofBackfillRef.current.delete(order.id);
+          console.warn("[orders] Proof backfill failed:", order.id, error);
+        });
+    });
+  };
 
   const { restockItems, decrementStockForCart } = useInventory();
   const restockRef = useRef(restockItems);
@@ -266,6 +369,7 @@ export function OrdersProvider({ children }) {
                   normalizeOrder(migrateInlineOrderProof(order)),
                 );
                 setOrders(normalized);
+                maybeBackfillOrderProofs(normalized);
                 setOrdersReady(true);
                 queueMicrotask(() => {
                   syncingRemote.current = false;
@@ -286,6 +390,7 @@ export function OrdersProvider({ children }) {
                   normalizeOrder(migrateInlineOrderProof(order)),
                 );
                 setOrders(normalized);
+                maybeBackfillOrderProofs(normalized);
                 setOrdersReady(true);
                 queueMicrotask(() => {
                   syncingRemote.current = false;
@@ -318,20 +423,39 @@ export function OrdersProvider({ children }) {
   const api = useMemo(() => {
     const persistOrder = (order) => {
       if (!firebaseEnabled || syncingRemote.current || placingOrderRef.current || !order?.id) return;
-      upsertOrder(stripOrderProofPayload(order)).catch((error) => {
-        console.error("[orders] Failed to persist order update:", order.id, error);
-      });
+      upsertOrder(order)
+        .then((saved) => {
+          if (!saved?.id) return;
+          setOrders((current) => current.map((o) => (o.id === saved.id ? { ...o, ...saved } : o)));
+        })
+        .catch((error) => {
+          console.error("[orders] Failed to persist order update:", order.id, error);
+        });
     };
 
-    const queueStatusEmailForLineItem = (order, prevItem, nextItem, lineItems) => {
-      const emailType = resolveOrderStatusEmailType(
-        buildLineItemEmailContext(prevItem),
-        buildLineItemEmailContext(nextItem),
-      );
-      if (!emailType) return;
-
+    const buildStatusEmailPayload = (order, lineItems, primaryItem, emailType) => {
       const rollup = syncOrderRollup(lineItems);
-      const payload = {
+      const multi = lineItems.length > 1;
+      const sumBalance = lineItems.reduce((sum, row) => sum + (row.balanceDue ?? 0), 0);
+      const sumRefund = lineItems.reduce((sum, row) => sum + (row.refundAmount ?? 0), 0);
+      const sumAllocated = lineItems.reduce((sum, row) => sum + (row.allocatedQty ?? 0), 0);
+      const sumQty = lineItems.reduce((sum, row) => sum + (row.quantity ?? 1), 0);
+      const serializedLineItems = lineItems.map((item) => ({
+        id: item.id,
+        name: item.name,
+        quantity: item.quantity ?? 1,
+        price: item.price ?? 0,
+        lineTotal: item.lineTotal ?? 0,
+        tag: item.tag ?? "",
+        payment: item.payment ?? "",
+        status: item.status ?? "",
+        balanceDue: item.balanceDue ?? 0,
+        refundAmount: item.refundAmount ?? 0,
+        allocatedQty: item.allocatedQty ?? 0,
+        depositPaid: item.depositPaid ?? 0,
+      }));
+
+      return {
         emailType,
         bodyOverride: getEmailBodyOverride(emailType),
         order: {
@@ -340,43 +464,103 @@ export function OrdersProvider({ children }) {
           email: order.email,
           phone: order.phone,
           type: order.type,
-          payment: rollup.payment ?? nextItem.payment,
-          status: rollup.status ?? nextItem.status,
+          payment: rollup.payment ?? primaryItem.payment,
+          status: rollup.status ?? primaryItem.status,
           total: order.total,
-          balanceDue: nextItem.balanceDue ?? rollup.balanceDue ?? order.balanceDue,
-          refundAmount: nextItem.refundAmount ?? order.refundAmount ?? 0,
-          allocatedQty: nextItem.allocatedQty ?? rollup.allocatedQty ?? order.allocatedQty,
-          qty: nextItem.quantity ?? order.qty,
+          balanceDue: multi ? sumBalance : (primaryItem.balanceDue ?? rollup.balanceDue ?? order.balanceDue),
+          refundAmount: multi ? sumRefund : (primaryItem.refundAmount ?? order.refundAmount ?? 0),
+          allocatedQty: multi ? sumAllocated : (primaryItem.allocatedQty ?? rollup.allocatedQty ?? order.allocatedQty),
+          qty: multi ? sumQty : (primaryItem.quantity ?? order.qty),
           date: order.date,
           items: order.items,
-          lineItems,
-          updatedLineItem: {
-            id: nextItem.id,
-            name: nextItem.name,
-            quantity: nextItem.quantity ?? 1,
-            tag: nextItem.tag,
-            payment: nextItem.payment,
-            status: nextItem.status,
-            balanceDue: nextItem.balanceDue ?? 0,
-            refundAmount: nextItem.refundAmount ?? 0,
-            allocatedQty: nextItem.allocatedQty ?? 0,
-            depositPaid: nextItem.depositPaid ?? 0,
-            lineTotal: nextItem.lineTotal ?? 0,
+          lineItems: serializedLineItems,
+          updatedLineItem: multi ? null : {
+            id: primaryItem.id,
+            name: primaryItem.name,
+            quantity: primaryItem.quantity ?? 1,
+            tag: primaryItem.tag,
+            payment: primaryItem.payment,
+            status: primaryItem.status,
+            balanceDue: primaryItem.balanceDue ?? 0,
+            refundAmount: primaryItem.refundAmount ?? 0,
+            allocatedQty: primaryItem.allocatedQty ?? 0,
+            depositPaid: primaryItem.depositPaid ?? 0,
+            lineTotal: primaryItem.lineTotal ?? 0,
           },
         },
       };
+    };
 
-      queueOrderStatusEmail(payload, ({ ok, result, error }) => {
-        if (!ok) {
-          console.warn("[orders] Status email failed:", emailType, error);
-          return;
-        }
-        if (result?.skipped) {
-          console.warn("[orders] Status email skipped (Resend test mode):", emailType, result?.skipReason);
-          return;
-        }
-        console.info("[orders] Status email sent:", emailType, result?.messageId);
+    const recordStatusEmailResult = (order, emailType, lineItems, { ok, result, error }) => {
+      const record = buildStatusEmailRecord(emailType, order.email, { ok, result, error });
+      const trailEntry = buildStatusEmailTrailEntry(emailType, order.email, lineItems, { ok, result, error });
+      setOrders((current) => {
+        let updated = null;
+        const next = current.map((row) => {
+          if (row.id !== order.id) return row;
+          updated = {
+            ...row,
+            emails: [...(row.emails || []), record],
+            trail: [...(row.trail || []), trailEntry],
+          };
+          return updated;
+        });
+        if (updated) persistOrder(updated);
+        return next;
       });
+
+      notifyAdminEmailSent({
+        ok,
+        to: order.email,
+        emailType,
+        messageId: result?.messageId ?? null,
+        skipped: Boolean(result?.skipped),
+        skipReason: result?.skipReason || null,
+        error: ok ? null : error,
+      });
+
+      if (!ok) {
+        console.warn("[orders] Status email failed:", emailType, error);
+        return;
+      }
+      if (result?.skipped) {
+        console.warn("[orders] Status email skipped (Resend test mode):", emailType, result?.skipReason);
+        return;
+      }
+      console.info("[orders] Status email sent:", emailType, "to", order.email, result?.messageId);
+    };
+
+    const dispatchStatusEmail = (order, payload) => new Promise((resolve, reject) => {
+      queueOrderStatusEmail(payload, ({ ok, result, error }) => {
+        recordStatusEmailResult(
+          order,
+          payload.emailType,
+          payload.order?.lineItems ?? [],
+          { ok, result, error },
+        );
+        if (!ok) reject(new Error(error || "Email failed."));
+        else resolve(result);
+      });
+    });
+
+    const sendOrderStatusEmail = async (orderId, lineItemIds) => {
+      const order = ordersRef.current.find((row) => row.id === orderId);
+      if (!order) throw new Error("Order not found.");
+
+      const ids = Array.isArray(lineItemIds) ? lineItemIds.filter(Boolean) : [];
+      if (!ids.length) throw new Error("Select at least one line item.");
+
+      const allItems = getOrderLineItems(order);
+      const selected = allItems.filter((item) => ids.includes(item.id));
+      if (!selected.length) throw new Error("Selected line items were not found on this order.");
+
+      const emailType = resolveOrderStatusEmailTypeForCurrentState(selected[0]);
+      if (!emailType) {
+        throw new Error("No status email template matches the selected item's current payment/status.");
+      }
+
+      const payload = buildStatusEmailPayload(order, selected, selected[0], emailType);
+      return dispatchStatusEmail(order, payload);
     };
 
     const placeOrder = async (payload) => {
@@ -385,14 +569,16 @@ export function OrdersProvider({ children }) {
       const type = payload.type ?? summarized.type;
       const { qty, label } = summarized;
       const id = makeOrderId(prev);
-      const initialStatus = payload.initialStatus ?? "Pending Verification";
       const initialPayment = payload.initialPayment ?? "Pending Verification";
+      const initialStatus = payload.initialStatus ?? "Pending Verification";
       const emailKind = type === "Pre-order" ? "preorder" : "purchase";
       const acknowledgement = mockOrderEmail(
         { ...payload, id, customer: payload.customer, balanceDue: payload.balanceDue },
         emailKind,
       );
-      const proofUrl = payload.proofOfPayment || null;
+      const proofUrl = payload.proofOfPayment
+        ? await normalizeProofDataUrl(payload.proofOfPayment)
+        : null;
 
       const lineItems = payload.cartItems.map((item) => {
         const isPreorder = item.tag === "Pre-order";
@@ -471,6 +657,9 @@ export function OrdersProvider({ children }) {
           if (saved.id !== created.id) {
             setOrders((current) => current.map((o) => (o.id === created.id ? saved : o)));
             created = saved;
+          } else {
+            setOrders((current) => current.map((o) => (o.id === created.id ? { ...o, ...saved } : o)));
+            created = { ...created, ...saved };
           }
           console.info("[orders] Saved to Firestore:", created.id);
           if (proofUrl) {
@@ -516,7 +705,15 @@ export function OrdersProvider({ children }) {
       });
     };
 
-    const setPaymentAndStatus = (id, payment, status, lineItemId = null, note = "", attachment, draftAllocatedQty = undefined, draftRefundAmount = undefined) =>
+    const setPaymentAndStatus = async (id, payment, status, lineItemId = null, note = "", attachment, draftAllocatedQty = undefined, draftRefundAmount = undefined) => {
+      let resolvedAttachment = attachment;
+      if (attachment?.url) {
+        const compressedUrl = await normalizeProofDataUrl(attachment.url);
+        resolvedAttachment = compressedUrl === attachment.url
+          ? attachment
+          : { ...attachment, url: compressedUrl };
+      }
+
       setOrders((prev) => {
         let persisted = null;
         const next = prev.map((o) => {
@@ -572,27 +769,26 @@ export function OrdersProvider({ children }) {
 
           const seen = payment !== "Pending Verification" ? true : o.notificationSeen;
           const rollup = syncOrderRollup(lineItems);
+          const trailEntry = buildTrailEntry({
+            title,
+            status: targetItem.status,
+            payment: targetItem.payment,
+            note,
+            attachment: resolvedAttachment,
+            lineItemId: targetId,
+            lineItemName: lineItemTrailLabel(targetItem),
+          });
+          if (resolvedAttachment?.url) {
+            storeTrailEntryProof(o.id, trailEntry.id, resolvedAttachment.url);
+          }
           const updated = {
             ...o,
             lineItems,
             ...rollup,
             refundAmount: refundedAmountForOrder({ ...o, lineItems }),
             notificationSeen: seen,
-            trail: [
-              ...o.trail,
-              buildTrailEntry({
-                title,
-                status: targetItem.status,
-                payment: targetItem.payment,
-                note,
-                attachment,
-                lineItemId: targetId,
-                lineItemName: lineItemTrailLabel(targetItem),
-              }),
-            ],
+            trail: [...o.trail, trailEntry],
           };
-
-          queueStatusEmailForLineItem(o, prevItem, targetItem, lineItems);
 
           persisted = updated;
           return updated;
@@ -601,6 +797,7 @@ export function OrdersProvider({ children }) {
         if (persisted) persistOrder(persisted);
         return next;
       });
+    };
 
     const setStatus = (id, status, note = "") =>
       setOrders((prev) => {
@@ -741,8 +938,6 @@ export function OrdersProvider({ children }) {
             ],
           };
 
-          queueStatusEmailForLineItem(o, prevItem, targetItem, lineItems);
-
           persisted = updated;
           return updated;
         });
@@ -768,23 +963,32 @@ export function OrdersProvider({ children }) {
         throw new Error("Please upload an image or PDF receipt.");
       }
 
+      const normalizedProof = await normalizeProofDataUrl(proofDataUrl);
+
       const proofId = `bp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-      if (!storeBalanceProof(orderId, lineItemId, proofDataUrl, proofId)) {
-        throw new Error("Could not save proof file. Try a smaller image.");
+      if (!firebaseEnabled) {
+        if (!storeBalanceProof(orderId, lineItemId, normalizedProof, proofId)) {
+          throw new Error("Could not save proof file. Try a smaller image.");
+        }
+      } else {
+        storeBalanceProof(orderId, lineItemId, normalizedProof, proofId);
       }
 
       const priorCount = (order.trail ?? []).filter(
         (entry) => entry.lineItemId === lineItemId
           && entry.attachment?.kind === "balance",
       ).length;
-      const attachment = buildStoredTrailAttachment({
-        label: priorCount > 0 ? `Balance payment proof #${priorCount + 1}` : "Balance payment proof",
-        type: proofDataUrl.startsWith("data:application/pdf") ? "pdf" : "image",
-        kind: "balance",
-        lineItemId,
-        proofId,
-      });
+      const attachment = {
+        ...buildStoredTrailAttachment({
+          label: priorCount > 0 ? `Balance payment proof #${priorCount + 1}` : "Balance payment proof",
+          type: normalizedProof.startsWith("data:application/pdf") ? "pdf" : "image",
+          kind: "balance",
+          lineItemId,
+          proofId,
+        }),
+        ...(firebaseEnabled ? { url: normalizedProof } : {}),
+      };
 
       const updated = {
         ...order,
@@ -803,17 +1007,18 @@ export function OrdersProvider({ children }) {
         ],
       };
 
-      setOrders((prev) => prev.map((o) => (o.id === orderId ? updated : o)));
-
       if (firebaseEnabled) {
         try {
-          await upsertOrder(stripOrderProofPayload(updated));
+          const saved = await patchCustomerOrderTrail(updated);
+          setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...saved } : o)));
+          return saved;
         } catch (error) {
           console.error("[orders] Failed to save balance proof trail:", error);
           throw new Error(error?.message || "Could not submit proof. Please try again.");
         }
       }
 
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? updated : o)));
       return updated;
     };
 
@@ -840,12 +1045,13 @@ export function OrdersProvider({ children }) {
         if (!details?.qrDataUrl?.startsWith("data:")) {
           throw new Error("Please upload your QR code image.");
         }
-        if (!storeRefundProof(orderId, lineItemId, details.qrDataUrl)) {
+        const qrDataUrl = await normalizeProofDataUrl(details.qrDataUrl);
+        if (!storeRefundProof(orderId, lineItemId, qrDataUrl)) {
           throw new Error("Could not save your QR code. Try a smaller image.");
         }
         attachment = buildStoredTrailAttachment({
           label: "Refund QR code",
-          type: details.qrDataUrl.startsWith("data:application/pdf") ? "pdf" : "image",
+          type: qrDataUrl.startsWith("data:application/pdf") ? "pdf" : "image",
           kind: "refund",
           lineItemId,
         });
@@ -895,7 +1101,7 @@ export function OrdersProvider({ children }) {
 
       if (firebaseEnabled) {
         try {
-          await upsertOrder(stripOrderProofPayload(updated));
+          await upsertOrder(updated);
         } catch (error) {
           console.error("[orders] Failed to save refund details:", error);
           throw new Error(error?.message || "Could not submit refund details. Please try again.");
@@ -903,6 +1109,26 @@ export function OrdersProvider({ children }) {
       }
 
       return updated;
+    };
+
+    const uploadTrailProof = async (orderId, trailEntryId, dataUrl) => {
+      if (!dataUrl?.startsWith("data:")) {
+        throw new Error("Please choose an image or PDF file.");
+      }
+
+      const normalizedProof = await normalizeProofDataUrl(dataUrl);
+
+      const order = ordersRef.current.find((row) => row.id === orderId);
+      if (!order) throw new Error("Order not found.");
+
+      const entry = (order.trail ?? []).find((row) => row.id === trailEntryId);
+      if (!entry) throw new Error("Trail entry not found.");
+
+      stageTrailProofBlob(order, entry, normalizedProof);
+
+      const saved = await upsertOrder(order);
+      setOrders((current) => current.map((row) => (row.id === saved.id ? { ...row, ...saved } : row)));
+      return saved;
     };
 
     return {
@@ -915,6 +1141,8 @@ export function OrdersProvider({ children }) {
       addTrailEntry,
       submitBalanceProof,
       submitRefundDetails,
+      uploadTrailProof,
+      sendOrderStatusEmail,
       markOrderSeen,
       markAllOrdersSeen,
     };

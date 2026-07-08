@@ -41,6 +41,8 @@ import {
   calcShipping,
 } from "../data/checkoutSettings.js";
 import { useCheckoutConfirmation, writeCheckoutConfirmation } from "../lib/checkoutConfirmation.js";
+import { compressProofFile } from "../lib/imageCompression.js";
+import { getCustomerCheckoutDefaults, useCustomers } from "../lib/customersStore.jsx";
 
 const STEPS = ["Account", "Details", "Payment"];
 const QR_TILE_SIZE = 168;
@@ -209,7 +211,7 @@ function CheckoutEmptyLanding({ panelSx }) {
 
 function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGuest }) {
   const theme = useTheme();
-  const { user, isCustomer, signInCustomer, registerCustomer } = useAuth();
+  const { user, isCustomer, signInCustomer, signInWithGoogle, registerCustomer, authMode } = useAuth();
   const [mode, setMode] = useState("guest");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -256,6 +258,19 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
     }
   }
 
+  async function handleGoogleSignIn() {
+    setError("");
+    setBusy(true);
+    try {
+      const signedIn = await signInWithGoogle();
+      onContinue({ name: signedIn.displayName, email: signedIn.email, guest: false });
+    } catch (err) {
+      setError(err.message || "Google sign-in failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function handleGuestContinue() {
     setIsGuest(true);
     onContinue({ guest: true });
@@ -268,6 +283,26 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
       <Typography color="text.secondary" sx={{ mt: 0.5, mb: 3 }}>
         Create an account to track orders, or continue as a guest — either way works.
       </Typography>
+
+      {error && mode === "guest" ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
+
+      {authMode === "firebase" ? (
+        <Stack spacing={2} sx={{ mb: 3 }}>
+          <Button
+            fullWidth
+            type="button"
+            variant="outlined"
+            color="inherit"
+            size="large"
+            disabled={busy}
+            onClick={handleGoogleSignIn}
+            sx={{ py: 1.35, borderColor: surfaceBorderColor, textTransform: "none", fontWeight: 700 }}
+          >
+            Continue with Google
+          </Button>
+          <Divider sx={{ color: "text.secondary", fontSize: "0.75rem" }}>or</Divider>
+        </Stack>
+      ) : null}
 
       <Stack spacing={2}>
         <Button
@@ -515,15 +550,18 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
     }
   }, [banks, selectedBankId]);
 
-  function handleFileChange(event) {
+  async function handleFileChange(event) {
     const file = event.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => setProofFile({ name: file.name, dataUrl: reader.result });
-    reader.readAsDataURL(file);
+    try {
+      const dataUrl = await compressProofFile(file);
+      setProofFile({ name: file.name, dataUrl });
+    } catch {
+      // ignore invalid/unreadable files
+    }
   }
 
   return (
@@ -676,6 +714,7 @@ export default function CheckoutPage() {
   const surfaces = outletContext?.surfaces ?? getSurfaces(theme, mode === "dark");
   const { panelSx, surfaceBorderColor } = surfaces;
   const { user, isCustomer, loading } = useAuth();
+  const { customers } = useCustomers();
   const { items, subtotal, balanceDue, hasPreorder, clearCart } = useCart();
   const { placeOrder } = useOrders();
   const { decrementStockForCart, getProduct } = useInventory();
@@ -752,13 +791,27 @@ export default function CheckoutPage() {
       setIsGuest(false);
       setDetailsState((prev) => ({
         ...prev,
-        name: user.displayName || prev.name,
-        email: user.email || prev.email,
+        ...getCustomerCheckoutDefaults(user.email, user),
       }));
       setStep(1);
       setAccountSkipped(true);
     }
   }, [loading, isCustomer, user, accountSkipped]);
+
+  useEffect(() => {
+    if (!isCustomer || !user?.email || step !== 1) return;
+    const defaults = getCustomerCheckoutDefaults(user.email, user);
+    setDetailsState((prev) => ({
+      ...prev,
+      name: defaults.name || prev.name,
+      email: defaults.email || prev.email,
+      phone: defaults.phone || prev.phone,
+      street: defaults.street || prev.street,
+      city: defaults.city || prev.city,
+      province: defaults.province || prev.province,
+      postal: defaults.postal || prev.postal,
+    }));
+  }, [customers, isCustomer, user, step]);
 
   if (confirmedOrder) {
     return (
@@ -782,10 +835,23 @@ export default function CheckoutPage() {
   }
 
   function handleAccountContinue({ name, email, guest } = {}) {
-    if (name || email) {
-      setDetails({ ...(name ? { name } : {}), ...(email ? { email } : {}) });
+    if (guest) {
+      setIsGuest(true);
+      setStep(1);
+      return;
     }
-    if (guest !== undefined) setIsGuest(guest);
+    if (isCustomer && user?.email) {
+      setIsGuest(false);
+      setDetailsState((prev) => ({
+        ...prev,
+        ...getCustomerCheckoutDefaults(user.email, user),
+        ...(name ? { name } : {}),
+        ...(email ? { email } : {}),
+      }));
+    } else if (name || email) {
+      setDetails({ ...(name ? { name } : {}), ...(email ? { email } : {}) });
+      if (guest !== undefined) setIsGuest(guest);
+    }
     setStep(1);
   }
 

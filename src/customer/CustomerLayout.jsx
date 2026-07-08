@@ -21,7 +21,7 @@ export default function CustomerLayout() {
   const surfaces = getSurfaces(theme, isDarkMode);
   const [cartOpen, setCartOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const showLanding = hydrated && shouldShowLandingPage(content.storefront?.landingMode, location.search);
+  const showLanding = hydrated && shouldShowLandingPage(content.storefront?.landingMode, location.search, location.pathname);
 
   useEffect(() => {
     setSearchOpen(false);

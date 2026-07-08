@@ -28,13 +28,13 @@ export const DEFAULT_EMAIL_BODIES = {
   deposit_received:
     "We received and verified your deposit. This item is now awaiting stock allocation — we'll email you when allocation is confirmed.",
   balance_due_full:
-    "Great news — this item received 100% allocation. Please pay the remaining balance of {{balance}}. Upload proof in your account or send via Messenger.",
+    "Great news — this item received 100% allocation. Please pay the remaining balance of {{balance}}.",
   balance_due_partial:
-    "Your allocation is {{allocated}} / {{qty}} units. Please pay the remaining balance of {{balance}} for your fulfilled units. Upload proof in your account or send via Messenger.",
+    "Your allocation is {{allocated}} / {{qty}} units. Please pay the remaining balance of {{balance}} for your fulfilled units.",
   partial_refund_pending:
-    "Only {{allocated}} / {{qty}} units were allocated. A refund of {{refund}} is due on the unallocated units. Please share your bank details so we can process it.",
+    "Only {{allocated}} / {{qty}} units were allocated. A refund of {{refund}} is due on the unallocated units.",
   full_refund_pending:
-    "We're sorry — no allocation was available for this item. Your deposit of {{refund}} will be fully refunded. Please share your bank details so we can process it.",
+    "We're sorry — no allocation was available for this item. Your deposit of {{refund}} will be fully refunded.",
   partial_refund_sent:
     "We have sent your refund of {{refund}}. Your allocated units are ready for pickup — please schedule pickup with our team.",
   ready_for_pickup:
@@ -44,7 +44,7 @@ export const DEFAULT_EMAIL_BODIES = {
   full_refund_sent:
     "We have sent your full refund of {{refund}}. Please confirm once received.",
   payment_not_received:
-    "We have not received your payment for this order, so we can no longer hold the stock for you — it has been released and may be purchased by other customers. If you still want the item, please place a new order while stock lasts. If you've already paid, reply with your proof of payment and we'll sort it out.",
+    "We have not received your payment for this order, so we can no longer hold the stock for you — it has been released and may be purchased by other customers. If you still want the item, please place a new order while stock lasts. If you've already paid, email hello@hobbyarena.ph with your proof of payment and we'll sort it out.",
 };
 
 export const EMAIL_TYPES = Object.keys(ORDER_STATUS_EMAIL_LABELS);

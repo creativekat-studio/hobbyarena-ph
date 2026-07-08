@@ -20,7 +20,9 @@ import { MONO_FONT } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
 import {
   getPaymentOptionsForKind,
-  getStatusOptionsForKind,
+  getOrderStatusOptionsForPayment,
+  resolveOrderStatusForPayment,
+  orderStatusLabel,
 } from "../data/orderWorkflow.js";
 import { useInventory } from "../lib/inventoryStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
@@ -65,7 +67,7 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
   }, [catalogProducts, form.orderKind]);
 
   const paymentOptions = getPaymentOptionsForKind(form.orderKind);
-  const statusOptions = getStatusOptionsForKind(form.orderKind);
+  const statusOptions = getOrderStatusOptionsForPayment(form.payment, form.orderKind);
 
   const totals = useMemo(() => {
     let fullSubtotal = 0;
@@ -101,6 +103,14 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
   function handleClose() {
     reset();
     onClose();
+  }
+
+  function updatePayment(value) {
+    setForm((prev) => {
+      const nextStatus = resolveOrderStatusForPayment(value, prev.status, prev.orderKind);
+      return { ...prev, payment: value, status: nextStatus };
+    });
+    setError("");
   }
 
   function update(field, value) {
@@ -301,14 +311,14 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
           </Box>
 
           <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <TextField label="Initial payment status" select fullWidth value={form.payment} onChange={(e) => update("payment", e.target.value)}>
+            <TextField label="Initial payment status" select fullWidth value={form.payment} onChange={(e) => updatePayment(e.target.value)}>
               {paymentOptions.map((option) => (
                 <MenuItem key={option} value={option}>{option}</MenuItem>
               ))}
             </TextField>
             <TextField label="Initial order status" select fullWidth value={form.status} onChange={(e) => update("status", e.target.value)}>
               {statusOptions.map((option) => (
-                <MenuItem key={option} value={option}>{option}</MenuItem>
+                <MenuItem key={option} value={option}>{orderStatusLabel(option)}</MenuItem>
               ))}
             </TextField>
           </Stack>

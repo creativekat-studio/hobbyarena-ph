@@ -125,7 +125,7 @@ const DEFAULT_CONTENT = {
     landingHeadline: "We're building something new.",
     landingMessage:
       "Hobby Arena is getting a major upgrade. Follow us for updates — sealed drops, pre-orders, and the thrill of the pull are on the way.",
-    landingCtaLabel: "Stay in the loop",
+    landingSocialLabel: "Stay in the loop",
   },
 };
 
@@ -164,6 +164,23 @@ function mergeBankDetails(saved) {
   };
 }
 
+function mergeStorefront(saved) {
+  if (!saved) return DEFAULT_CONTENT.storefront;
+  const {
+    sponsorshipPackages: _removedPackages,
+    landingExploreLabel: legacyExploreLabel,
+    ...rest
+  } = saved;
+  const landingSocialLabel = rest.landingSocialLabel
+    ?? (legacyExploreLabel && !/sponsorship/i.test(legacyExploreLabel) ? legacyExploreLabel : undefined)
+    ?? DEFAULT_CONTENT.storefront.landingSocialLabel;
+  return {
+    ...DEFAULT_CONTENT.storefront,
+    ...rest,
+    landingSocialLabel,
+  };
+}
+
 function mergeCmsPayload(parsed) {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return DEFAULT_CONTENT;
   return {
@@ -179,7 +196,7 @@ function mergeCmsPayload(parsed) {
     testimonials: mergeTestimonials(parsed.testimonials),
     productReviews: { ...DEFAULT_CONTENT.productReviews, ...parsed.productReviews },
     bankDetails: mergeBankDetails(parsed.bankDetails),
-    storefront: { ...DEFAULT_CONTENT.storefront, ...parsed.storefront },
+    storefront: mergeStorefront(parsed.storefront),
     banners: (parsed.banners || DEFAULT_CONTENT.banners).map((banner) => {
       const fallback = DEFAULT_CONTENT.banners.find((b) => b.id === banner.id);
       const { image: _image, ...rest } = banner;
@@ -310,7 +327,10 @@ export function CmsProvider({ children }) {
     const setStorefront = (patch) => {
       lastStorefrontEditAt.current = Date.now();
       setContent((c) => {
-        const next = { ...c, storefront: { ...c.storefront, ...patch } };
+        const next = {
+          ...c,
+          storefront: mergeStorefront({ ...c.storefront, ...patch }),
+        };
         flushContent(next);
         return next;
       });

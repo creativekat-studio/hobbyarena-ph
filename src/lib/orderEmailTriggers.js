@@ -2,6 +2,7 @@ import {
   migrateOrderStatus,
   migratePaymentStatus,
   ALLOCATION_FULFILLED_PAY_BALANCE,
+  resolveOrderKindForItem,
 } from "../data/orderWorkflow.js";
 
 function isPreorderContext(ctx) {
@@ -128,6 +129,36 @@ export function resolveOrderStatusEmailType(prev, next) {
   ) {
     return "full_refund_sent";
   }
+
+  return null;
+}
+
+/** Maps a line item's current payment/status to a customer email type (manual send). */
+export function resolveOrderStatusEmailTypeForCurrentState(item) {
+  if (!item) return null;
+
+  const payment = migratePaymentStatus(item.payment);
+  const status = migrateOrderStatus(item.status);
+  const isPreorder = resolveOrderKindForItem(item) === "Pre-order";
+
+  if (payment === "Unpaid") return "payment_not_received";
+
+  if (!isPreorder) {
+    if (payment === "Fully Paid" && status === "Awaiting Stock") return "deposit_received";
+    if (status === "Ready for Pickup") return "ready_for_pickup";
+    if (status === "Fulfilled") return "order_fulfilled";
+    return null;
+  }
+
+  if (payment === "DP Paid" && status === "Awaiting Stock") return "deposit_received";
+  if (status === ALLOCATION_FULFILLED_PAY_BALANCE) return "balance_due_full";
+  if (status === "Partially Fulfilled & Pay Balance") return "balance_due_partial";
+  if (status === "Partially Fulfilled & For Refund") return "partial_refund_pending";
+  if (status === "For Full Refund") return "full_refund_pending";
+  if (status === "Ready for Pickup" && payment === "Partially Refunded") return "partial_refund_sent";
+  if (status === "Ready for Pickup") return "ready_for_pickup";
+  if (status === "Fulfilled") return "order_fulfilled";
+  if (payment === "Refunded" && status === "Refunded") return "full_refund_sent";
 
   return null;
 }

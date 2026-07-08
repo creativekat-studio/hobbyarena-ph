@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -20,6 +21,7 @@ import {
   Divider,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
+import { resolveOrderStatusEmailTypeForCurrentState } from "../lib/orderEmailTriggers.js";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
@@ -43,9 +45,12 @@ import {
   getOrderLineItems,
   getPaymentOptionsForKind,
   getStatusOptionsForKind,
+  getOrderStatusOptionsForPayment,
+  resolveOrderStatusForPayment,
   isPreorderOrder,
   lineItemTrailLabel,
   migrateOrderStatus,
+  migratePaymentStatus,
   optionsIncludingCurrent,
   orderStatusLabel,
   refundedAmountForLineItem,
@@ -59,6 +64,7 @@ import {
   trailEntryShowsAttachment,
 } from "../data/orderWorkflow.js";
 import { hydrateProofAttachment, resolveProofAttachmentUrl, ensureTrailEntryAttachment } from "../lib/orderProofStorage.js";
+import { compressProofFile } from "../lib/imageCompression.js";
 
 export { PAYMENT_COLOR, STATUS_COLOR, PAYMENT_OPTIONS, STATUS_OPTIONS };
 
@@ -238,12 +244,23 @@ function orderTrailSuffix(selectedItemId, activeLineItem, lineItems) {
   return shortLineItemLabel(activeLineItem);
 }
 
-function trailMetaLine(entry) {
-  return [entry.payment, entry.status].filter(Boolean).join(" · ");
+function trailEntryAppliesToLineItem(entry, lineItemId) {
+  if (!lineItemId) return true;
+  if (entry.lineItemId) return entry.lineItemId === lineItemId;
+  if (entry.emailLineItems?.length) {
+    return entry.emailLineItems.some((row) => row.lineItemId === lineItemId);
+  }
+  return true;
 }
 
-function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment, lineItemLabel }) {
+function trailMetaLine(entry) {
+  return [entry.payment, migrateOrderStatus(entry.status)].filter(Boolean).join(" · ");
+}
+
+function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment, onUploadProof, order, lineItemLabel, lineItems = [], uploading }) {
   const meta = trailMetaLine(entry);
+  const emailLineItems = entry.emailLineItems ?? [];
+  const isEmailEntry = emailLineItems.length > 0;
   const at = new Date(entry.at);
   const timeLabel = at.toLocaleString(undefined, {
     month: "numeric",
@@ -251,6 +268,25 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
     hour: "numeric",
     minute: "2-digit",
   });
+  const showAttachment = trailEntryShowsAttachment(entry);
+  const proofPurged = Boolean(entry.attachment?.purged);
+  const canView = showAttachment && !proofPurged && Boolean(resolveProofAttachmentUrl(order, entry));
+  const canUpload = showAttachment && !canView && onUploadProof;
+
+  function handleUploadChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !onUploadProof) return;
+    if (!file.type.startsWith("image/") && file.type !== "application/pdf") return;
+    void (async () => {
+      try {
+        const dataUrl = await compressProofFile(file);
+        onUploadProof(entry, dataUrl);
+      } catch {
+        // ignore invalid/unreadable files
+      }
+    })();
+  }
 
   return (
     <Stack direction="row" spacing={1.25} sx={{ position: "relative", pb: isLast ? 0 : 1.25 }}>
@@ -288,26 +324,64 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
       >
         <Typography sx={{ fontWeight: 700, fontSize: "0.84rem", lineHeight: 1.35 }}>
           {entry.title}
-          {meta ? (
+          {meta && !isEmailEntry ? (
             <Typography component="span" sx={{ fontWeight: 500, color: "text.secondary", fontFamily: MONO_FONT, fontSize: "0.72rem" }}>
               {" "}· {meta}
             </Typography>
           ) : null}
         </Typography>
 
-        {lineItemLabel ? (
+        {isEmailEntry ? (
+          <Stack spacing={0.35} sx={{ mt: 0.5 }}>
+            {entry.emailTo ? (
+              <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontFamily: MONO_FONT, lineHeight: 1.35 }}>
+                To {entry.emailTo}
+              </Typography>
+            ) : null}
+            {emailLineItems.map((row) => (
+              <Typography
+                key={row.lineItemId}
+                sx={{ fontSize: "0.72rem", color: "text.secondary", fontFamily: MONO_FONT, lineHeight: 1.35 }}
+              >
+                {trailEntryLineItemLabel(
+                  { lineItemId: row.lineItemId, lineItemName: row.lineItemName },
+                  lineItems,
+                ) || row.lineItemName}
+                {" — "}
+                {[row.payment, row.status].filter(Boolean).join(" · ")}
+              </Typography>
+            ))}
+          </Stack>
+        ) : lineItemLabel ? (
           <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontFamily: MONO_FONT, mt: 0.35, lineHeight: 1.35 }}>
             {lineItemLabel}
           </Typography>
         ) : null}
 
-        {entry.note ? (
+        {entry.note && !isEmailEntry ? (
           <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", mt: 0.5, lineHeight: 1.45 }}>
             {entry.note}
           </Typography>
         ) : null}
 
-        {trailEntryShowsAttachment(entry) ? (
+        {isEmailEntry && entry.emailStatus !== "sent" ? (() => {
+          const detail = entry.note.split("\n").slice(1 + emailLineItems.length).join("\n").trim();
+          if (!detail) return null;
+          return (
+            <Typography
+              sx={{
+                fontSize: "0.82rem",
+                color: entry.emailStatus === "failed" ? "error.main" : "text.secondary",
+                mt: 0.5,
+                lineHeight: 1.45,
+              }}
+            >
+              {detail}
+            </Typography>
+          );
+        })() : null}
+
+        {canView ? (
           <Button
             size="small"
             variant="text"
@@ -325,6 +399,33 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
             }}
           >
             {entry.attachment?.label || "View proof of payment"}
+          </Button>
+        ) : null}
+
+        {proofPurged ? (
+          <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", mt: 0.5, lineHeight: 1.4 }}>
+            Proof file removed after retention period. Upload a new file if you still need a copy on record.
+          </Typography>
+        ) : null}
+
+        {canUpload ? (
+          <Button
+            size="small"
+            variant="outlined"
+            component="label"
+            disabled={uploading}
+            startIcon={<AttachmentIcon sx={{ fontSize: 14 }} />}
+            sx={{
+              mt: 0.5,
+              fontFamily: MONO_FONT,
+              fontSize: "0.68rem",
+              letterSpacing: 0.3,
+              textTransform: "uppercase",
+              justifyContent: "flex-start",
+            }}
+          >
+            {uploading ? "Uploading…" : "Upload proof file"}
+            <input type="file" hidden accept="image/*,application/pdf" onChange={handleUploadChange} />
           </Button>
         ) : null}
       </Box>
@@ -411,27 +512,30 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
   const kind = resolveOrderKindForItem(lineItem);
   const isPreorder = kind === "Pre-order";
   const paymentOptions = optionsIncludingCurrent(getPaymentOptionsForKind(kind), lineItem.payment);
-  const statusOptions = optionsIncludingCurrent(getStatusOptionsForKind(kind), lineItem.status);
   const maxQty = lineItem.quantity ?? 1;
 
   const [draftPayment, setDraftPayment] = useState(lineItem.payment);
-  const [draftStatus, setDraftStatus] = useState(lineItem.status);
+  const [draftStatus, setDraftStatus] = useState(
+    () => resolveOrderStatusForPayment(lineItem.payment, lineItem.status, kind),
+  );
   const [draftQty, setDraftQty] = useState(String(lineItem.allocatedQty ?? 0));
   const [draftRefund, setDraftRefund] = useState(String(lineItem.refundAmount ?? ""));
   const [draftAttachment, setDraftAttachment] = useState(null);
   const [saveError, setSaveError] = useState("");
   const [confirmTransition, setConfirmTransition] = useState(null);
 
+  const statusOptions = getOrderStatusOptionsForPayment(draftPayment, kind);
+
   useEffect(() => {
     setDraftPayment(lineItem.payment);
-    setDraftStatus(lineItem.status);
+    setDraftStatus(resolveOrderStatusForPayment(lineItem.payment, lineItem.status, kind));
     setDraftQty(String(lineItem.allocatedQty ?? 0));
     setDraftRefund(lineItem.refundAmount != null ? String(lineItem.refundAmount) : "");
     setDraftAttachment(null);
     setSaveError("");
-  }, [lineItem.id, lineItem.payment, lineItem.status, lineItem.allocatedQty]);
+  }, [lineItem.id, lineItem.payment, lineItem.status, lineItem.allocatedQty, kind]);
 
-  function handleAttachmentChange(event) {
+  async function handleAttachmentChange(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
@@ -439,12 +543,13 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
       setSaveError("Attachment must be an image or PDF.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setDraftAttachment({ name: file.name, dataUrl: reader.result });
+    try {
+      const dataUrl = await compressProofFile(file);
+      setDraftAttachment({ name: file.name, dataUrl });
       setSaveError("");
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      setSaveError("Could not read attachment. Try a smaller image or PDF.");
+    }
   }
 
   const parsedQty = Math.max(0, Math.min(maxQty, Number(draftQty) || 0));
@@ -553,7 +658,7 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
   function commitSave(draftAllocatedForSave, draftRefundForSave) {
     if (paymentStatusDirty && onSave) {
       const attachment = draftAttachment
-        ? buildTrailAttachment(draftAttachment.dataUrl, draftAttachment.name)
+        ? buildTrailAttachment(draftAttachment.dataUrl, draftAttachment.name || "Attachment", "admin")
         : undefined;
       onSave(orderId, draftPayment, draftStatus, lineItem.id, "", attachment, draftAllocatedForSave, draftRefundForSave);
       setDraftAttachment(null);
@@ -604,6 +709,12 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
     }
   }
 
+  function handlePaymentChange(nextPayment) {
+    setDraftPayment(nextPayment);
+    setSaveError("");
+    handleStatusChange(resolveOrderStatusForPayment(nextPayment, draftStatus, kind));
+  }
+
   function handleStatusChange(nextStatus) {
     setDraftStatus(nextStatus);
     setSaveError("");
@@ -644,7 +755,7 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
             fullWidth
             size="small"
             value={draftPayment}
-            onChange={(e) => setDraftPayment(e.target.value)}
+            onChange={(e) => handlePaymentChange(e.target.value)}
             renderValue={(value) => <Chip label={value} size="small" color={PAYMENT_COLOR[value] || "default"} variant="outlined" />}
           >
             {paymentOptions.map((payment) => (
@@ -759,6 +870,21 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
               Image or PDF — saved with this status/payment update.
             </Typography>
           )}
+          <Button
+            size="small"
+            variant="contained"
+            disabled={!dirty || !allocationHint.ok}
+            onClick={handleSave}
+            sx={{
+              ml: "auto",
+              fontFamily: MONO_FONT,
+              letterSpacing: 0.4,
+              textTransform: "uppercase",
+              minWidth: 120,
+            }}
+          >
+            Save changes
+          </Button>
         </Stack>
       </Box>
       {errorMessage ? (
@@ -766,17 +892,6 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
           {errorMessage}
         </Typography>
       ) : null}
-      <Stack direction="row" justifyContent="flex-end">
-        <Button
-          size="small"
-          variant="contained"
-          disabled={!dirty || !allocationHint.ok}
-          onClick={handleSave}
-          sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase", minWidth: 120 }}
-        >
-          Save changes
-        </Button>
-      </Stack>
 
       <Dialog open={Boolean(confirmTransition)} onClose={() => setConfirmTransition(null)} maxWidth="sm" fullWidth>
         {confirmTransition ? (
@@ -902,44 +1017,47 @@ function OrderItemSelector({ lineItems, selectedId, onSelect, surfaceBorderColor
           </MenuItem>
         ))}
       </Select>
-      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
-        {selectedId === "all"
-          ? "Combined trail — pick an item to update."
-          : "Updating this line item only."}
-      </Typography>
+      {selectedId === "all" ? (
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
+          Combined trail — pick an item to update.
+        </Typography>
+      ) : null}
     </Box>
   );
 }
 
-function OrderPipelineStepper({ steps, activeStep, surfaceBorderColor, title, showDivider = true }) {
+function OrderPipelineStepper({ steps, activeStep, surfaceBorderColor, showDivider = true }) {
   return (
     <Box sx={showDivider ? { mb: 2.5, pb: 2.5, borderBottom: "1px solid", borderColor: surfaceBorderColor } : undefined}>
-      <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", mb: 1.5 }}>{title}</Typography>
-      <Box sx={{ overflowX: "auto", mx: -0.5, px: 0.5 }}>
+      <Box sx={{ overflowX: "auto" }}>
         <Stepper
-          activeStep={activeStep}
-          alternativeLabel
-          sx={{
-            minWidth: { xs: 320, sm: "100%" },
-            "& .MuiStepLabel-label": {
-              fontSize: { xs: "0.68rem", sm: "0.75rem" },
-              fontWeight: 600,
-              mt: 0.5,
-            },
-            "& .MuiStepLabel-label.Mui-active": { fontWeight: 800, color: "primary.main" },
-            "& .MuiStepLabel-label.Mui-completed": { fontWeight: 700, color: "success.main" },
-            "& .MuiStepIcon-root.Mui-completed": { color: "success.main" },
-            "& .MuiStepIcon-root.Mui-active": { color: "primary.main" },
-            "& .MuiStepConnector-line": { borderColor: surfaceBorderColor },
-            "& .MuiStepConnector-root.Mui-completed .MuiStepConnector-line": { borderColor: "success.main" },
-          }}
-        >
-          {steps.map((item) => (
-            <Step key={item.key}>
-              <StepLabel>{item.label}</StepLabel>
-            </Step>
-          ))}
-        </Stepper>
+            activeStep={activeStep}
+            sx={{
+              py: 0,
+              "& .MuiStep-root": { px: 0.25 },
+              "& .MuiStepLabel-root": { py: 0 },
+              "& .MuiStepLabel-iconContainer": { pr: 0.5 },
+              "& .MuiStepIcon-root": { width: 18, height: 18, fontSize: "0.65rem" },
+              "& .MuiStepLabel-label": {
+                fontSize: "0.68rem",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+              },
+              "& .MuiStepLabel-label.Mui-active": { fontWeight: 800, color: "primary.main" },
+              "& .MuiStepLabel-label.Mui-completed": { fontWeight: 700, color: "success.main" },
+              "& .MuiStepIcon-root.Mui-completed": { color: "success.main" },
+              "& .MuiStepIcon-root.Mui-active": { color: "primary.main" },
+              "& .MuiStepConnector-root": { flex: "1 1 12px", minWidth: 8 },
+              "& .MuiStepConnector-line": { borderColor: surfaceBorderColor, borderTopWidth: 2 },
+              "& .MuiStepConnector-root.Mui-completed .MuiStepConnector-line": { borderColor: "success.main" },
+            }}
+          >
+            {steps.map((item) => (
+              <Step key={item.key}>
+                <StepLabel>{item.label}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
       </Box>
     </Box>
   );
@@ -951,7 +1069,6 @@ export function OrderFlowBar({ subject, surfaceBorderColor, showDivider = true }
   if (kind === "Pre-order") {
     return (
       <OrderPipelineStepper
-        title="Pre-order pipeline"
         steps={PREORDER_FLOW_STEPS}
         activeStep={activePreorderStep(subject)}
         surfaceBorderColor={surfaceBorderColor}
@@ -962,7 +1079,6 @@ export function OrderFlowBar({ subject, surfaceBorderColor, showDivider = true }
 
   return (
     <OrderPipelineStepper
-      title="In-stock pipeline"
       steps={INSTOCK_FLOW_STEPS}
       activeStep={activeInstockStep(subject)}
       surfaceBorderColor={surfaceBorderColor}
@@ -986,7 +1102,7 @@ export function OrderAllocationControls({ lineItem, orderId, setAllocation, surf
   }, [lineItem.id, lineItem.allocatedQty]);
 
   if (resolveOrderKindForItem(lineItem) !== "Pre-order" || !setAllocation) return null;
-  if (migrateOrderStatus(lineItem.status) !== "Partially Fulfilled & Refunded") return null;
+  if (migrateOrderStatus(lineItem.status) !== "Partially Fulfilled & For Refund") return null;
 
   const maxQty = lineItem.quantity ?? 1;
 
@@ -1105,11 +1221,6 @@ export function OrderStatusPanel({
 
           {setPaymentAndStatus ? (
             <Box>
-              {lineItems.length > 1 ? (
-                <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", mb: 1.5 }}>
-                  Update: {lineItemTrailLabel(activeLineItem)}
-                </Typography>
-              ) : null}
               <OrderStatusControls
                 lineItem={activeLineItem}
                 orderId={order.id}
@@ -1136,6 +1247,8 @@ export function OrderDetailLayout({
   addTrailEntry,
   setPaymentAndStatus,
   setAllocation,
+  uploadTrailProof,
+  sendOrderStatusEmail,
 }) {
   const { lineItems, selectedItemId, setSelectedItemId, canEditItem, activeLineItem } = useOrderLineItemSelection(order);
 
@@ -1171,8 +1284,28 @@ export function OrderDetailLayout({
             setAllocation={setAllocation}
           />
         </Box>
-        <Box sx={{ flex: 1, minHeight: { xs: 280, lg: 0 }, display: "flex", flexDirection: "column" }}>
-          <OrderSummarySidebar order={order} panelSx={panelSx} scrollable />
+        <Box
+          sx={{
+            flex: 1,
+            minHeight: { xs: 280, lg: 0 },
+            display: "flex",
+            flexDirection: "column",
+            overflow: { lg: "hidden" },
+          }}
+        >
+          <OrderTrailPanel
+            order={order}
+            panelSx={panelSx}
+            surfaceBorderColor={surfaceBorderColor}
+            addTrailEntry={addTrailEntry}
+            uploadTrailProof={uploadTrailProof}
+            lineItems={lineItems}
+            selectedItemId={selectedItemId}
+            canEditItem={canEditItem}
+            activeLineItem={activeLineItem}
+            compact
+            scrollable
+          />
         </Box>
       </Stack>
 
@@ -1187,17 +1320,11 @@ export function OrderDetailLayout({
           overflow: { lg: "hidden" },
         }}
       >
-        <OrderTrailPanel
+        <OrderSummarySidebar
           order={order}
           panelSx={panelSx}
-          surfaceBorderColor={surfaceBorderColor}
-          addTrailEntry={addTrailEntry}
-          lineItems={lineItems}
-          selectedItemId={selectedItemId}
-          canEditItem={canEditItem}
-          activeLineItem={activeLineItem}
-          compact
           scrollable
+          sendOrderStatusEmail={sendOrderStatusEmail}
         />
       </Box>
     </Box>
@@ -1216,6 +1343,7 @@ export function OrderTrailPanel({
   addTrailEntry,
   setPaymentAndStatus,
   setAllocation,
+  uploadTrailProof,
   lineItems: lineItemsProp,
   selectedItemId: selectedItemIdProp,
   canEditItem: canEditItemProp,
@@ -1225,6 +1353,8 @@ export function OrderTrailPanel({
 }) {
   const [trailNote, setTrailNote] = useState("");
   const [previewAttachment, setPreviewAttachment] = useState(null);
+  const [attachmentError, setAttachmentError] = useState("");
+  const [uploadingEntryId, setUploadingEntryId] = useState("");
   const internalSelection = useOrderLineItemSelection(order);
   const embedded = Boolean(lineItemsProp);
   const lineItems = lineItemsProp ?? internalSelection.lineItems;
@@ -1239,7 +1369,7 @@ export function OrderTrailPanel({
   const trail = useMemo(
     () => [...(order.trail ?? [])]
       .map((entry) => ensureTrailEntryAttachment(entry, order))
-      .filter((entry) => !trailFilterId || !entry.lineItemId || entry.lineItemId === trailFilterId)
+      .filter((entry) => trailEntryAppliesToLineItem(entry, trailFilterId))
       .sort((a, b) => new Date(b.at) - new Date(a.at)),
     [order, order.trail, trailFilterId],
   );
@@ -1253,6 +1383,20 @@ export function OrderTrailPanel({
       lineItemName: lineItemTrailLabel(activeLineItem),
     });
     setTrailNote("");
+  };
+
+  const handleUploadTrailProof = async (entry, dataUrl) => {
+    if (!uploadTrailProof || !entry?.id) return;
+    setAttachmentError("");
+    setUploadingEntryId(entry.id);
+    try {
+      await uploadTrailProof(order.id, entry.id, dataUrl);
+      setAttachmentError("");
+    } catch (error) {
+      setAttachmentError(error.message || "Could not upload proof file.");
+    } finally {
+      setUploadingEntryId("");
+    }
   };
 
   return (
@@ -1298,11 +1442,6 @@ export function OrderTrailPanel({
 
             {setPaymentAndStatus ? (
               <Box sx={{ mb: 2.5, pb: 2.5, borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
-                {lineItems.length > 1 ? (
-                  <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", mb: 1.5 }}>
-                    Update: {lineItemTrailLabel(activeLineItem)}
-                  </Typography>
-                ) : null}
                 <OrderStatusControls lineItem={activeLineItem} orderId={order.id} onSave={setPaymentAndStatus} />
               </Box>
             ) : null}
@@ -1365,16 +1504,29 @@ export function OrderTrailPanel({
                 <TrailTimelineItem
                   key={entry.id}
                   entry={entry}
+                  order={order}
                   isLast={index === trail.length - 1}
                   surfaceBorderColor={surfaceBorderColor}
-                  onViewAttachment={(attachment, entry) => {
-                    if (!trailEntryShowsAttachment(entry)) return;
+                  onViewAttachment={(attachment, trailEntry) => {
+                    if (!trailEntryShowsAttachment(trailEntry)) return;
+                    setAttachmentError("");
                     const hydrated = hydrateProofAttachment(
                       attachment,
-                      resolveProofAttachmentUrl(order, entry),
+                      resolveProofAttachmentUrl(order, trailEntry),
                     );
-                    if (hydrated?.url) setPreviewAttachment(hydrated);
+                    if (hydrated?.url) {
+                      setPreviewAttachment(hydrated);
+                      return;
+                    }
+                    setAttachmentError(
+                      trailEntry.attachment?.purged
+                        ? "This proof was removed after the retention period. Upload a new file below if you need it on record."
+                        : "Proof file is not on the server yet. Use Upload proof file below, or ask the customer to open their order once.",
+                    );
                   }}
+                  onUploadProof={uploadTrailProof ? handleUploadTrailProof : null}
+                  uploading={uploadingEntryId === entry.id}
+                  lineItems={lineItems}
                   lineItemLabel={
                     allItemsView && entry.lineItemName
                       ? trailEntryLineItemLabel(entry, lineItems)
@@ -1391,6 +1543,12 @@ export function OrderTrailPanel({
         </Box>
       </Box>
 
+      {attachmentError ? (
+        <Alert severity="warning" onClose={() => setAttachmentError("")} sx={{ mt: 1.5 }}>
+          {attachmentError}
+        </Alert>
+      ) : null}
+
       <AttachmentPreviewModal
         open={Boolean(previewAttachment)}
         attachment={previewAttachment}
@@ -1406,10 +1564,48 @@ export function OrderTrailGrid(props) {
   return <OrderTrailPanel {...props} />;
 }
 
-export function OrderSummarySidebar({ order, panelSx, scrollable = false }) {
+function isItemEmailDisabled(item) {
+  return migratePaymentStatus(item.payment) === "Pending Verification"
+    || migrateOrderStatus(item.status) === "Pending Verification";
+}
+
+function defaultEmailItemSelection(lineItems) {
+  return new Set(lineItems.filter((item) => !isItemEmailDisabled(item)).map((item) => item.id));
+}
+
+function findPreviouslyEmailedItems(order, selectedItems) {
+  const sentEntries = (order.trail ?? []).filter(
+    (entry) => entry.emailStatus === "sent" && entry.emailLineItems?.length,
+  );
+
+  return selectedItems.filter((item) => {
+    const payment = migratePaymentStatus(item.payment);
+    const status = migrateOrderStatus(item.status);
+    return sentEntries.some((entry) =>
+      entry.emailLineItems.some(
+        (row) =>
+          row.lineItemId === item.id
+          && migratePaymentStatus(row.payment) === payment
+          && migrateOrderStatus(row.status) === status,
+      ),
+    );
+  });
+}
+
+export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOrderStatusEmail }) {
   const hasPreorder = isPreorderOrder(order);
   const lineItems = getOrderLineItems(order);
   const depositPercent = order.depositPercent ?? 30;
+  const [selectedItemIds, setSelectedItemIds] = useState(() => defaultEmailItemSelection(lineItems));
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [sendError, setSendError] = useState("");
+  const [confirmResendEmail, setConfirmResendEmail] = useState(null);
+
+  useEffect(() => {
+    setSelectedItemIds(defaultEmailItemSelection(lineItems));
+    setSendError("");
+  }, [order.id, order.lineItems]);
+
   const address = order.address
     ? [order.address.street, order.address.city, order.address.province, order.address.postal].filter(Boolean).join(", ")
     : null;
@@ -1430,6 +1626,7 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false }) {
       amount,
       payment: item.payment,
       status: item.status,
+      emailDisabled: isItemEmailDisabled(item),
     };
   });
 
@@ -1438,7 +1635,72 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false }) {
   const balanceDue = order.balanceDue ?? 0;
   const refundedAmount = refundedAmountForOrder(order);
 
+  const selectedItems = lineItems.filter((item) => selectedItemIds.has(item.id));
+  const selectedItemsShareStatus = useMemo(() => {
+    if (selectedItems.length <= 1) return true;
+    const firstPayment = migratePaymentStatus(selectedItems[0].payment);
+    const firstStatus = migrateOrderStatus(selectedItems[0].status);
+    return selectedItems.every(
+      (item) =>
+        migratePaymentStatus(item.payment) === firstPayment
+        && migrateOrderStatus(item.status) === firstStatus,
+    );
+  }, [selectedItems]);
+  const previewEmailType = selectedItems.length && selectedItemsShareStatus
+    ? resolveOrderStatusEmailTypeForCurrentState(selectedItems[0])
+    : null;
+
+  function toggleEmailItem(itemId) {
+    const item = lineItems.find((row) => row.id === itemId);
+    if (!item || isItemEmailDisabled(item)) return;
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+    setSendError("");
+  }
+
+  async function performSendEmail() {
+    setSendingEmail(true);
+    setSendError("");
+    try {
+      await sendOrderStatusEmail(order.id, [...selectedItemIds]);
+    } catch (error) {
+      setSendError(error?.message || "Could not send email.");
+    } finally {
+      setSendingEmail(false);
+    }
+  }
+
+  async function handleSendEmail() {
+    if (!sendOrderStatusEmail) return;
+    if (!selectedItemIds.size) {
+      setSendError("Select at least one line item to include in the email.");
+      return;
+    }
+    if (!selectedItemsShareStatus) {
+      setSendError("Selected items must share the same payment and order status.");
+      return;
+    }
+
+    const duplicates = findPreviouslyEmailedItems(order, selectedItems);
+    if (duplicates.length) {
+      setConfirmResendEmail({ items: duplicates });
+      return;
+    }
+
+    await performSendEmail();
+  }
+
+  async function handleConfirmResendEmail() {
+    setConfirmResendEmail(null);
+    await performSendEmail();
+  }
+
   return (
+    <>
     <OrderSummaryPanel
       compact
       scrollable={scrollable}
@@ -1452,6 +1714,8 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false }) {
       subtotalLabel={hasPreorder ? "Deposit paid" : "Subtotal"}
       totalLabel={hasPreorder ? "Paid at checkout" : "Total"}
       adminSectionTitle
+      selectedItemIds={sendOrderStatusEmail ? selectedItemIds : undefined}
+      onToggleItemId={sendOrderStatusEmail ? toggleEmailItem : undefined}
       billTo={{
         name: order.customer,
         email: order.email,
@@ -1460,8 +1724,75 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false }) {
         notes: order.notes,
       }}
       renderItemExtra={(item) => (
-        <OrderSummaryItemMeta parts={[item.payment, item.status]} />
+        <OrderSummaryItemMeta parts={[item.payment, item.status].filter(Boolean)} />
       )}
+      headerActions={sendOrderStatusEmail ? (
+        <Button
+          size="small"
+          variant="contained"
+          disabled={sendingEmail || !selectedItemIds.size || !previewEmailType || !selectedItemsShareStatus}
+          onClick={handleSendEmail}
+          sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", flexShrink: 0 }}
+        >
+          {sendingEmail ? "Sending…" : "Send email"}
+        </Button>
+      ) : null}
+      headerNotice={sendOrderStatusEmail && sendError ? (
+        <Alert severity="error">{sendError}</Alert>
+      ) : sendOrderStatusEmail && !previewEmailType && selectedItems.length && selectedItemsShareStatus ? (
+        <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>
+          No email template matches the selected items&apos; status yet.
+        </Typography>
+      ) : null}
     />
+    <Dialog open={Boolean(confirmResendEmail)} onClose={() => setConfirmResendEmail(null)} maxWidth="sm" fullWidth>
+      {confirmResendEmail ? (
+        <>
+          <DialogTitle sx={{ fontWeight: 800 }}>Send email again?</DialogTitle>
+          <DialogContent>
+            {confirmResendEmail.items.length === 1 ? (
+              <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
+                <strong>{shortLineItemLabel(confirmResendEmail.items[0])}</strong> has already been sent an email at{" "}
+                <strong>
+                  {[
+                    migratePaymentStatus(confirmResendEmail.items[0].payment),
+                    orderStatusLabel(confirmResendEmail.items[0].status),
+                  ].filter(Boolean).join(" · ")}
+                </strong>
+                . Do you wish to continue?
+              </Typography>
+            ) : (
+              <>
+                <Typography variant="body1" sx={{ lineHeight: 1.6, mb: 1.5 }}>
+                  These items have already been sent an email at their current payment and order status:
+                </Typography>
+                <Stack spacing={0.75}>
+                  {confirmResendEmail.items.map((item) => (
+                    <Typography key={item.id} sx={{ fontSize: "0.88rem", lineHeight: 1.45 }}>
+                      <strong>{shortLineItemLabel(item)}</strong>
+                      {" — "}
+                      {[migratePaymentStatus(item.payment), orderStatusLabel(item.status)].filter(Boolean).join(" · ")}
+                    </Typography>
+                  ))}
+                </Stack>
+                <Typography sx={{ mt: 2, fontWeight: 700 }}>Do you wish to continue?</Typography>
+              </>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button color="inherit" onClick={() => setConfirmResendEmail(null)}>Cancel</Button>
+            <Button
+              variant="contained"
+              color="warning"
+              onClick={handleConfirmResendEmail}
+              sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase" }}
+            >
+              Continue
+            </Button>
+          </DialogActions>
+        </>
+      ) : null}
+    </Dialog>
+    </>
   );
 }

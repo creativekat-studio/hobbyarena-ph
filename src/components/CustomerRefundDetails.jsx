@@ -16,6 +16,7 @@ import { PESO } from "./ProductCard.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { itemNeedsRefundDetails, refundedAmountForLineItem } from "../data/orderWorkflow.js";
+import { compressProofFile } from "../lib/imageCompression.js";
 
 export default function CustomerRefundDetails({ order, item, surfaceBorderColor }) {
   const theme = useTheme();
@@ -37,7 +38,7 @@ export default function CustomerRefundDetails({ order, item, surfaceBorderColor 
   const submitted = Boolean(order.refundDetails?.[item.id]);
   const refundAmount = item.refundAmount ?? refundedAmountForLineItem(item, order.depositPercent ?? 30);
 
-  function handleFileChange(event) {
+  async function handleFileChange(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
@@ -45,13 +46,14 @@ export default function CustomerRefundDetails({ order, item, surfaceBorderColor 
       setError("Upload an image or PDF of your QR code.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setQrFile({ name: file.name, dataUrl: reader.result });
+    try {
+      const dataUrl = await compressProofFile(file);
+      setQrFile({ name: file.name, dataUrl });
       setError("");
       setSuccess("");
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      setError("Could not read file. Try a smaller image.");
+    }
   }
 
   async function handleSubmit() {

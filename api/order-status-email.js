@@ -90,6 +90,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true,
+      to: payload.order.email,
       messageId: result.messageId ?? null,
       emailType: payload.emailType,
       simulated: Boolean(result.simulated),

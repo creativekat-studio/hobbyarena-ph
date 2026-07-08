@@ -1,5 +1,8 @@
 import { loadLocalEnv } from "./loadLocalEnv.js";
 import { isEmailSimulate } from "./emailSimulator.js";
+import { formatPeso, getEmailLinks, getSupportEmail, isValidEmail } from "./emailUtils.js";
+
+export { formatPeso, getEmailLinks, getSupportEmail, isValidEmail };
 
 export function getEmailConfig() {
   loadLocalEnv();
@@ -12,16 +15,4 @@ export function getEmailConfig() {
   }
 
   return { apiKey, from, adminEmail };
-}
-
-export function formatPeso(amount) {
-  return new Intl.NumberFormat("en-PH", {
-    style: "currency",
-    currency: "PHP",
-    maximumFractionDigits: 0,
-  }).format(Number(amount) || 0);
-}
-
-export function isValidEmail(value) {
-  return typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }

@@ -70,7 +70,11 @@ function localProfilesToRows(profilesByEmail) {
     email: profile.email || email,
     name: profile.name || "",
     phone: profile.phone || "",
-    address: profile.address || "",
+    address: profile.address && typeof profile.address === "object"
+      ? profile.address
+      : typeof profile.address === "string" && profile.address
+        ? { street: profile.address, city: "", province: "", postal: "" }
+        : EMPTY_ADDRESS,
     marketingOptIn: Boolean(profile.marketingOptIn),
     authProvider: profile.authProvider || "unknown",
     photoURL: profile.photoURL || "",
@@ -79,6 +83,50 @@ function localProfilesToRows(profilesByEmail) {
   }));
 }
 
+const EMPTY_ADDRESS = {
+  street: "",
+  city: "",
+  province: "",
+  postal: "",
+};
+
+function normalizeAddressInput(input, existing) {
+  const existingAddr =
+    existing?.address && typeof existing.address === "object"
+      ? { ...EMPTY_ADDRESS, ...existing.address }
+      : typeof existing?.address === "string" && existing.address.trim()
+        ? { ...EMPTY_ADDRESS, street: existing.address.trim() }
+        : { ...EMPTY_ADDRESS };
+
+  if (input?.address == null) return existingAddr;
+  if (typeof input.address === "string") {
+    const trimmed = input.address.trim();
+    return trimmed ? { ...existingAddr, street: trimmed } : existingAddr;
+  }
+  if (typeof input.address === "object") {
+    return {
+      street: input.address.street?.trim() ?? existingAddr.street ?? "",
+      city: input.address.city?.trim() ?? existingAddr.city ?? "",
+      province: input.address.province?.trim() ?? existingAddr.province ?? "",
+      postal: input.address.postal?.trim() ?? existingAddr.postal ?? "",
+    };
+  }
+  return existingAddr;
+}
+
+export function getCustomerCheckoutDefaults(email, user = null) {
+  const profile = getCustomerProfile(email);
+  const address = normalizeAddressInput({}, profile);
+  return {
+    name: profile?.name || user?.displayName || "",
+    email: profile?.email || user?.email || email || "",
+    phone: profile?.phone || user?.phone || "",
+    street: address.street || "",
+    city: address.city || "",
+    province: address.province || "",
+    postal: address.postal || "",
+  };
+}
 function mergeProfile(existing, input) {
   const email = input.email?.trim() || existing?.email || "";
   const merged = {
@@ -86,7 +134,7 @@ function mergeProfile(existing, input) {
     email,
     name: input.name?.trim() || existing?.name || email.split("@")[0] || "Member",
     phone: input.phone?.trim() ?? existing?.phone ?? "",
-    address: input.address?.trim() ?? existing?.address ?? "",
+    address: normalizeAddressInput(input, existing),
     marketingOptIn: input.marketingOptIn ?? existing?.marketingOptIn ?? false,
     authProvider: input.authProvider || existing?.authProvider || "unknown",
     photoURL: input.photoURL ?? existing?.photoURL ?? "",
@@ -104,7 +152,7 @@ export function getCustomerProfile(email) {
   return profileCache[normalizeEmail(email)] ?? null;
 }
 
-export function upsertCustomerProfile(input) {
+export async function upsertCustomerProfile(input) {
   const key = normalizeEmail(input.email);
   if (!key) return null;
 
@@ -118,19 +166,22 @@ export function upsertCustomerProfile(input) {
   localProfiles[key] = next;
   writeLocalProfiles(localProfiles);
 
-  if (getDataSource() === "firebase" && next.uid && !syncingRemote) {
-    upsertCustomerDocument(next).catch((error) => {
-      console.error("[customers] Failed to save profile:", error);
-    });
+  if (getDataSource() === "firebase" && next.uid) {
+    await upsertCustomerDocument(next);
   }
 
   return next;
 }
 
-export function updateCustomerProfile(email, patch) {
+export async function updateCustomerProfile(email, patch) {
   const existing = getCustomerProfile(email);
   if (!existing) {
-    return upsertCustomerProfile({ email, name: patch.name || email.split("@")[0], ...patch });
+    return upsertCustomerProfile({
+      email,
+      uid: patch.uid,
+      name: patch.name || email.split("@")[0],
+      ...patch,
+    });
   }
   return upsertCustomerProfile({ ...existing, email, ...patch });
 }
@@ -153,6 +204,9 @@ export function recordCustomerFromAuth(user) {
     phone: user.phone || "",
     photoURL: user.photoURL || "",
     authProvider: provider === "google.com" ? "google" : provider,
+  }).catch((error) => {
+    console.error("[customers] Failed to record profile from auth:", error);
+    return getCustomerProfile(user.email);
   });
 }
 

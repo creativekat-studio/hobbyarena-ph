@@ -26,7 +26,7 @@ import { wider } from "../lib/layout.js";
 import { PESO } from "../components/ProductCard.jsx";
 import { CardIcon, HeartIcon, UserIcon } from "../components/icons.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
-import { getCustomerProfile } from "../lib/customersStore.jsx";
+import { getCustomerProfile, useCustomers } from "../lib/customersStore.jsx";
 import { useOrders, getOrdersForEmail } from "../lib/ordersStore.jsx";
 import { useWishlist } from "../lib/wishlistStore.jsx";
 import { useCart } from "../lib/cartStore.jsx";
@@ -174,18 +174,40 @@ function StatCard({ panelSx, icon, label, value, accent }) {
 
 function ProfileTab({ panelSx, surfaceBorderColor }) {
   const { user, updateCustomerProfileDetails } = useAuth();
+  const { customers } = useCustomers();
   const saved = getCustomerProfile(user?.email);
+  const savedAddress = saved?.address && typeof saved.address === "object" ? saved.address : {};
   const [name, setName] = useState(saved?.name || user?.displayName || "");
   const [phone, setPhone] = useState(saved?.phone || user?.phone || "");
+  const [street, setStreet] = useState(savedAddress.street || "");
+  const [city, setCity] = useState(savedAddress.city || "");
+  const [province, setProvince] = useState(savedAddress.province || "");
+  const [postal, setPostal] = useState(savedAddress.postal || "");
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const profile = getCustomerProfile(user?.email);
+    if (!profile) return;
+    const address = profile.address && typeof profile.address === "object" ? profile.address : {};
+    setName(profile.name || user?.displayName || "");
+    setPhone(profile.phone || user?.phone || "");
+    setStreet(address.street || "");
+    setCity(address.city || "");
+    setProvince(address.province || "");
+    setPostal(address.postal || "");
+  }, [user?.email, user?.displayName, user?.phone, customers]);
 
   async function handleSave(event) {
     event.preventDefault();
     setError("");
     setStatus("saving");
     try {
-      await updateCustomerProfileDetails({ name, phone });
+      await updateCustomerProfileDetails({
+        name,
+        phone,
+        address: { street, city, province, postal },
+      });
       setStatus("saved");
     } catch (err) {
       setError(err.message || "Could not save profile.");
@@ -195,12 +217,20 @@ function ProfileTab({ panelSx, surfaceBorderColor }) {
 
   return (
     <Box component="form" onSubmit={handleSave} sx={{ p: 3 }}>
-      <Stack spacing={2} sx={{ maxWidth: 420 }}>
+      <Stack spacing={2} sx={{ maxWidth: 520 }}>
         {status === "saved" ? <Alert severity="success">Profile saved.</Alert> : null}
         {error ? <Alert severity="error">{error}</Alert> : null}
+        <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }}>Contact</Typography>
         <TextField label="Full name" fullWidth value={name} onChange={(e) => setName(e.target.value)} required />
         <TextField label="Email" fullWidth value={user?.email || ""} disabled />
         <TextField label="Phone" fullWidth value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+63 9XX XXX XXXX" />
+        <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", pt: 0.5 }}>Default delivery address</Typography>
+        <TextField label="Street address" fullWidth value={street} onChange={(e) => setStreet(e.target.value)} />
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+          <TextField label="City" fullWidth value={city} onChange={(e) => setCity(e.target.value)} />
+          <TextField label="Province" fullWidth value={province} onChange={(e) => setProvince(e.target.value)} />
+        </Stack>
+        <TextField label="Postal code" fullWidth value={postal} onChange={(e) => setPostal(e.target.value)} sx={{ maxWidth: 220 }} />
         <Button type="submit" variant="contained" disabled={status === "saving"} sx={{ alignSelf: "flex-start", fontFamily: MONO_FONT, letterSpacing: 0.5 }}>
           {status === "saving" ? "Saving…" : "Save details"}
         </Button>

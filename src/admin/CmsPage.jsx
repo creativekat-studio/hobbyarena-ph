@@ -100,11 +100,11 @@ function SiteModeTab({ panelSx, surfaceBorderColor }) {
             onChange={(e) => setStorefront({ landingMessage: e.target.value })}
           />
           <TextField
-            label="Social section label"
+            label="Stay in the loop label"
             fullWidth
-            value={storefront.landingCtaLabel}
-            onChange={(e) => setStorefront({ landingCtaLabel: e.target.value })}
-            helperText="Social links come from the Social & Contact tab."
+            value={storefront.landingSocialLabel ?? "Stay in the loop"}
+            onChange={(e) => setStorefront({ landingSocialLabel: e.target.value })}
+            helperText="Heading above social icons on the landing page. Links come from Social & Contact."
           />
         </Stack>
       </Box>

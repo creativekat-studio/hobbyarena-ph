@@ -53,12 +53,14 @@ export function CustomerOrderItemRow({ item, order, surfaceBorderColor }) {
             {item.tag ? (
               <Chip label={item.tag} size="small" variant="outlined" sx={{ fontSize: "0.62rem", height: 22 }} />
             ) : null}
-            <Chip
-              label={orderStatusLabel(status)}
-              size="small"
-              color={STATUS_COLOR[status] || "default"}
-              sx={{ fontWeight: 700, fontSize: "0.62rem", height: 22 }}
-            />
+            {status ? (
+              <Chip
+                label={orderStatusLabel(status)}
+                size="small"
+                color={STATUS_COLOR[status] || "default"}
+                sx={{ fontWeight: 700, fontSize: "0.62rem", height: 22 }}
+              />
+            ) : null}
             <Chip
               label={payment}
               size="small"

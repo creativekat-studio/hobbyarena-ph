@@ -1,4 +1,4 @@
-import { Box, Divider, Stack, Typography } from "@mui/material";
+import { Box, Checkbox, Divider, Stack, Typography } from "@mui/material";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "./ProductCard.jsx";
 import AdminSectionTitle from "./AdminSectionTitle.jsx";
@@ -110,6 +110,10 @@ export function OrderSummaryPanel({
   billTo = null,
   scrollable = false,
   adminSectionTitle = false,
+  selectedItemIds,
+  onToggleItemId,
+  headerActions = null,
+  headerNotice = null,
 }) {
   const billToLines = billTo
     ? [billTo.name, billTo.email, billTo.phone, billTo.address, billTo.notes].filter(Boolean)
@@ -120,20 +124,32 @@ export function OrderSummaryPanel({
   const itemsList = (
     <Stack spacing={compact ? 1 : 1.25} divider={<Divider flexItem />}>
       {items.map((item) => (
-        <Stack key={item.id} direction="row" justifyContent="space-between" spacing={1.5} alignItems="flex-start">
-          <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography sx={{ fontWeight: 600, fontSize: compact ? "0.82rem" : "0.88rem", lineHeight: 1.35 }}>
-              {item.name}
+        <Stack key={item.id} direction="row" spacing={1} alignItems="flex-start">
+          {onToggleItemId ? (
+            <Checkbox
+              size="small"
+              checked={!item.emailDisabled && (selectedItemIds?.has(item.id) ?? false)}
+              disabled={Boolean(item.emailDisabled)}
+              onChange={() => onToggleItemId(item.id)}
+              sx={{ mt: -0.25, flexShrink: 0 }}
+              inputProps={{ "aria-label": `Include ${item.name} in email` }}
+            />
+          ) : null}
+          <Stack direction="row" justifyContent="space-between" spacing={1.5} alignItems="flex-start" sx={{ flex: 1, minWidth: 0 }}>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography sx={{ fontWeight: 600, fontSize: compact ? "0.82rem" : "0.88rem", lineHeight: 1.35 }}>
+                {item.name}
+              </Typography>
+              <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", fontFamily: MONO_FONT }}>
+                Qty {item.quantity}
+                {item.tag === "Pre-order" ? ` · ${item.depositPercent ?? 30}% dep.` : ""}
+              </Typography>
+              {renderItemExtra ? renderItemExtra(item) : null}
+            </Box>
+            <Typography sx={{ fontWeight: 700, flexShrink: 0, fontSize: compact ? "0.85rem" : undefined }}>
+              {PESO.format(item.amount ?? item.dueNow ?? 0)}
             </Typography>
-            <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", fontFamily: MONO_FONT }}>
-              Qty {item.quantity}
-              {item.tag === "Pre-order" ? ` · ${item.depositPercent ?? 30}% dep.` : ""}
-            </Typography>
-            {renderItemExtra ? renderItemExtra(item) : null}
-          </Box>
-          <Typography sx={{ fontWeight: 700, flexShrink: 0, fontSize: compact ? "0.85rem" : undefined }}>
-            {PESO.format(item.amount ?? item.dueNow ?? 0)}
-          </Typography>
+          </Stack>
         </Stack>
       ))}
     </Stack>
@@ -169,7 +185,7 @@ export function OrderSummaryPanel({
       <TotalsSection {...totalsProps} />
     </Box>
   ) : (
-    <Box sx={{ flexShrink: 0, pt: 2, ...(scrollable ? { borderTop: "1px solid", borderColor: "divider" } : {}) }}>
+    <Box sx={{ flexShrink: 0, pt: 2, borderTop: "1px solid", borderColor: "divider" }}>
       <TotalsSection {...totalsProps} />
     </Box>
   );
@@ -192,15 +208,27 @@ export function OrderSummaryPanel({
       }}
     >
       {adminSectionTitle ? (
-        <AdminSectionTitle sx={{ mb: 1.5, flexShrink: 0 }}>Order summary</AdminSectionTitle>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} sx={{ mb: headerNotice ? 1 : 1.5, flexShrink: 0 }}>
+          <AdminSectionTitle sx={{ mb: 0 }}>Order summary</AdminSectionTitle>
+          {headerActions}
+        </Stack>
       ) : (
-        <Typography
-          variant="h6"
-          sx={{ fontWeight: 800, mb: 1.5, fontSize: compact ? "1rem" : undefined, flexShrink: 0 }}
-        >
-          Order summary
-        </Typography>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} sx={{ mb: headerNotice ? 1 : 1.5, flexShrink: 0 }}>
+          <Typography
+            variant="h6"
+            sx={{ fontWeight: 800, mb: 0, fontSize: compact ? "1rem" : undefined }}
+          >
+            Order summary
+          </Typography>
+          {headerActions}
+        </Stack>
       )}
+
+      {headerNotice ? (
+        <Box sx={{ mb: 1.5, flexShrink: 0 }}>
+          {headerNotice}
+        </Box>
+      ) : null}
 
       {!sideBySideFooter && showBillTo ? (
         <BillToSection billTo={billTo} compact={compact} />
@@ -214,7 +242,9 @@ export function OrderSummaryPanel({
         itemsList
       )}
 
-      {footer}
+      <Box sx={{ flexShrink: 0, ...(scrollable ? { mt: "auto" } : {}) }}>
+        {footer}
+      </Box>
     </Box>
   );
 }

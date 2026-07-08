@@ -16,7 +16,8 @@ import { useOutletContext } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { ORDER_STATUS_EMAIL_LABELS } from "../lib/orderEmailTriggers.js";
-import { previewOrderStatusEmail, sendOrderStatusEmail } from "../lib/emailService.js";
+import { sendOrderStatusEmail } from "../lib/emailService.js";
+import { buildOrderStatusEmail } from "../lib/email/orderStatusEmail.js";
 import {
   DEFAULT_EMAIL_BODIES,
   EMAIL_PLACEHOLDERS,
@@ -30,20 +31,34 @@ import EmailSimInbox from "./EmailSimInbox.jsx";
 
 const PREVIEW_EMAIL = "preview@hobbyarena.ph";
 
-function buildSampleOrder(recipientEmail) {
+const SAMPLE_STATES = {
+  deposit_received: { payment: "DP Paid", status: "Awaiting Stock", balanceDue: 1050, refundAmount: 0, allocatedQty: 0 },
+  balance_due_full: { payment: "DP Paid", status: "Allocation Fulfilled & Pay Balance", balanceDue: 1050, refundAmount: 0, allocatedQty: 5 },
+  balance_due_partial: { payment: "DP Paid", status: "Partially Fulfilled & Pay Balance", balanceDue: 1050, refundAmount: 0, allocatedQty: 3 },
+  partial_refund_pending: { payment: "DP Paid", status: "Partially Fulfilled & For Refund", balanceDue: 0, refundAmount: 525, allocatedQty: 3 },
+  full_refund_pending: { payment: "DP Paid", status: "For Full Refund", balanceDue: 0, refundAmount: 450, allocatedQty: 0 },
+  partial_refund_sent: { payment: "Partially Refunded", status: "Ready for Pickup", balanceDue: 0, refundAmount: 525, allocatedQty: 3 },
+  ready_for_pickup: { payment: "Fully Paid", status: "Ready for Pickup", balanceDue: 0, refundAmount: 0, allocatedQty: 5 },
+  order_fulfilled: { payment: "Fully Paid", status: "Fulfilled", balanceDue: 0, refundAmount: 0, allocatedQty: 5 },
+  full_refund_sent: { payment: "Refunded", status: "Refunded", balanceDue: 0, refundAmount: 450, allocatedQty: 0 },
+  payment_not_received: { payment: "Unpaid", status: "Awaiting Stock", balanceDue: 0, refundAmount: 0, allocatedQty: 0 },
+};
+
+function buildSampleOrder(recipientEmail, emailType) {
   const name = "One Piece Mini Tin Pack Set Vol. 4 [TS-04]";
+  const state = SAMPLE_STATES[emailType] ?? SAMPLE_STATES.deposit_received;
   return {
     id: "HA-202607040003",
     customer: "Hobby Arena",
     email: recipientEmail,
     phone: "",
     type: "Pre-order",
-    payment: "DP Paid",
-    status: "Awaiting Stock",
+    payment: state.payment,
+    status: state.status,
     total: 450,
-    balanceDue: 1050,
-    refundAmount: 525,
-    allocatedQty: 3,
+    balanceDue: state.balanceDue,
+    refundAmount: state.refundAmount,
+    allocatedQty: state.allocatedQty,
     qty: 5,
     date: new Date().toISOString(),
     items: `${name} ×5`,
@@ -54,19 +69,23 @@ function buildSampleOrder(recipientEmail) {
       price: 300,
       lineTotal: 1500,
       tag: "Pre-order",
-      payment: "DP Paid",
-      status: "Awaiting Stock",
+      payment: state.payment,
+      status: state.status,
+      balanceDue: state.balanceDue,
+      refundAmount: state.refundAmount,
+      allocatedQty: state.allocatedQty,
+      depositPaid: 450,
     }],
     updatedLineItem: {
       id: "li-test",
       name,
       quantity: 5,
       tag: "Pre-order",
-      payment: "DP Paid",
-      status: "Awaiting Stock",
-      balanceDue: 1050,
-      refundAmount: 525,
-      allocatedQty: 3,
+      payment: state.payment,
+      status: state.status,
+      balanceDue: state.balanceDue,
+      refundAmount: state.refundAmount,
+      allocatedQty: state.allocatedQty,
       depositPaid: 450,
       lineTotal: 1500,
     },
@@ -80,20 +99,23 @@ function EmailPreview({ emailType, body, surfaceBorderColor }) {
     let cancelled = false;
     setState((prev) => ({ ...prev, loading: true, error: "" }));
     const timer = setTimeout(() => {
-      previewOrderStatusEmail({
-        emailType,
-        order: buildSampleOrder(PREVIEW_EMAIL),
-        bodyOverride: body,
-      })
-        .then((result) => {
-          if (cancelled) return;
-          setState({ loading: false, html: result?.html || "", subject: result?.subject || "", error: "" });
-        })
-        .catch((error) => {
-          if (cancelled) return;
-          setState({ loading: false, html: "", subject: "", error: error.message || "Preview failed." });
-        });
-    }, 400);
+      try {
+        const result = buildOrderStatusEmail(
+          buildSampleOrder(PREVIEW_EMAIL, emailType),
+          emailType,
+          { bodyOverride: body },
+        );
+        if (cancelled) return;
+        if (!result) {
+          setState({ loading: false, html: "", subject: "", error: "Unknown email type." });
+          return;
+        }
+        setState({ loading: false, html: result.html || "", subject: result.subject || "", error: "" });
+      } catch (error) {
+        if (cancelled) return;
+        setState({ loading: false, html: "", subject: "", error: error.message || "Preview failed." });
+      }
+    }, 200);
     return () => {
       cancelled = true;
       clearTimeout(timer);
@@ -177,7 +199,7 @@ function EmailEditor({ emailType, draft, onDraftChange, surfaceBorderColor, test
     try {
       const result = await sendOrderStatusEmail({
         emailType,
-        order: buildSampleOrder(testEmail),
+        order: buildSampleOrder(testEmail, emailType),
         bodyOverride: draft,
       });
       if (result?.simulated) {

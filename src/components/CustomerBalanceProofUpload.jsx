@@ -19,6 +19,7 @@ import { useAuth } from "../auth/AuthProvider.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { itemNeedsBalanceProof } from "../data/orderWorkflow.js";
 import { resolveProofAttachmentUrl } from "../lib/orderProofStorage.js";
+import { compressProofFile } from "../lib/imageCompression.js";
 import { BANK_ACCOUNTS } from "../data/checkoutSettings.js";
 
 function formatProofTime(iso) {
@@ -99,7 +100,7 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
     return uploadedProofs.length ? "Upload another proof" : "Upload receipt";
   }
 
-  function handleFileChange(event) {
+  async function handleFileChange(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
@@ -107,13 +108,14 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
       setError("Upload an image or PDF receipt.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setProofFile({ name: file.name, dataUrl: reader.result });
+    try {
+      const dataUrl = await compressProofFile(file);
+      setProofFile({ name: file.name, dataUrl });
       setError("");
       setSuccess("");
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      setError("Could not read file. Try a smaller image or PDF.");
+    }
   }
 
   async function handleSubmit() {

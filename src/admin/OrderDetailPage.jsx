@@ -1,7 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
+  Alert,
   Box,
   Button,
+  Snackbar,
   Stack,
   Typography,
 } from "@mui/material";
@@ -9,6 +11,7 @@ import { Link as RouterLink, useNavigate, useOutletContext, useParams } from "re
 import { MONO_FONT } from "../theme.js";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
+import { ORDER_STATUS_EMAIL_LABELS } from "../lib/orderEmailTriggers.js";
 import {
   OrderDetailLayout,
 } from "./orderDetailShared.jsx";
@@ -26,13 +29,22 @@ export default function OrderDetailPage() {
   const navigate = useNavigate();
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
-  const { orders, setPaymentAndStatus, setAllocation, markOrderSeen, addTrailEntry } = useOrders();
+  const { orders, setPaymentAndStatus, setAllocation, markOrderSeen, addTrailEntry, uploadTrailProof, sendOrderStatusEmail } = useOrders();
+  const [emailNotice, setEmailNotice] = useState(null);
 
   const order = orders.find((row) => row.id === orderId) ?? null;
 
   useEffect(() => {
     if (orderId) markOrderSeen(orderId);
   }, [orderId, markOrderSeen]);
+
+  useEffect(() => {
+    function onEmailSent(event) {
+      setEmailNotice(event.detail || null);
+    }
+    window.addEventListener("hobbyarena:email-sent", onEmailSent);
+    return () => window.removeEventListener("hobbyarena:email-sent", onEmailSent);
+  }, []);
 
   if (!order) {
     return (
@@ -56,6 +68,25 @@ export default function OrderDetailPage() {
 
   return (
     <Stack spacing={ADMIN_PAGE_SPACING}>
+      <Snackbar
+        open={Boolean(emailNotice)}
+        autoHideDuration={8000}
+        onClose={() => setEmailNotice(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          onClose={() => setEmailNotice(null)}
+          severity={emailNotice?.ok && !emailNotice?.skipped ? "success" : emailNotice?.skipped ? "warning" : "error"}
+          sx={{ width: "100%" }}
+        >
+          {emailNotice?.ok && !emailNotice?.skipped
+            ? `Email sent to ${emailNotice.to} (${ORDER_STATUS_EMAIL_LABELS[emailNotice.emailType] || emailNotice.emailType}).`
+            : emailNotice?.skipped
+              ? `Email not delivered: ${emailNotice.skipReason || "Resend test mode."}`
+              : `Email failed: ${emailNotice?.error || "Unknown error"}`}
+        </Alert>
+      </Snackbar>
+
       <Button
         component={RouterLink}
         to="/admin/orders"
@@ -84,6 +115,8 @@ export default function OrderDetailPage() {
           addTrailEntry={addTrailEntry}
           setPaymentAndStatus={setPaymentAndStatus}
           setAllocation={setAllocation}
+          uploadTrailProof={uploadTrailProof}
+          sendOrderStatusEmail={sendOrderStatusEmail}
         />
       </Box>
     </Stack>

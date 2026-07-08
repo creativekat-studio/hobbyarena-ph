@@ -112,7 +112,7 @@ function MockContactLayout({ contact, panelSx, isDarkMode, surfaceBorderColor, a
 export default function CmsPreviewMockup({ panelSx, surfaceBorderColor, activeTab = 0 }) {
   const theme = useTheme();
   const { content } = useCms();
-  const { hero, homepageSections, featureDrops, banners, announcements, testimonials, bankDetails, contact, storefront } = content;
+  const { hero, homepageSections, featureDrops, banners, announcements, testimonials, bankDetails, contact, social, storefront } = content;
   const { panelSx: cardPanelSx, isDarkMode } = useStorefrontMockSurfaces();
 
   const activeSections = TAB_SECTIONS[activeTab] ?? new Set();
@@ -140,18 +140,36 @@ export default function CmsPreviewMockup({ panelSx, surfaceBorderColor, activeTa
             <Typography sx={{ fontWeight: 900, fontSize: "1.05rem", lineHeight: 1.15, maxWidth: 220, mb: 0.75 }}>
               {truncate(storefront.landingHeadline, 48)}
             </Typography>
-            <Typography sx={{ fontSize: "0.58rem", color: "text.secondary", lineHeight: 1.45, maxWidth: 200, mb: 1.25 }}>
-              {truncate(storefront.landingMessage, 120)}
-            </Typography>
-            <Box sx={{ ...cardPanelSx, px: 1.5, py: 1, width: "100%", maxWidth: 180 }}>
-              <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.45rem", fontWeight: 800, color: "primary.main", mb: 0.5 }}>
-                {truncate(storefront.landingCtaLabel, 24).toUpperCase()}
+            <Box
+              sx={{
+                ...cardPanelSx,
+                px: 1.5,
+                py: 1.25,
+                width: "100%",
+                maxWidth: 200,
+                textAlign: "center",
+              }}
+            >
+              <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.42rem", fontWeight: 800, letterSpacing: 0.8, color: "secondary.main", mb: 0.75 }}>
+                {(storefront.landingSocialLabel ?? "Stay in the loop").toUpperCase()}
               </Typography>
-              <Stack direction="row" spacing={0.5} justifyContent="center">
-                {[1, 2, 3].map((i) => (
-                  <Box key={i} sx={{ width: 18, height: 18, borderRadius: "50%", border: "1px solid", borderColor: alpha(theme.palette.text.primary, 0.15) }} />
+              <Stack direction="row" spacing={0.5} justifyContent="center" sx={{ mb: 0.6 }}>
+                {[social.instagram, social.facebook, social.tiktok].filter(Boolean).slice(0, 3).map((href) => (
+                  <Box
+                    key={href}
+                    sx={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 0.75,
+                      border: "1px solid",
+                      borderColor: alpha(theme.palette.text.primary, 0.18),
+                    }}
+                  />
                 ))}
               </Stack>
+              <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.4rem", color: "primary.light", fontWeight: 600 }}>
+                {truncate(contact.email, 24)}
+              </Typography>
             </Box>
             <Chip
               label={storefront.landingMode ? "Live on hobbyarena.ph" : "Storefront live"}
