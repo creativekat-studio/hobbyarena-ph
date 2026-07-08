@@ -237,7 +237,57 @@ function trailEntryLineItemLabel(entry, lineItems) {
   return short;
 }
 
+function isEmailTrailEntry(entry) {
+  if (entry.emailType || entry.emailTo || entry.emailStatus) return true;
+  if ((entry.emailLineItems ?? []).length > 0) return true;
+  return /^Email (Sent|Failed|Skipped) to /i.test(entry.title || "");
+}
+
+function parseEmailLineItemsFromNote(note) {
+  if (!note) return [];
+  const rows = [];
+  for (const line of note.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || /^To /i.test(trimmed)) continue;
+    const dashIdx = trimmed.indexOf(" — ");
+    const namePart = (dashIdx >= 0 ? trimmed.slice(0, dashIdx) : trimmed).trim();
+    if (!namePart) continue;
+    const qtyMatch = namePart.match(/^(.+?) ×(\d+)$/);
+    rows.push({
+      lineItemId: `legacy-${rows.length}`,
+      lineItemName: qtyMatch ? qtyMatch[1].trim() : namePart,
+      quantity: qtyMatch ? Number(qtyMatch[2]) : 1,
+      allocatedQty: 0,
+    });
+  }
+  return rows;
+}
+
+function resolveEmailTrailLineItems(entry, orderLineItems) {
+  const stored = entry.emailLineItems ?? [];
+  if (stored.length) return stored;
+
+  const fromNote = parseEmailLineItemsFromNote(entry.note);
+  if (fromNote.length) return fromNote;
+
+  if (orderLineItems.length === 1) {
+    const item = orderLineItems[0];
+    return [{
+      lineItemId: item.id,
+      lineItemName: item.name,
+      quantity: item.quantity ?? 1,
+      allocatedQty: Number(item.allocatedQty) || 0,
+    }];
+  }
+
+  return [];
+}
+
 function emailTrailHeadline(entry) {
+  if (/^Email (Sent|Failed|Skipped) to /i.test(entry.title || "")) {
+    return entry.title;
+  }
+
   const verb = entry.emailStatus === "failed"
     ? "Failed"
     : entry.emailStatus === "skipped"
@@ -247,8 +297,7 @@ function emailTrailHeadline(entry) {
   return email ? `Email ${verb} to ${email}` : `Email ${verb}`;
 }
 
-function emailTrailStatusLine(entry) {
-  const emailLineItems = entry.emailLineItems ?? [];
+function emailTrailStatusLine(entry, emailLineItems) {
   const payment = migratePaymentStatus(entry.payment || emailLineItems[0]?.payment);
   const status = orderStatusLabel(migrateOrderStatus(entry.status || emailLineItems[0]?.status));
   return [payment, status].filter(Boolean).join(" · ");
@@ -278,8 +327,13 @@ function orderTrailSuffix(selectedItemId, activeLineItem, lineItems) {
 function trailEntryAppliesToLineItem(entry, lineItemId) {
   if (!lineItemId) return true;
   if (entry.lineItemId) return entry.lineItemId === lineItemId;
-  if (entry.emailLineItems?.length) {
-    return entry.emailLineItems.some((row) => row.lineItemId === lineItemId);
+  if (isEmailTrailEntry(entry)) {
+    const rows = entry.emailLineItems?.length
+      ? entry.emailLineItems
+      : parseEmailLineItemsFromNote(entry.note);
+    if (rows.length) {
+      return rows.some((row) => row.lineItemId === lineItemId);
+    }
   }
   return true;
 }
@@ -290,9 +344,9 @@ function trailMetaLine(entry) {
 
 function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment, onUploadProof, order, lineItemLabel, lineItems = [], uploading }) {
   const meta = trailMetaLine(entry);
-  const emailLineItems = entry.emailLineItems ?? [];
-  const isEmailEntry = emailLineItems.length > 0;
-  const emailStatusLine = isEmailEntry ? emailTrailStatusLine(entry) : "";
+  const isEmailEntry = isEmailTrailEntry(entry);
+  const emailLineItems = isEmailEntry ? resolveEmailTrailLineItems(entry, lineItems) : [];
+  const emailStatusLine = isEmailEntry ? emailTrailStatusLine(entry, emailLineItems) : "";
   const at = new Date(entry.at);
   const timeLabel = at.toLocaleString(undefined, {
     month: "numeric",

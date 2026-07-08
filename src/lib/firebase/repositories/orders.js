@@ -65,6 +65,21 @@ export function compactOrderForFirestore(order) {
         note: entry.note ?? "",
         lineItemId: entry.lineItemId ?? null,
         lineItemName: entry.lineItemName ?? null,
+        ...(entry.emailType ? { emailType: entry.emailType } : {}),
+        ...(entry.emailTo ? { emailTo: entry.emailTo } : {}),
+        ...(entry.emailStatus ? { emailStatus: entry.emailStatus } : {}),
+        ...(Array.isArray(entry.emailLineItems) && entry.emailLineItems.length
+          ? {
+              emailLineItems: entry.emailLineItems.map((row) => ({
+                lineItemId: row.lineItemId,
+                lineItemName: row.lineItemName,
+                quantity: row.quantity ?? 1,
+                allocatedQty: row.allocatedQty ?? 0,
+                payment: row.payment ?? null,
+                status: row.status ?? null,
+              })),
+            }
+          : {}),
         ...(entry.attachment
           ? {
               attachment: {
