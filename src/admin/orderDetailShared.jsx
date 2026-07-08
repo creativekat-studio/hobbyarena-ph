@@ -21,7 +21,10 @@ import {
   Divider,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import { resolveOrderStatusEmailTypeForCurrentState } from "../lib/orderEmailTriggers.js";
+import {
+  ORDER_STATUS_EMAIL_LABELS,
+  resolveOrderStatusEmailTypeForCurrentState,
+} from "../lib/orderEmailTriggers.js";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
@@ -234,6 +237,20 @@ function trailEntryLineItemLabel(entry, lineItems) {
   return short;
 }
 
+function emailTrailLineItemText(row, lineItems) {
+  const baseName = shortLineItemName(row.lineItemName || "");
+  if (!baseName) return "";
+
+  const legacyQtyMatch = String(row.lineItemName || "").match(/ ×(\d+)$/);
+  const qty = row.quantity ?? (legacyQtyMatch ? Number(legacyQtyMatch[1]) : 1);
+  const allocated = row.allocatedQty ?? 0;
+  const qtyLabel = `×${qty} / ${allocated}`;
+
+  const index = lineItems.findIndex((item) => item.id === row.lineItemId);
+  if (index >= 0) return `Item ${index + 1} · ${baseName} ${qtyLabel}`;
+  return `${baseName} ${qtyLabel}`;
+}
+
 function orderTrailSuffix(selectedItemId, activeLineItem, lineItems) {
   if (lineItems.length <= 1 && lineItems[0]) {
     return shortLineItemLabel(lineItems[0]);
@@ -333,22 +350,12 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
 
         {isEmailEntry ? (
           <Stack spacing={0.35} sx={{ mt: 0.5 }}>
-            {entry.emailTo ? (
-              <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontFamily: MONO_FONT, lineHeight: 1.35 }}>
-                To {entry.emailTo}
-              </Typography>
-            ) : null}
             {emailLineItems.map((row) => (
               <Typography
                 key={row.lineItemId}
                 sx={{ fontSize: "0.72rem", color: "text.secondary", fontFamily: MONO_FONT, lineHeight: 1.35 }}
               >
-                {trailEntryLineItemLabel(
-                  { lineItemId: row.lineItemId, lineItemName: row.lineItemName },
-                  lineItems,
-                ) || row.lineItemName}
-                {" — "}
-                {[row.payment, row.status].filter(Boolean).join(" · ")}
+                {emailTrailLineItemText(row, lineItems)}
               </Typography>
             ))}
           </Stack>
@@ -365,7 +372,7 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
         ) : null}
 
         {isEmailEntry && entry.emailStatus !== "sent" ? (() => {
-          const detail = entry.note.split("\n").slice(1 + emailLineItems.length).join("\n").trim();
+          const detail = entry.note?.trim();
           if (!detail) return null;
           return (
             <Typography
@@ -1573,23 +1580,25 @@ function defaultEmailItemSelection(lineItems) {
   return new Set(lineItems.filter((item) => !isItemEmailDisabled(item)).map((item) => item.id));
 }
 
-function findPreviouslyEmailedItems(order, selectedItems) {
-  const sentEntries = (order.trail ?? []).filter(
-    (entry) => entry.emailStatus === "sent" && entry.emailLineItems?.length,
-  );
+function findPreviousSentEmailEntry(order, emailType) {
+  if (!emailType) return null;
+  return (order.trail ?? []).find(
+    (entry) => entry.emailStatus === "sent" && entry.emailType === emailType,
+  ) ?? null;
+}
 
-  return selectedItems.filter((item) => {
-    const payment = migratePaymentStatus(item.payment);
-    const status = migrateOrderStatus(item.status);
-    return sentEntries.some((entry) =>
-      entry.emailLineItems.some(
-        (row) =>
-          row.lineItemId === item.id
-          && migratePaymentStatus(row.payment) === payment
-          && migrateOrderStatus(row.status) === status,
-      ),
-    );
-  });
+function formatTrailTimestamp(iso) {
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
 }
 
 export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOrderStatusEmail }) {
@@ -1685,9 +1694,9 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
       return;
     }
 
-    const duplicates = findPreviouslyEmailedItems(order, selectedItems);
-    if (duplicates.length) {
-      setConfirmResendEmail({ items: duplicates });
+    const previousSend = findPreviousSentEmailEntry(order, previewEmailType);
+    if (previousSend) {
+      setConfirmResendEmail({ emailType: previewEmailType, previousSend });
       return;
     }
 
@@ -1750,34 +1759,30 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
         <>
           <DialogTitle sx={{ fontWeight: 800 }}>Send email again?</DialogTitle>
           <DialogContent>
-            {confirmResendEmail.items.length === 1 ? (
-              <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
-                <strong>{shortLineItemLabel(confirmResendEmail.items[0])}</strong> has already been sent an email at{" "}
-                <strong>
-                  {[
-                    migratePaymentStatus(confirmResendEmail.items[0].payment),
-                    orderStatusLabel(confirmResendEmail.items[0].status),
-                  ].filter(Boolean).join(" · ")}
-                </strong>
-                . Do you wish to continue?
-              </Typography>
-            ) : (
-              <>
-                <Typography variant="body1" sx={{ lineHeight: 1.6, mb: 1.5 }}>
-                  These items have already been sent an email at their current payment and order status:
+            <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
+              This order already received a{" "}
+              <strong>{ORDER_STATUS_EMAIL_LABELS[confirmResendEmail.emailType] || confirmResendEmail.emailType}</strong>{" "}
+              email
+              {confirmResendEmail.previousSend?.at
+                ? ` on ${formatTrailTimestamp(confirmResendEmail.previousSend.at)}`
+                : ""}
+              . Do you wish to continue?
+            </Typography>
+            {confirmResendEmail.previousSend?.emailLineItems?.length ? (
+              <Stack spacing={0.75} sx={{ mt: 1.5 }}>
+                <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", fontWeight: 600 }}>
+                  Previously included:
                 </Typography>
-                <Stack spacing={0.75}>
-                  {confirmResendEmail.items.map((item) => (
-                    <Typography key={item.id} sx={{ fontSize: "0.88rem", lineHeight: 1.45 }}>
-                      <strong>{shortLineItemLabel(item)}</strong>
-                      {" — "}
-                      {[migratePaymentStatus(item.payment), orderStatusLabel(item.status)].filter(Boolean).join(" · ")}
-                    </Typography>
-                  ))}
-                </Stack>
-                <Typography sx={{ mt: 2, fontWeight: 700 }}>Do you wish to continue?</Typography>
-              </>
-            )}
+                {confirmResendEmail.previousSend.emailLineItems.map((row) => (
+                  <Typography
+                    key={row.lineItemId}
+                    sx={{ fontSize: "0.88rem", lineHeight: 1.45 }}
+                  >
+                    {row.lineItemName || "Line item"}
+                  </Typography>
+                ))}
+              </Stack>
+            ) : null}
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button color="inherit" onClick={() => setConfirmResendEmail(null)}>Cancel</Button>

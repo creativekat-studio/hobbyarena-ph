@@ -280,8 +280,10 @@ function invoiceSummary(order) {
     ? lineItems.filter((line) => line.id === item.id)
     : lineItems;
 
+  const heading = lineItems.length > 1 ? sectionHeading("Items in this email") : "";
+
   return `
-    ${sectionHeading(lineItems.length > 1 ? "Items in this email" : "Item summary")}
+    ${heading}
     ${invoiceTable(tableItems, { highlightId: item?.id })}
     ${rows.length ? `${totalsBlock(rows)}<div style="clear:both"></div>` : ""}
   `;
@@ -547,8 +549,8 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     ${!showSummary ? itemFocusBlock(order) : ""}
     ${bodyOverride ? renderOverrideBody(order, bodyOverride) : bodyText(template.body(order))}
     ${showSummary ? invoiceSummary(order) : ""}
-    ${customerActionButtonsBlock(emailType)}
     ${showMilestones ? preorderMilestones(item, emailType) : ""}
+    ${customerActionButtonsBlock(emailType)}
   `;
 
   const plainBody = bodyOverride

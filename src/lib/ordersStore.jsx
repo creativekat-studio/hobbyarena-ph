@@ -215,26 +215,32 @@ function buildTrailEntry({
 }
 
 function buildStatusEmailTrailEntry(emailType, orderEmail, lineItems, { ok, result, error }) {
-  const label = ORDER_STATUS_EMAIL_LABELS[emailType] || emailType;
   const items = Array.isArray(lineItems) ? lineItems : [];
   const primary = items[0];
+  const payment = primary ? migratePaymentStatus(primary.payment) : "";
+  const status = primary ? migrateOrderStatus(primary.status) : "";
+  const statusPart = [payment, status].filter(Boolean).join(" · ");
+
   const emailLineItems = items.map((item) => ({
     lineItemId: item.id,
-    lineItemName: lineItemTrailLabel(item),
+    lineItemName: item.name,
+    quantity: item.quantity ?? 1,
+    allocatedQty: Number(item.allocatedQty) || 0,
     payment: migratePaymentStatus(item.payment),
     status: migrateOrderStatus(item.status),
   }));
 
   const skipped = Boolean(result?.skipped);
-  let title;
-  if (!ok) title = `Email failed · ${label}`;
-  else if (skipped) title = `Email skipped · ${label}`;
-  else title = `Email sent · ${label}`;
+  let prefix;
+  if (!ok) prefix = "Email failed";
+  else if (skipped) prefix = "Email skipped";
+  else prefix = "Email sent";
 
-  const noteParts = [`To ${orderEmail}`];
-  emailLineItems.forEach((row) => {
-    noteParts.push(`${row.lineItemName} — ${row.payment} · ${row.status}`);
-  });
+  const title = statusPart
+    ? `${prefix} · ${statusPart} to ${orderEmail}`
+    : `${prefix} to ${orderEmail}`;
+
+  const noteParts = [];
   if (!ok && error) noteParts.push(String(error));
   if (skipped && result?.skipReason) noteParts.push(String(result.skipReason));
 
