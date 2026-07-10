@@ -20,6 +20,7 @@ import { MONO_FONT } from "../theme.js";
 import { PESO } from "./ProductCard.jsx";
 import CustomerBalanceProofUpload from "./CustomerBalanceProofUpload.jsx";
 import CustomerRefundDetails from "./CustomerRefundDetails.jsx";
+import CustomerAdminAttachments from "./CustomerAdminAttachments.jsx";
 
 export function CustomerOrderItemRow({ item, order, surfaceBorderColor }) {
   const theme = useTheme();
@@ -122,6 +123,12 @@ export function CustomerOrderItemRow({ item, order, surfaceBorderColor }) {
               ) : null}
             </Stack>
           ) : null}
+
+          <CustomerAdminAttachments
+            order={order}
+            item={item}
+            surfaceBorderColor={surfaceBorderColor}
+          />
 
           <CustomerBalanceProofUpload
             order={order}

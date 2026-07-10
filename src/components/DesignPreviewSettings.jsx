@@ -42,7 +42,6 @@ function OptionButton({ active, onClick, children, color = "primary", surfaceBor
         fontFamily: MONO_FONT,
         fontSize: "0.75rem",
         letterSpacing: 0.3,
-        textTransform: "none",
         ...(!active && { borderColor: surfaceBorderColor, color: "text.secondary" }),
       }}
     >

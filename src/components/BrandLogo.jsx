@@ -19,7 +19,7 @@ export default function BrandLogo({ sx, imageSx }) {
           width: "auto",
           objectFit: "contain",
           bgcolor: "transparent",
-          filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.35))",
+          filter: "none",
           ...imageSx,
           ...sx,
         }}

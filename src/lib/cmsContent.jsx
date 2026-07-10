@@ -91,6 +91,45 @@ const DEFAULT_CONTENT = {
     title: "The thrill of the pull.",
     items: DEFAULT_TESTIMONIALS,
   },
+  perks: {
+    enabled: true,
+    overline: "Why Hobby Arena",
+    title: "Why choose Hobby Arena?",
+    items: [
+      {
+        id: "perk_1",
+        active: true,
+        icon: "shield",
+        color: "#2563EB",
+        title: "1. 100% Authentic Products Guaranteed",
+        description: "Every box is sourced from official distributors. Factory-sealed, never resealed.",
+      },
+      {
+        id: "perk_2",
+        active: true,
+        icon: "truck",
+        color: "#06b6d4",
+        title: "Collector-grade shipping",
+        description: "Double-boxed and bubble-wrapped. 48-hour delivery within Metro Manila.",
+      },
+      {
+        id: "perk_3",
+        active: true,
+        icon: "sparkle",
+        color: "#C9A227",
+        title: "Secure your pre-orders",
+        description: "Lock incoming Pokémon & One Piece sets early — we hold your slot until release.",
+      },
+      {
+        id: "perk_4",
+        active: true,
+        icon: "bolt",
+        color: "#7c3aed",
+        title: "The thrill of the pull",
+        description: "Live drops, hot restocks, and the chase for the next big hit. This is where it begins.",
+      },
+    ],
+  },
   productReviews: {
     showRatings: false,
   },
@@ -142,21 +181,39 @@ function mergeTestimonials(saved) {
   };
 }
 
+function mergePerks(saved) {
+  if (!saved) return DEFAULT_CONTENT.perks;
+  const defaults = DEFAULT_CONTENT.perks.items;
+  const items = (saved.items ?? defaults).map((item) => {
+    const fallback = defaults.find((p) => p.id === item.id);
+    return { ...fallback, ...item };
+  });
+  return {
+    ...DEFAULT_CONTENT.perks,
+    ...saved,
+    items: items.length ? items : defaults,
+  };
+}
+
+function mergeBankAccount(account, patch) {
+  if (!patch) return { logo: "", ...account };
+  return {
+    logo: "",
+    ...account,
+    ...patch,
+    type: patch.type || account.type || "bank",
+  };
+}
+
 function mergeBankDetails(saved) {
   if (!saved) return DEFAULT_CONTENT.bankDetails;
   const savedAccounts = saved.accounts ?? [];
   const byId = new Map(savedAccounts.map((a) => [a.id, a]));
-  const accounts = DEFAULT_CONTENT.bankDetails.accounts.map((account) => {
-    const patch = byId.get(account.id);
-    if (!patch) return account;
-    return {
-      ...account,
-      ...patch,
-      qrImage: patch.qrImage || account.qrImage,
-      type: patch.type || account.type,
-    };
-  });
-  const custom = savedAccounts.filter((a) => !DEFAULT_CONTENT.bankDetails.accounts.some((d) => d.id === a.id));
+  const defaults = DEFAULT_CONTENT.bankDetails.accounts;
+  const accounts = defaults.map((account) => mergeBankAccount(account, byId.get(account.id)));
+  const custom = savedAccounts
+    .filter((a) => !defaults.some((d) => d.id === a.id))
+    .map((a) => mergeBankAccount({ id: a.id, label: "", accountName: "", accountNumber: "", note: "", qrImage: "", active: true }, a));
   return {
     ...DEFAULT_CONTENT.bankDetails,
     ...saved,
@@ -194,6 +251,7 @@ function mergeCmsPayload(parsed) {
     social: { ...DEFAULT_CONTENT.social, ...parsed.social },
     contact: { ...DEFAULT_CONTENT.contact, ...parsed.contact },
     testimonials: mergeTestimonials(parsed.testimonials),
+    perks: mergePerks(parsed.perks),
     productReviews: { ...DEFAULT_CONTENT.productReviews, ...parsed.productReviews },
     bankDetails: mergeBankDetails(parsed.bankDetails),
     storefront: mergeStorefront(parsed.storefront),
@@ -227,7 +285,8 @@ function cacheContentLocally(payload) {
   }
 }
 
-const STOREFRONT_EDIT_GRACE_MS = 3000;
+/** Skip remote snapshots briefly after local edits so typing is not clobbered. */
+const CONTENT_EDIT_GRACE_MS = 5000;
 
 function persistCmsContent(payload, firebaseEnabled, adminWrite) {
   cacheContentLocally(payload);
@@ -246,12 +305,16 @@ export function CmsProvider({ children }) {
   const syncingRemote = useRef(false);
   const saveTimer = useRef(null);
   const pendingSeed = useRef(null);
-  const lastStorefrontEditAt = useRef(0);
+  const lastContentEditAt = useRef(0);
   const firebaseEnabledRef = useRef(firebaseEnabled);
   const adminWriteRef = useRef(adminWrite);
 
   firebaseEnabledRef.current = firebaseEnabled;
   adminWriteRef.current = adminWrite;
+
+  const touchContent = useCallback(() => {
+    lastContentEditAt.current = Date.now();
+  }, []);
 
   const flushContent = useCallback((payload) => {
     persistCmsContent(payload, firebaseEnabledRef.current, adminWriteRef.current).catch((error) => {
@@ -272,10 +335,10 @@ export function CmsProvider({ children }) {
         } else {
           pendingSeed.current = null;
           setContent((prev) => {
-            const merged = mergeCmsPayload(remote);
-            const keepLocalStorefront =
-              Date.now() - lastStorefrontEditAt.current < STOREFRONT_EDIT_GRACE_MS;
-            const next = keepLocalStorefront ? { ...merged, storefront: prev.storefront } : merged;
+            if (Date.now() - lastContentEditAt.current < CONTENT_EDIT_GRACE_MS) {
+              return prev;
+            }
+            const next = mergeCmsPayload(remote);
             cacheContentLocally(next);
             return next;
           });
@@ -321,11 +384,20 @@ export function CmsProvider({ children }) {
   }, [content, firebaseEnabled, adminWrite]);
 
   const api = useMemo(() => {
-    const setHero = (hero) => setContent((c) => ({ ...c, hero: { ...c.hero, ...hero } }));
-    const setSocial = (social) => setContent((c) => ({ ...c, social: { ...c.social, ...social } }));
-    const setContact = (contact) => setContent((c) => ({ ...c, contact: { ...c.contact, ...contact } }));
+    const setHero = (hero) => {
+      touchContent();
+      setContent((c) => ({ ...c, hero: { ...c.hero, ...hero } }));
+    };
+    const setSocial = (social) => {
+      touchContent();
+      setContent((c) => ({ ...c, social: { ...c.social, ...social } }));
+    };
+    const setContact = (contact) => {
+      touchContent();
+      setContent((c) => ({ ...c, contact: { ...c.contact, ...contact } }));
+    };
     const setStorefront = (patch) => {
-      lastStorefrontEditAt.current = Date.now();
+      touchContent();
       setContent((c) => {
         const next = {
           ...c,
@@ -335,7 +407,8 @@ export function CmsProvider({ children }) {
         return next;
       });
     };
-    const setHomepageSection = (key, patch) =>
+    const setHomepageSection = (key, patch) => {
+      touchContent();
       setContent((c) => ({
         ...c,
         homepageSections: {
@@ -343,11 +416,17 @@ export function CmsProvider({ children }) {
           [key]: { ...c.homepageSections[key], ...patch },
         },
       }));
-    const setProductReviews = (patch) =>
+    };
+    const setProductReviews = (patch) => {
+      touchContent();
       setContent((c) => ({ ...c, productReviews: { ...c.productReviews, ...patch } }));
-    const setTestimonials = (patch) =>
+    };
+    const setTestimonials = (patch) => {
+      touchContent();
       setContent((c) => ({ ...c, testimonials: { ...c.testimonials, ...patch } }));
-    const addTestimonial = (item) =>
+    };
+    const addTestimonial = (item) => {
+      touchContent();
       setContent((c) => ({
         ...c,
         testimonials: {
@@ -355,7 +434,9 @@ export function CmsProvider({ children }) {
           items: [...c.testimonials.items, { id: `t_${Date.now()}`, active: true, quote: "", name: "", role: "", ...item }],
         },
       }));
-    const updateTestimonial = (id, patch) =>
+    };
+    const updateTestimonial = (id, patch) => {
+      touchContent();
       setContent((c) => ({
         ...c,
         testimonials: {
@@ -363,7 +444,9 @@ export function CmsProvider({ children }) {
           items: c.testimonials.items.map((t) => (t.id === id ? { ...t, ...patch } : t)),
         },
       }));
-    const removeTestimonial = (id) =>
+    };
+    const removeTestimonial = (id) => {
+      touchContent();
       setContent((c) => ({
         ...c,
         testimonials: {
@@ -371,9 +454,58 @@ export function CmsProvider({ children }) {
           items: c.testimonials.items.filter((t) => t.id !== id),
         },
       }));
-    const setBankDetails = (patch) =>
+    };
+    const setPerks = (patch) => {
+      touchContent();
+      setContent((c) => ({ ...c, perks: { ...c.perks, ...patch } }));
+    };
+    const addPerk = (item) => {
+      touchContent();
+      setContent((c) => ({
+        ...c,
+        perks: {
+          ...c.perks,
+          items: [
+            ...c.perks.items,
+            {
+              id: `perk_${Date.now()}`,
+              active: true,
+              icon: "sparkle",
+              color: "#2563EB",
+              title: "",
+              description: "",
+              ...item,
+            },
+          ],
+        },
+      }));
+    };
+    const updatePerk = (id, patch) => {
+      touchContent();
+      setContent((c) => ({
+        ...c,
+        perks: {
+          ...c.perks,
+          items: c.perks.items.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+        },
+      }));
+    };
+    const removePerk = (id) => {
+      touchContent();
+      setContent((c) => ({
+        ...c,
+        perks: {
+          ...c.perks,
+          items: c.perks.items.filter((p) => p.id !== id),
+        },
+      }));
+    };
+    const setBankDetails = (patch) => {
+      touchContent();
       setContent((c) => ({ ...c, bankDetails: { ...c.bankDetails, ...patch } }));
-    const updateBankAccount = (id, patch) =>
+    };
+    const updateBankAccount = (id, patch) => {
+      touchContent();
       setContent((c) => ({
         ...c,
         bankDetails: {
@@ -381,15 +513,22 @@ export function CmsProvider({ children }) {
           accounts: c.bankDetails.accounts.map((a) => (a.id === id ? { ...a, ...patch } : a)),
         },
       }));
-    const addBankAccount = (account) =>
+    };
+    const addBankAccount = (account) => {
+      touchContent();
       setContent((c) => ({
         ...c,
         bankDetails: {
           ...c.bankDetails,
-          accounts: [...c.bankDetails.accounts, { id: `bank_${Date.now()}`, active: true, qrImage: "", ...account }],
+          accounts: [
+            ...c.bankDetails.accounts,
+            { id: `bank_${Date.now()}`, active: true, qrImage: "", logo: "", ...account },
+          ],
         },
       }));
-    const removeBankAccount = (id) =>
+    };
+    const removeBankAccount = (id) => {
+      touchContent();
       setContent((c) => ({
         ...c,
         bankDetails: {
@@ -397,15 +536,26 @@ export function CmsProvider({ children }) {
           accounts: c.bankDetails.accounts.filter((a) => a.id !== id),
         },
       }));
+    };
 
-    const addBanner = (banner) =>
-      setContent((c) => ({ ...c, banners: [...c.banners, { id: `b_${Date.now()}`, active: true, color: "#2563EB", link: "featured-products", ...banner }] }));
-    const updateBanner = (id, patch) =>
+    const addBanner = (banner) => {
+      touchContent();
+      setContent((c) => ({
+        ...c,
+        banners: [...c.banners, { id: `b_${Date.now()}`, active: true, color: "#2563EB", link: "featured-products", ...banner }],
+      }));
+    };
+    const updateBanner = (id, patch) => {
+      touchContent();
       setContent((c) => ({ ...c, banners: c.banners.map((b) => (b.id === id ? { ...b, ...patch } : b)) }));
-    const removeBanner = (id) =>
+    };
+    const removeBanner = (id) => {
+      touchContent();
       setContent((c) => ({ ...c, banners: c.banners.filter((b) => b.id !== id) }));
+    };
 
-    const addFeatureDrop = (drop) =>
+    const addFeatureDrop = (drop) => {
+      touchContent();
       setContent((c) => ({
         ...c,
         featureDrops: [
@@ -415,27 +565,42 @@ export function CmsProvider({ children }) {
             productId: ALL_PRODUCTS[0]?.id ?? "",
             badge: "FEATURED DROP",
             tier: "ULTRA-PREMIUM",
+            color: "",
             active: true,
             ...drop,
           },
         ],
       }));
-    const updateFeatureDrop = (id, patch) =>
+    };
+    const updateFeatureDrop = (id, patch) => {
+      touchContent();
       setContent((c) => ({
         ...c,
         featureDrops: c.featureDrops.map((d) => (d.id === id ? { ...d, ...patch } : d)),
       }));
-    const removeFeatureDrop = (id) =>
+    };
+    const removeFeatureDrop = (id) => {
+      touchContent();
       setContent((c) => ({ ...c, featureDrops: c.featureDrops.filter((d) => d.id !== id) }));
+    };
 
-    const addAnnouncement = (text) =>
+    const addAnnouncement = (text) => {
+      touchContent();
       setContent((c) => ({ ...c, announcements: [...c.announcements, { id: `a_${Date.now()}`, text, active: true }] }));
-    const updateAnnouncement = (id, patch) =>
+    };
+    const updateAnnouncement = (id, patch) => {
+      touchContent();
       setContent((c) => ({ ...c, announcements: c.announcements.map((a) => (a.id === id ? { ...a, ...patch } : a)) }));
-    const removeAnnouncement = (id) =>
+    };
+    const removeAnnouncement = (id) => {
+      touchContent();
       setContent((c) => ({ ...c, announcements: c.announcements.filter((a) => a.id !== id) }));
+    };
 
-    const reset = () => setContent(DEFAULT_CONTENT);
+    const reset = () => {
+      touchContent();
+      setContent(DEFAULT_CONTENT);
+    };
 
     return {
       setHero,
@@ -448,6 +613,10 @@ export function CmsProvider({ children }) {
       addTestimonial,
       updateTestimonial,
       removeTestimonial,
+      setPerks,
+      addPerk,
+      updatePerk,
+      removePerk,
       setBankDetails,
       updateBankAccount,
       addBankAccount,
@@ -463,7 +632,7 @@ export function CmsProvider({ children }) {
       removeAnnouncement,
       reset,
     };
-  }, [flushContent]);
+  }, [flushContent, touchContent]);
 
   const value = useMemo(() => ({ content, hydrated, ...api }), [content, hydrated, api]);
 

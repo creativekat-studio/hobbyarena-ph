@@ -5,6 +5,8 @@ const PROOF_DEFAULTS = {
   maxHeight: 1400,
   quality: 0.8,
   minBytesToCompress: 0,
+  /** Stay under Firebase Storage 5MB rule with headroom. */
+  maxBytes: 4_000_000,
 };
 
 const PRODUCT_DEFAULTS = {
@@ -12,7 +14,10 @@ const PRODUCT_DEFAULTS = {
   maxHeight: 1920,
   quality: 0.85,
   minBytesToCompress: 200_000,
+  maxBytes: 4_000_000,
 };
+
+const PDF_MAX_BYTES = 4_000_000;
 
 function estimateDataUrlBytes(dataUrl) {
   const encoded = String(dataUrl).split(",")[1] || "";
@@ -29,7 +34,7 @@ function loadImage(dataUrl) {
   });
 }
 
-function drawCompressedDataUrl(img, dataUrl, options) {
+function drawCompressedDataUrl(img, options, quality = options.quality) {
   let width = img.naturalWidth || img.width;
   let height = img.naturalHeight || img.height;
   const scale = Math.min(1, options.maxWidth / width, options.maxHeight / height);
@@ -40,14 +45,14 @@ function drawCompressedDataUrl(img, dataUrl, options) {
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
-  if (!ctx) return dataUrl;
+  if (!ctx) return null;
 
+  // Fill white so JPEG doesn't turn transparent PNG areas black.
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
   ctx.drawImage(img, 0, 0, width, height);
 
-  const usePng = dataUrl.startsWith("data:image/png");
-  const mime = usePng ? "image/png" : "image/jpeg";
-  const quality = usePng ? undefined : options.quality;
-  return canvas.toDataURL(mime, quality);
+  return canvas.toDataURL("image/jpeg", quality);
 }
 
 async function compressDataUrl(dataUrl, options) {
@@ -57,7 +62,22 @@ async function compressDataUrl(dataUrl, options) {
 
   try {
     const img = await loadImage(dataUrl);
-    const compressed = drawCompressedDataUrl(img, dataUrl, options);
+    let quality = options.quality;
+    let compressed = drawCompressedDataUrl(img, options, quality);
+    if (!compressed) return dataUrl;
+
+    // Iteratively lower quality if still over the size budget.
+    while (
+      options.maxBytes
+      && estimateDataUrlBytes(compressed) > options.maxBytes
+      && quality > 0.45
+    ) {
+      quality = Math.max(0.45, quality - 0.1);
+      compressed = drawCompressedDataUrl(img, options, quality);
+      if (!compressed) break;
+    }
+
+    if (!compressed) return dataUrl;
     return estimateDataUrlBytes(compressed) < estimateDataUrlBytes(dataUrl) ? compressed : dataUrl;
   } catch {
     return dataUrl;
@@ -77,16 +97,30 @@ function readFileAsDataUrl(file) {
   });
 }
 
-/** Normalize any proof/attachment data URL (images compressed; PDFs unchanged). */
+function assertUnderMaxBytes(dataUrl, maxBytes, label = "File") {
+  if (!maxBytes || !dataUrl?.startsWith("data:")) return dataUrl;
+  if (estimateDataUrlBytes(dataUrl) > maxBytes) {
+    throw new Error(`${label} is still too large after compression. Try a smaller file.`);
+  }
+  return dataUrl;
+}
+
+/** Normalize any proof/attachment data URL (images compressed; PDFs size-checked). */
 export async function normalizeProofDataUrl(dataUrl) {
   if (!dataUrl?.startsWith("data:")) return dataUrl;
-  if (dataUrl.startsWith("data:application/pdf")) return dataUrl;
-  return compressProofDataUrl(dataUrl);
+  if (dataUrl.startsWith("data:application/pdf")) {
+    return assertUnderMaxBytes(dataUrl, PDF_MAX_BYTES, "PDF");
+  }
+  const compressed = await compressProofDataUrl(dataUrl);
+  return assertUnderMaxBytes(compressed, PROOF_DEFAULTS.maxBytes, "Image");
 }
 
 /** Read a proof file from an upload control and compress images before storage. */
 export async function compressProofFile(file) {
   if (!file) throw new Error("No file selected.");
+  if (file.type === "application/pdf" && file.size > PDF_MAX_BYTES) {
+    throw new Error("PDF is too large. Please upload a file under 4 MB.");
+  }
   const dataUrl = await readFileAsDataUrl(file);
   return normalizeProofDataUrl(dataUrl);
 }
@@ -108,7 +142,6 @@ export async function compressProductImageFile(file) {
 
   const response = await fetch(compressed);
   const blob = await response.blob();
-  const ext = compressed.startsWith("data:image/png") ? "png" : "jpg";
   const baseName = String(file.name || "image").replace(/\.[^.]+$/, "") || "image";
-  return new File([blob], `${baseName}.${ext}`, { type: blob.type });
+  return new File([blob], `${baseName}.jpg`, { type: "image/jpeg" });
 }

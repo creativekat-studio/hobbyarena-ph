@@ -1,4 +1,4 @@
-/** Local dev hosts — used for admin "open storefront" shortcuts, not landing bypass. */
+/** Local dev hosts — always show the full storefront (landing mode is production-only). */
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
 
 export const PREVIEW_STOREFRONT_URL =
@@ -22,9 +22,11 @@ function hasStorefrontOverride(search = "") {
 /** Paths that must stay reachable while landing mode is on (order emails, checkout). */
 const LANDING_BYPASS_PATHS = ["/account", "/checkout"];
 
-/** Production (and localhost) show the landing page when landing mode is enabled in CMS. */
+/** Production shows the landing page when landing mode is enabled in CMS.
+ * Localhost and Vercel preview always show the full storefront. */
 export function shouldShowLandingPage(landingModeEnabled, search = "", pathname = "") {
   if (!landingModeEnabled) return false;
+  if (isLocalHost()) return false;
   if (hasStorefrontOverride(search)) return false;
   const path = pathname || "";
   if (LANDING_BYPASS_PATHS.some((allowed) => path === allowed || path.startsWith(`${allowed}/`))) {

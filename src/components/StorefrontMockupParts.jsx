@@ -16,21 +16,24 @@ export function MockCountdown({ variant, primary, compact = true }) {
   if (variant === "segments") {
     return (
       <Box sx={{ px: compact ? 0.75 : 1, py: compact ? 0.5 : 0.65, borderRadius: 1, bgcolor: alpha(primary, 0.1), border: "1px solid", borderColor: alpha(primary, 0.3) }}>
-        <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.48rem", fontWeight: 800, letterSpacing: 0.8, color: primary, mb: 0.35 }}>
-          PRE-ORDER CLOSES IN
-        </Typography>
-        <Stack direction="row" spacing={0.4} justifyContent="center">
-          {[
-            { v: "12", l: "days" },
-            { v: "05", l: "hrs" },
-            { v: "41", l: "min" },
-            { v: "22", l: "sec" },
-          ].map((part) => (
-            <Box key={part.l} sx={{ textAlign: "center", minWidth: 22 }}>
-              <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: "0.58rem", lineHeight: 1 }}>{part.v}</Typography>
-              <Typography sx={{ fontSize: "0.42rem", color: "text.secondary", fontWeight: 700, textTransform: "uppercase" }}>{part.l}</Typography>
-            </Box>
-          ))}
+        <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="space-between">
+          <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.48rem", fontWeight: 800, letterSpacing: 0.8, color: primary, lineHeight: 1.2, maxWidth: 56 }}>
+            PRE-ORDER{" "}
+            <Box component="span" sx={{ display: "block" }}>CLOSES IN</Box>
+          </Typography>
+          <Stack direction="row" spacing={0.45} justifyContent="flex-end">
+            {[
+              { v: "12", l: "days" },
+              { v: "05", l: "hrs" },
+              { v: "41", l: "mins" },
+              { v: "22", l: "secs" },
+            ].map((part) => (
+              <Box key={part.l} sx={{ textAlign: "center", minWidth: 22 }}>
+                <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: "0.58rem", lineHeight: 1, color: primary }}>{part.v}</Typography>
+                <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.4rem", color: "text.secondary", fontWeight: 700, textTransform: "uppercase", mt: 0.1 }}>{part.l}</Typography>
+              </Box>
+            ))}
+          </Stack>
         </Stack>
       </Box>
     );
@@ -57,7 +60,7 @@ export function MockCountdown({ variant, primary, compact = true }) {
 
   return (
     <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: compact ? "0.62rem" : "0.68rem", letterSpacing: 0.4, color: primary }}>
-      12d 05:41:22
+      12d 05:41
     </Typography>
   );
 }
@@ -243,7 +246,7 @@ export function MockStorefrontNav({ layoutId, surfaceBorderColor, compact = fals
             bgcolor: alpha(theme.palette.background.paper, 0.92),
             border: "1px solid",
             borderColor: surfaceBorderColor,
-            boxShadow: `0 8px 24px ${alpha(theme.palette.common.black, 0.18)}`,
+            boxShadow: "none",
             display: "flex",
             justifyContent: "center",
             gap: 1,
@@ -364,7 +367,7 @@ export function MockFeatureDropCard({ panelSx, isDarkMode, drop, productName, is
     <Box sx={{ ...panelSx, p: 1, overflow: "hidden" }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.65 }}>
         <Stack direction="row" spacing={0.4} alignItems="center">
-          <Box sx={{ width: 6, height: 6, borderRadius: "50%", bgcolor: brand.liveDot, boxShadow: `0 0 6px ${brand.liveDot}` }} />
+          <Box sx={{ width: 6, height: 6, borderRadius: "50%", bgcolor: brand.liveDot }} />
           <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 700, fontSize: "0.5rem", letterSpacing: 0.8 }}>
             {isPreorder ? "PRE-ORDER ▸ LIVE" : "DROP ▸ LIVE"}
           </Typography>

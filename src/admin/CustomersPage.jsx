@@ -22,8 +22,11 @@ import { avatarStyles } from "../lib/surfaces.js";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import { CardIcon, SearchIcon, SparkleIcon, UserIcon } from "../components/icons.jsx";
+import { CategoryChip } from "../components/ShopFilters.jsx";
 import { useCustomers } from "../lib/customersStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
+import { useClientTiers } from "../lib/clientTiersStore.jsx";
+import { computeFulfilledSpendForEmail, resolveClientTier } from "../lib/clientTier.js";
 
 const FILTERS = [
   { id: "all", label: "All" },
@@ -71,6 +74,7 @@ export default function CustomersPage() {
   const { panelSx } = surfaces;
   const { customers } = useCustomers();
   const { orders } = useOrders();
+  const { tiers } = useClientTiers();
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
 
@@ -99,15 +103,18 @@ export default function CustomersPage() {
         lastOrderDate: null,
       };
       const status = customerStatus(stats.count, stats.lastOrderDate);
+      const fulfilledSpend = computeFulfilledSpendForEmail(orders, customer.email);
+      const tier = resolveClientTier(fulfilledSpend, tiers);
       return {
         ...customer,
         orders: stats.count,
         totalSpent: stats.totalSpent,
         status,
+        tier,
         signInMethod: AUTH_PROVIDER_LABEL[customer.authProvider] || AUTH_PROVIDER_LABEL.unknown,
       };
     });
-  }, [customers, orders]);
+  }, [customers, orders, tiers]);
 
   const rows = useMemo(() => {
     return enrichedCustomers.filter((c) => {
@@ -155,7 +162,7 @@ export default function CustomersPage() {
   }
 
   return (
-    <Stack spacing={ADMIN_PAGE_SPACING}>
+    <Box sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, gap: (t) => t.spacing(ADMIN_PAGE_SPACING) }}>
       <AdminPageHeader
         eyebrow="People"
         title="Customers"
@@ -167,37 +174,42 @@ export default function CustomersPage() {
         )}
       />
 
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={UserIcon} label="Customers" value={stats.total} accent={accents[0]} /></Grid>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={SparkleIcon} label="Marketing opt-in" value={`${stats.optIn} (${stats.optInPct}%)`} accent={accents[1]} /></Grid>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Lifetime value" value={PESO.format(stats.ltv)} accent={theme.palette.success.main} /></Grid>
-        <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Avg. spend" value={PESO.format(stats.avgSpend)} accent={accents[3]} /></Grid>
-      </Grid>
+      {/* ── Sticky upper chrome: stat cards + filter bar ── */}
+      <Stack spacing={ADMIN_PAGE_SPACING} sx={{ flexShrink: 0 }}>
+        <Grid container spacing={2}>
+          <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={UserIcon} label="Customers" value={stats.total} accent={accents[0]} /></Grid>
+          <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={SparkleIcon} label="Marketing opt-in" value={`${stats.optIn} (${stats.optInPct}%)`} accent={accents[1]} /></Grid>
+          <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Lifetime value" value={PESO.format(stats.ltv)} accent={theme.palette.success.main} /></Grid>
+          <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Avg. spend" value={PESO.format(stats.avgSpend)} accent={accents[3]} /></Grid>
+        </Grid>
 
-      <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
-        <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems={{ xs: "stretch", md: "center" }} justifyContent="space-between">
-          <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
-            {FILTERS.map((item) => (
-              <Chip key={item.id} label={item.label} onClick={() => setFilter(item.id)} color={filter === item.id ? "primary" : "default"} variant={filter === item.id ? "filled" : "outlined"} sx={{ fontWeight: 700 }} />
-            ))}
+        <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
+          <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems={{ xs: "stretch", md: "center" }} justifyContent="space-between">
+            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
+              {FILTERS.map((item) => (
+                <CategoryChip key={item.id} label={item.label} selected={filter === item.id} onClick={() => setFilter(item.id)} />
+              ))}
+            </Stack>
+            <TextField
+              size="small"
+              placeholder="Search name or email…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              sx={{ minWidth: { xs: "100%", md: 260 } }}
+              InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
+            />
           </Stack>
-          <TextField
-            size="small"
-            placeholder="Search name or email…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            sx={{ minWidth: { xs: "100%", md: 260 } }}
-            InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
-          />
-        </Stack>
-      </Box>
+        </Box>
+      </Stack>
 
-      <Box sx={{ ...panelSx, overflow: "hidden" }}>
-        <TableContainer>
-          <Table>
+      {/* ── Scrolling table panel — stickyHeader pins column names ── */}
+      <Box sx={{ flex: 1, minHeight: 0, ...panelSx, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <TableContainer sx={{ flex: 1 }}>
+          <Table stickyHeader>
             <TableHead>
               <TableRow>
                 <TableCell sx={{ fontWeight: 800 }}>Customer</TableCell>
+                <TableCell sx={{ fontWeight: 800 }}>Rank</TableCell>
                 <TableCell sx={{ fontWeight: 800, display: { xs: "none", sm: "table-cell" } }}>Joined</TableCell>
                 <TableCell sx={{ fontWeight: 800, display: { xs: "none", md: "table-cell" } }}>Sign-in</TableCell>
                 <TableCell sx={{ fontWeight: 800 }} align="right">Orders</TableCell>
@@ -214,11 +226,30 @@ export default function CustomersPage() {
                       <Box sx={{ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, ...avatarStyles(theme) }}>
                         {customer.name.charAt(0)}
                       </Box>
-                      <Box>
+                      <Box sx={{ minWidth: 0 }}>
                         <Typography sx={{ fontWeight: 600, fontSize: "0.88rem" }}>{customer.name}</Typography>
                         <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>{customer.email}</Typography>
                       </Box>
                     </Stack>
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={customer.tier?.name || "Member"}
+                      size="small"
+                      variant="outlined"
+                      sx={{
+                        height: 22,
+                        fontSize: "0.62rem",
+                        fontFamily: MONO_FONT,
+                        fontWeight: 800,
+                        letterSpacing: 0.4,
+                        color: customer.tier?.badgeColor || "primary.main",
+                        borderColor: customer.tier?.badgeColor || "primary.main",
+                        bgcolor: customer.tier?.badgeColor
+                          ? alpha(customer.tier.badgeColor, 0.12)
+                          : alpha(theme.palette.primary.main, 0.08),
+                      }}
+                    />
                   </TableCell>
                   <TableCell sx={{ color: "text.secondary", display: { xs: "none", sm: "table-cell" } }}>{customer.joined}</TableCell>
                   <TableCell sx={{ color: "text.secondary", display: { xs: "none", md: "table-cell" } }}>{customer.signInMethod}</TableCell>
@@ -234,7 +265,7 @@ export default function CustomersPage() {
               ))}
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} sx={{ textAlign: "center", py: 5, color: "text.secondary" }}>
+                  <TableCell colSpan={8} sx={{ textAlign: "center", py: 5, color: "text.secondary" }}>
                     No customers yet. Accounts appear here after Google or email sign-up on the storefront.
                   </TableCell>
                 </TableRow>
@@ -243,6 +274,6 @@ export default function CustomersPage() {
           </Table>
         </TableContainer>
       </Box>
-    </Stack>
+    </Box>
   );
 }

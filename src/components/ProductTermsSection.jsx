@@ -11,8 +11,8 @@ import { MONO_FONT } from "../theme.js";
 import { useCatalog } from "../lib/catalogStore.jsx";
 
 const TERMS_SCROLL_SX = {
-  minHeight: { xs: 200, md: 240 },
-  maxHeight: { xs: 260, md: 300 },
+  minHeight: { xs: 180, md: 220 },
+  maxHeight: { xs: 220, md: 260 },
   overflowY: "auto",
   WebkitOverflowScrolling: "touch",
   pr: 0.75,
@@ -43,10 +43,9 @@ export default function ProductTermsSection({
       sx={{
         ...(panelSx ?? {}),
         p: { xs: 2, md: 2.5 },
-        mt: showAcceptance ? 0 : 2,
+        mt: 0,
         display: "flex",
         flexDirection: "column",
-        minHeight: isPreorder && !compact ? { md: 320 } : undefined,
       }}
     >
       {showHeading && isPreorder ? (
@@ -60,7 +59,7 @@ export default function ProductTermsSection({
       {showHeading ? (
         <Typography variant="h6" sx={{ fontWeight: 800, mb: 1.5, flexShrink: 0 }}>{title}</Typography>
       ) : null}
-      <Box sx={isPreorder ? TERMS_SCROLL_SX : undefined}>
+      <Box sx={!compact ? TERMS_SCROLL_SX : undefined}>
         <Stack spacing={1.75} sx={{ color: "text.secondary", fontSize: "0.88rem", lineHeight: 1.6 }}>
           {termList.map((line) => (
             <Typography component="p" key={line} sx={{ m: 0 }}>

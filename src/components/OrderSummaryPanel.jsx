@@ -1,7 +1,48 @@
 import { Box, Checkbox, Divider, Stack, Typography } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "./ProductCard.jsx";
 import AdminSectionTitle from "./AdminSectionTitle.jsx";
+import { useInventory } from "../lib/inventoryStore.jsx";
+import { OFF_WHITE } from "../lib/colors.js";
+
+function SummaryItemThumb({ item, compact }) {
+  const theme = useTheme();
+  const { getProduct } = useInventory();
+  const size = compact ? 44 : 52;
+  const src = item.image || getProduct?.(item.id)?.image || "";
+
+  return (
+    <Box
+      sx={{
+        width: size,
+        height: size,
+        flexShrink: 0,
+        borderRadius: 1,
+        overflow: "hidden",
+        border: "1px solid",
+        borderColor: "divider",
+        bgcolor: alpha(theme.palette.text.primary, 0.04),
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {src ? (
+        <Box
+          component="img"
+          src={src}
+          alt=""
+          sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+        />
+      ) : (
+        <Typography sx={{ fontSize: "0.62rem", fontFamily: MONO_FONT, color: OFF_WHITE.glyph, fontWeight: 700 }}>
+          HA
+        </Typography>
+      )}
+    </Box>
+  );
+}
 
 function BillToSection({ billTo, compact, inline = false }) {
   if (!billTo) return null;
@@ -135,6 +176,7 @@ export function OrderSummaryPanel({
               inputProps={{ "aria-label": `Include ${item.name} in email` }}
             />
           ) : null}
+          <SummaryItemThumb item={item} compact={compact} />
           <Stack direction="row" justifyContent="space-between" spacing={1.5} alignItems="flex-start" sx={{ flex: 1, minWidth: 0 }}>
             <Box sx={{ minWidth: 0, flex: 1 }}>
               <Typography sx={{ fontWeight: 600, fontSize: compact ? "0.82rem" : "0.88rem", lineHeight: 1.35 }}>
@@ -142,11 +184,14 @@ export function OrderSummaryPanel({
               </Typography>
               <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", fontFamily: MONO_FONT }}>
                 Qty {item.quantity}
+                {(item.unitPrice ?? item.price) != null
+                  ? ` · ${PESO.format(item.unitPrice ?? item.price)} ea`
+                  : ""}
                 {item.tag === "Pre-order" ? ` · ${item.depositPercent ?? 30}% dep.` : ""}
               </Typography>
               {renderItemExtra ? renderItemExtra(item) : null}
             </Box>
-            <Typography sx={{ fontWeight: 700, flexShrink: 0, fontSize: compact ? "0.85rem" : undefined }}>
+            <Typography sx={{ fontWeight: 700, flexShrink: 0, fontSize: compact ? "0.85rem" : undefined, color: "primary.main" }}>
               {PESO.format(item.amount ?? item.dueNow ?? 0)}
             </Typography>
           </Stack>

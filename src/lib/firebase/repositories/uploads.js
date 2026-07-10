@@ -67,3 +67,19 @@ export async function uploadProductImage(productId, file) {
   await uploadBytes(storageRef, compressedFile, { contentType: compressedFile.type });
   return getDownloadURL(storageRef);
 }
+
+/**
+ * Upload a CMS asset (bank QR, bank logo, etc.) to Firebase Storage.
+ * Returns a long-lived HTTPS download URL for the CMS document.
+ */
+export async function uploadCmsAsset(file, kind = "asset") {
+  const storage = getFirebaseStorage();
+  if (!storage) throw new Error("Firebase Storage is not configured.");
+
+  const compressedFile = await compressProductImageFile(file);
+  const filename = `${kind}-${Date.now()}-${sanitizeFileName(compressedFile.name)}`;
+  const path = STORAGE_PATHS.cmsAssets(filename);
+  const storageRef = ref(storage, path);
+  await uploadBytes(storageRef, compressedFile, { contentType: compressedFile.type });
+  return getDownloadURL(storageRef);
+}

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Box,
-  Chip,
   Container,
   Grid,
   Stack,
@@ -17,6 +16,7 @@ import {
   ShopFilterCommandBar,
   ShopFilterFranchiseTiles,
   ShopFilterBreadcrumb,
+  CategoryChip,
   getFilterLayoutMode,
   getTopFilterVariant,
   embedsCategoryTabs,
@@ -68,37 +68,6 @@ const CATEGORY_COPY = {
 
 function lineMatch(lineValue) {
   return LINES.find((line) => line.value === lineValue)?.match ?? null;
-}
-
-function CategoryChip({ label, selected, onClick, surfaceBorderColor }) {
-  return (
-    <Chip
-      label={label}
-      clickable
-      onClick={onClick}
-      variant={selected ? "filled" : "outlined"}
-      sx={{
-        fontFamily: MONO_FONT,
-        fontWeight: 700,
-        letterSpacing: 0.3,
-        fontSize: "0.82rem",
-        height: 36,
-        ...(selected
-          ? {
-              bgcolor: "primary.main",
-              color: "primary.contrastText",
-              border: "1px solid",
-              borderColor: "primary.main",
-              "&:hover": { bgcolor: "primary.main" },
-            }
-          : {
-              bgcolor: "background.paper",
-              borderColor: surfaceBorderColor,
-              color: "text.primary",
-            }),
-      }}
-    />
-  );
 }
 
 export default function ShopPage() {
@@ -228,7 +197,7 @@ export default function ShopPage() {
             spacing={{ xs: 1.5, sm: 2 }}
             useFlexGap
           >
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 1 }}>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 1, pt: 1.25, pb: 0.5 }}>
               {CATEGORIES.map((item) => (
                 <CategoryChip
                   key={item.value}
@@ -285,13 +254,13 @@ export default function ShopPage() {
             {products.length ? (
               <Grid container spacing={2.5}>
                   {products.map((product) => (
-                    <Grid size={{ xs: 6, sm: 6, md: 4 }} key={product.id}>
+                    <Grid size={{ xs: 12, sm: 6, md: 4 }} key={product.id}>
                       <ProductCard product={product} panelSx={panelSx} isDarkMode={isDarkMode} />
                     </Grid>
                   ))}
                 </Grid>
             ) : (
-              <Box sx={{ ...panelSx, p: 5, textAlign: "center" }}>
+              <Box sx={{ py: 6, textAlign: "center" }}>
                 <Typography variant="h6" sx={{ fontWeight: 700 }}>No products match these filters.</Typography>
                 <Typography color="text.secondary" sx={{ mt: 1 }}>
                   {activeCategory === "accessories"

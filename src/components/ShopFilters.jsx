@@ -22,6 +22,59 @@ function CollapseIcon() {
   );
 }
 
+/** Category / product-type tabs — floating hover like franchise tiles. */
+export function CategoryChip({ label, selected, onClick, surfaceBorderColor }) {
+  const theme = useTheme();
+  const primary = theme.palette.primary.main;
+  const border = surfaceBorderColor ?? theme.palette.divider;
+
+  return (
+    <Chip
+      label={label}
+      clickable
+      onClick={onClick}
+      variant={selected ? "filled" : "outlined"}
+      sx={{
+        fontFamily: MONO_FONT,
+        fontWeight: 700,
+        letterSpacing: 0.3,
+        fontSize: "0.82rem",
+        height: 36,
+        borderRadius: 1.25,
+        transform: "translateY(0) scale(1)",
+        transition: "border-color 180ms ease, background-color 180ms ease, color 180ms ease, box-shadow 180ms ease, transform 180ms ease",
+        boxShadow: `0 2px 8px ${alpha("#000", 0.16)}`,
+        ...(selected
+          ? {
+              bgcolor: "primary.main",
+              color: "primary.contrastText",
+              border: "2.5px solid",
+              borderColor: "primary.main",
+              animation: "ha-chip-select 280ms cubic-bezier(0.34, 1.56, 0.64, 1) both",
+            }
+          : {
+              bgcolor: "background.paper",
+              border: "1px solid",
+              borderColor: border,
+              color: "text.primary",
+            }),
+        "&:hover": {
+          transform: "translateY(-4px) scale(1)",
+          boxShadow: `0 10px 22px ${alpha("#000", 0.32)}`,
+          ...(selected
+            ? { bgcolor: "primary.main", borderColor: "primary.main" }
+            : { borderColor: alpha(primary, 0.55), bgcolor: "background.paper" }),
+        },
+        "&:active": {
+          transform: "translateY(0) scale(0.94)",
+          boxShadow: `0 4px 12px ${alpha("#000", 0.22)}`,
+          animation: "none",
+        },
+      }}
+    />
+  );
+}
+
 function LineLogo({ line, size = 28 }) {
   const logo = resolveLineLogo(line);
   if (logo) {
@@ -104,7 +157,7 @@ export function ShopFiltersSidebar({
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
         <Typography variant="h6" sx={{ fontWeight: 800 }}>Filter by</Typography>
         {hasActiveFilters ? (
-          <Button size="small" onClick={onReset} sx={{ fontWeight: 700, textTransform: "none", minWidth: 0 }}>
+          <Button size="small" onClick={onReset} sx={{ fontWeight: 700, minWidth: 0 }}>
             Clear
           </Button>
         ) : null}
@@ -241,23 +294,14 @@ export function ShopFilterCommandBar({
         bgcolor: alpha(theme.palette.background.paper, 0.92),
       }}
     >
-      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 1, minWidth: 0 }}>
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 1, minWidth: 0, pt: 1.25, pb: 0.5 }}>
         {tabs.map((tab) => (
-          <Chip
+          <CategoryChip
             key={tab.value}
             label={tab.label}
-            size="small"
-            clickable
+            selected={activeTab === tab.value}
+            surfaceBorderColor={surfaceBorderColor}
             onClick={() => onTabChange(tab.value)}
-            variant={activeTab === tab.value ? "filled" : "outlined"}
-            sx={{
-              fontFamily: MONO_FONT,
-              fontWeight: 700,
-              height: 32,
-              ...(activeTab === tab.value
-                ? { bgcolor: "primary.main", color: "primary.contrastText", borderColor: "primary.main" }
-                : { borderColor: surfaceBorderColor }),
-            }}
           />
         ))}
       </Stack>
@@ -273,7 +317,7 @@ export function ShopFilterCommandBar({
             <MenuItem key={line.value} value={line.value}>{line.label}</MenuItem>
           ))}
         </Select>
-        <Typography sx={{ fontSize: "0.78rem", fontFamily: MONO_FONT, color: "text.secondary", whiteSpace: "nowrap", display: { xs: "none", sm: "block" } }}>
+        <Typography sx={{ fontSize: "0.78rem", fontFamily: MONO_FONT, color: "primary.main", whiteSpace: "nowrap", display: { xs: "none", sm: "block" } }}>
           {itemCount} {itemCount === 1 ? "item" : "items"}
         </Typography>
       </Stack>
@@ -299,13 +343,15 @@ export function ShopFilterFranchiseTiles({
         mb: 2.5,
         overflowX: "auto",
         flexWrap: "nowrap",
-        pb: 0.5,
+        pt: 1.25,
+        pb: 1.5,
         mx: -0.5,
         px: 0.5,
       }}
     >
       {lines.map((line) => {
         const selected = activeLine === line.value;
+        const logo = resolveLineLogo(line);
         return (
           <Box
             key={line.value}
@@ -317,22 +363,81 @@ export function ShopFilterFranchiseTiles({
             sx={{
               ...panelSx,
               flexShrink: 0,
-              width: 168,
-              p: 1.75,
+              width: 132,
+              height: 96,
+              p: 0,
+              overflow: "visible",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               cursor: "pointer",
-              border: "1px solid",
-              borderColor: selected ? alpha(primary, 0.55) : surfaceBorderColor,
-              bgcolor: selected ? alpha(primary, 0.06) : "background.paper",
-              transition: "border-color 0.15s ease, background-color 0.15s ease",
+              border: selected ? "2.5px solid" : "1px solid",
+              borderColor: selected ? primary : surfaceBorderColor,
+              borderRadius: 1.25,
+              bgcolor: logo
+                ? "#fff"
+                : selected
+                  ? alpha(primary, 0.12)
+                  : "background.paper",
+              boxShadow: selected
+                ? `0 4px 14px ${alpha("#000", 0.22)}`
+                : `0 2px 8px ${alpha("#000", 0.16)}`,
+              transform: "translateY(0)",
+              transition: "border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease, transform 180ms ease",
               "&:hover": {
-                borderColor: selected ? alpha(primary, 0.55) : alpha(theme.palette.text.primary, 0.22),
+                borderColor: selected ? primary : alpha(primary, 0.55),
+                transform: "translateY(-4px)",
+                boxShadow: `0 10px 22px ${alpha("#000", 0.32)}`,
+              },
+              "&:active": {
+                transform: "translateY(-1px)",
+                boxShadow: `0 4px 12px ${alpha("#000", 0.22)}`,
               },
             }}
           >
-            <LineLogo line={line} size={48} />
+            {logo ? (
+              <Box
+                component="img"
+                src={logo}
+                alt=""
+                sx={{
+                  width: "auto",
+                  height: 72,
+                  maxWidth: "88%",
+                  objectFit: "contain",
+                  objectPosition: "center",
+                  display: "block",
+                  borderRadius: 1,
+                }}
+              />
+            ) : (
+              <Stack alignItems="center" justifyContent="center" spacing={0.35} sx={{ px: 1.5 }}>
+                <Typography
+                  sx={{
+                    fontFamily: MONO_FONT,
+                    fontWeight: 800,
+                    fontSize: "1rem",
+                    letterSpacing: 2.5,
+                    color: selected ? "primary.main" : "text.primary",
+                    lineHeight: 1,
+                  }}
+                >
+                  ALL
+                </Typography>
+                <Typography
+                  sx={{
+                    fontFamily: MONO_FONT,
+                    fontWeight: 600,
+                    fontSize: "0.62rem",
+                    letterSpacing: 1.5,
+                    color: "text.secondary",
+                    lineHeight: 1,
+                  }}
+                >
+                  LINES
+                </Typography>
+              </Stack>
+            )}
           </Box>
         );
       })}
@@ -361,7 +466,7 @@ export function ShopFilterBreadcrumb({
       <Typography sx={{ fontSize: "0.82rem", fontWeight: 800, color: primary }}>
         {activeLabel}
       </Typography>
-      <Typography sx={{ fontSize: "0.78rem", fontFamily: MONO_FONT, color: "text.secondary" }}>
+      <Typography sx={{ fontSize: "0.78rem", fontFamily: MONO_FONT, color: "primary.main" }}>
         · {itemCount} {itemCount === 1 ? "item" : "items"}
       </Typography>
       {activeLine !== "all" ? (

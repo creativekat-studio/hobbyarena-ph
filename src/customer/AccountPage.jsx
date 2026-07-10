@@ -10,6 +10,8 @@ import {
   Divider,
   FormControlLabel,
   Grid,
+  InputAdornment,
+  LinearProgress,
   Link,
   Skeleton,
   Stack,
@@ -24,7 +26,7 @@ import { MONO_FONT, getStatAccents } from "../theme.js";
 import { avatarStyles } from "../lib/surfaces.js";
 import { wider } from "../lib/layout.js";
 import { PESO } from "../components/ProductCard.jsx";
-import { CardIcon, HeartIcon, UserIcon } from "../components/icons.jsx";
+import { CardIcon, HeartIcon, SearchIcon, SparkleIcon, UserIcon } from "../components/icons.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { getCustomerProfile, useCustomers } from "../lib/customersStore.jsx";
 import { useOrders, getOrdersForEmail } from "../lib/ordersStore.jsx";
@@ -33,6 +35,11 @@ import { useCart } from "../lib/cartStore.jsx";
 import { ACCOUNT } from "../data/mockData.js";
 import { CustomerOrderCard } from "../components/CustomerOrderCard.jsx";
 import { setAuthSurface } from "../auth/authSurface.js";
+import { sortOrdersByOrderNo } from "../lib/orderIds.js";
+import { useClientTiers } from "../lib/clientTiersStore.jsx";
+import { computeFulfilledSpendForEmail, getNextTierProgress, resolveClientTier } from "../lib/clientTier.js";
+import { formatPhPhoneInput, isValidPhPhone } from "../lib/phone.js";
+import PasswordField from "../components/PasswordField.jsx";
 
 function AuthCard({ panelSx }) {
   const theme = useTheme();
@@ -96,7 +103,7 @@ function AuthCard({ panelSx }) {
           <TextField label="Full name" fullWidth value={name} onChange={(e) => setName(e.target.value)} required />
         ) : null}
         <TextField label="Email" type="email" fullWidth value={email} onChange={(e) => setEmail(e.target.value)} required />
-        <TextField label="Password" type="password" fullWidth value={password} onChange={(e) => setPassword(e.target.value)} required helperText={mode === "signup" ? "At least 8 characters." : " "} />
+        <PasswordField value={password} onChange={(e) => setPassword(e.target.value)} required helperText={mode === "signup" ? "At least 8 characters." : " "} autoComplete={mode === "signup" ? "new-password" : "current-password"} />
 
         {mode === "signup" ? (
           <Stack spacing={0.5}>
@@ -131,7 +138,7 @@ function AuthCard({ panelSx }) {
             size="large"
             disabled={busy}
             onClick={handleGoogleSignIn}
-            sx={{ py: 1.2, borderColor: "divider", textTransform: "none", fontWeight: 700 }}
+            sx={{ py: 1.2, borderColor: "divider", fontWeight: 700 }}
           >
             Continue with Google
           </Button>
@@ -142,11 +149,6 @@ function AuthCard({ panelSx }) {
           <Box component="button" type="button" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(""); }} sx={{ background: "none", border: "none", p: 0, cursor: "pointer", color: "primary.main", fontWeight: 700, textDecoration: "underline", font: "inherit" }}>
             {mode === "signin" ? "Create an account" : "Sign in"}
           </Box>
-        </Typography>
-        <Typography variant="caption" color="text.secondary" textAlign="center" sx={{ fontFamily: MONO_FONT }}>
-          {authMode === "firebase"
-            ? "Secured with Firebase Auth — email/password or Google."
-            : "Demo only — any details sign you in as a customer."}
         </Typography>
       </Stack>
     </Box>
@@ -172,13 +174,121 @@ function StatCard({ panelSx, icon, label, value, accent }) {
   );
 }
 
-function ProfileTab({ panelSx, surfaceBorderColor }) {
+function TierQuestCard({ clientTier, tierProgress, fulfilledSpend }) {
+  const theme = useTheme();
+  const accent = tierProgress.nextTier?.badgeColor || clientTier?.badgeColor || theme.palette.primary.main;
+  const pct = Math.round((tierProgress.progress || 0) * 100);
+
+  return (
+    <Box
+      sx={{
+        mb: 3,
+        p: { xs: 2.25, md: 2.75 },
+        borderRadius: 1,
+        border: "1px solid",
+        borderColor: alpha(accent, 0.45),
+        bgcolor: alpha(accent, 0.08),
+      }}
+    >
+      <Stack spacing={1.75}>
+        <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+          <Stack direction="row" spacing={1} alignItems="center">
+            <SparkleIcon sx={{ color: accent, fontSize: 22 }} />
+            <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 800, letterSpacing: 1.4, textTransform: "uppercase", color: accent }}>
+              Member rank
+            </Typography>
+          </Stack>
+          <Chip
+            label={clientTier?.name || "Member"}
+            size="small"
+            sx={{
+              fontFamily: MONO_FONT,
+              fontWeight: 800,
+              letterSpacing: 0.4,
+              color: clientTier?.badgeColor || "primary.main",
+              border: "1px solid",
+              borderColor: clientTier?.badgeColor || "primary.main",
+              bgcolor: alpha(clientTier?.badgeColor || theme.palette.primary.main, 0.12),
+            }}
+          />
+        </Stack>
+
+        {tierProgress.atTop ? (
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.2 }}>
+              You&apos;re at the top
+            </Typography>
+            <Typography color="text.secondary" sx={{ mt: 0.5, fontSize: "0.88rem" }}>
+              Champion status unlocked. Keep pulling — the arena remembers.
+            </Typography>
+            <LinearProgress
+              variant="determinate"
+              value={100}
+              sx={{
+                mt: 1.75,
+                height: 12,
+                borderRadius: 99,
+                bgcolor: alpha(accent, 0.16),
+                "& .MuiLinearProgress-bar": {
+                  borderRadius: 99,
+                  bgcolor: accent,
+                },
+              }}
+            />
+          </Box>
+        ) : (
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.2 }}>
+              Next up: {tierProgress.nextTier.name}
+            </Typography>
+            <Typography color="text.secondary" sx={{ mt: 0.5, fontSize: "0.88rem" }}>
+              {PESO.format(tierProgress.remaining)} more in fulfilled orders to level up.
+            </Typography>
+
+            <Stack direction="row" justifyContent="space-between" alignItems="baseline" sx={{ mt: 1.75, mb: 0.75 }}>
+              <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", fontWeight: 800, color: accent }}>
+                {pct}% charged
+              </Typography>
+              <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", color: "text.secondary" }}>
+                {PESO.format(fulfilledSpend)} spent
+              </Typography>
+            </Stack>
+
+            <Box sx={{ position: "relative" }}>
+              <LinearProgress
+                variant="determinate"
+                value={pct}
+                sx={{
+                  height: 14,
+                  borderRadius: 99,
+                  bgcolor: alpha(accent, 0.14),
+                  border: "1px solid",
+                  borderColor: alpha(accent, 0.35),
+                  "& .MuiLinearProgress-bar": {
+                    borderRadius: 99,
+                    background: `linear-gradient(90deg, ${alpha(accent, 0.75)} 0%, ${accent} 100%)`,
+                  },
+                }}
+              />
+            </Box>
+
+            <Typography sx={{ mt: 1.25, fontFamily: MONO_FONT, fontSize: "0.65rem", letterSpacing: 0.6, color: "text.secondary", textTransform: "uppercase" }}>
+              Unlock {tierProgress.nextTier.name} · Goal {PESO.format(tierProgress.nextTier.minSpend ?? 0)}
+            </Typography>
+          </Box>
+        )}
+      </Stack>
+    </Box>
+  );
+}
+
+function ProfileTab({ panelSx, surfaceBorderColor, clientTier, tierProgress, fulfilledSpend }) {
   const { user, updateCustomerProfileDetails } = useAuth();
   const { customers } = useCustomers();
   const saved = getCustomerProfile(user?.email);
   const savedAddress = saved?.address && typeof saved.address === "object" ? saved.address : {};
   const [name, setName] = useState(saved?.name || user?.displayName || "");
-  const [phone, setPhone] = useState(saved?.phone || user?.phone || "");
+  const [phone, setPhone] = useState(() => formatPhPhoneInput(saved?.phone || user?.phone || ""));
   const [street, setStreet] = useState(savedAddress.street || "");
   const [city, setCity] = useState(savedAddress.city || "");
   const [province, setProvince] = useState(savedAddress.province || "");
@@ -191,7 +301,7 @@ function ProfileTab({ panelSx, surfaceBorderColor }) {
     if (!profile) return;
     const address = profile.address && typeof profile.address === "object" ? profile.address : {};
     setName(profile.name || user?.displayName || "");
-    setPhone(profile.phone || user?.phone || "");
+    setPhone(formatPhPhoneInput(profile.phone || user?.phone || ""));
     setStreet(address.street || "");
     setCity(address.city || "");
     setProvince(address.province || "");
@@ -201,11 +311,15 @@ function ProfileTab({ panelSx, surfaceBorderColor }) {
   async function handleSave(event) {
     event.preventDefault();
     setError("");
+    if (phone.trim() && !isValidPhPhone(phone)) {
+      setError("Enter a valid PH mobile number (09XX XXX XXXX).");
+      return;
+    }
     setStatus("saving");
     try {
       await updateCustomerProfileDetails({
         name,
-        phone,
+        phone: formatPhPhoneInput(phone),
         address: { street, city, province, postal },
       });
       setStatus("saved");
@@ -216,25 +330,54 @@ function ProfileTab({ panelSx, surfaceBorderColor }) {
   }
 
   return (
-    <Box component="form" onSubmit={handleSave} sx={{ p: 3 }}>
-      <Stack spacing={2} sx={{ maxWidth: 520 }}>
-        {status === "saved" ? <Alert severity="success">Profile saved.</Alert> : null}
-        {error ? <Alert severity="error">{error}</Alert> : null}
-        <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }}>Contact</Typography>
-        <TextField label="Full name" fullWidth value={name} onChange={(e) => setName(e.target.value)} required />
-        <TextField label="Email" fullWidth value={user?.email || ""} disabled />
-        <TextField label="Phone" fullWidth value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+63 9XX XXX XXXX" />
-        <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", pt: 0.5 }}>Default delivery address</Typography>
-        <TextField label="Street address" fullWidth value={street} onChange={(e) => setStreet(e.target.value)} />
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-          <TextField label="City" fullWidth value={city} onChange={(e) => setCity(e.target.value)} />
-          <TextField label="Province" fullWidth value={province} onChange={(e) => setProvince(e.target.value)} />
-        </Stack>
-        <TextField label="Postal code" fullWidth value={postal} onChange={(e) => setPostal(e.target.value)} sx={{ maxWidth: 220 }} />
-        <Button type="submit" variant="contained" disabled={status === "saving"} sx={{ alignSelf: "flex-start", fontFamily: MONO_FONT, letterSpacing: 0.5 }}>
-          {status === "saving" ? "Saving…" : "Save details"}
-        </Button>
-      </Stack>
+    <Box component="form" onSubmit={handleSave} sx={{ p: { xs: 2.5, md: 3 } }}>
+      <TierQuestCard
+        clientTier={clientTier}
+        tierProgress={tierProgress}
+        fulfilledSpend={fulfilledSpend}
+      />
+
+      {status === "saved" ? <Alert severity="success" sx={{ mb: 2 }}>Profile saved.</Alert> : null}
+      {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
+
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Stack spacing={2}>
+            <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }}>Contact</Typography>
+            <TextField label="Full name" fullWidth value={name} onChange={(e) => setName(e.target.value)} required />
+            <TextField label="Email" fullWidth value={user?.email || ""} disabled />
+            <TextField
+              label="Phone"
+              fullWidth
+              value={phone}
+              onChange={(e) => setPhone(formatPhPhoneInput(e.target.value))}
+              placeholder="09XX XXX XXXX"
+              inputProps={{ inputMode: "numeric", autoComplete: "tel-national" }}
+            />
+          </Stack>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Stack spacing={2}>
+            <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }}>Default delivery address</Typography>
+            <TextField label="Street address" fullWidth value={street} onChange={(e) => setStreet(e.target.value)} />
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+              <TextField label="City" fullWidth value={city} onChange={(e) => setCity(e.target.value)} />
+              <TextField label="Province" fullWidth value={province} onChange={(e) => setProvince(e.target.value)} />
+            </Stack>
+            <TextField label="Postal code" fullWidth value={postal} onChange={(e) => setPostal(e.target.value)} sx={{ maxWidth: { sm: 220 } }} />
+          </Stack>
+        </Grid>
+      </Grid>
+
+      <Button
+        type="submit"
+        variant="contained"
+        disabled={status === "saving"}
+        sx={{ mt: 3, fontFamily: MONO_FONT, letterSpacing: 0.5 }}
+      >
+        {status === "saving" ? "Saving…" : "Save details"}
+      </Button>
     </Box>
   );
 }
@@ -246,19 +389,45 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
   const { orders: allOrders, ordersReady } = useOrders();
   const { items: wishlistItems, remove: removeFromWishlist } = useWishlist();
   const { addItem } = useCart();
+  const { tiers } = useClientTiers();
   const [tab, setTab] = useState(0);
+  const [orderQuery, setOrderQuery] = useState("");
 
   const customerOrders = useMemo(() => getOrdersForEmail(allOrders, user?.email), [allOrders, user?.email]);
+  const filteredCustomerOrders = useMemo(() => {
+    const q = orderQuery.trim().toLowerCase();
+    const list = !q
+      ? customerOrders
+      : customerOrders.filter((o) =>
+        o.id.toLowerCase().includes(q)
+        || (o.items || "").toLowerCase().includes(q)
+        || (o.lineItems || []).some((item) => (item.name || "").toLowerCase().includes(q)),
+      );
+    return sortOrdersByOrderNo(list);
+  }, [customerOrders, orderQuery]);
+  const fulfilledSpend = useMemo(
+    () => computeFulfilledSpendForEmail(allOrders, user?.email),
+    [allOrders, user?.email],
+  );
+  const clientTier = useMemo(() => resolveClientTier(fulfilledSpend, tiers), [fulfilledSpend, tiers]);
+  const tierProgress = useMemo(() => getNextTierProgress(fulfilledSpend, tiers), [fulfilledSpend, tiers]);
   const displayName = user?.displayName || ACCOUNT.name;
   const email = user?.email || ACCOUNT.email;
   const profileLoading = authLoading && !user;
 
   return (
-    <Stack spacing={3}>
-      <Box sx={{ ...panelSx, p: { xs: 3, md: 4 } }}>
+    <Stack
+      spacing={2.5}
+      sx={{
+        flex: 1,
+        minHeight: 0,
+        overflow: "hidden",
+      }}
+    >
+      <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 }, flexShrink: 0 }}>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2.5} alignItems={{ xs: "flex-start", sm: "center" }} justifyContent="space-between">
-          <Stack direction="row" spacing={2} alignItems="center">
-            <Box sx={{ width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1.5rem", ...avatarStyles(theme) }}>
+          <Stack direction="row" spacing={2} alignItems="center" sx={{ minWidth: 0 }}>
+            <Box sx={{ width: 56, height: 56, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1.35rem", flexShrink: 0, ...avatarStyles(theme) }}>
               {profileLoading ? "" : displayName.charAt(0).toUpperCase()}
             </Box>
             {profileLoading ? (
@@ -268,18 +437,30 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
                 <Skeleton variant="rounded" width={110} height={24} sx={{ mt: 0.75 }} />
               </Box>
             ) : (
-              <Box>
+              <Box sx={{ minWidth: 0 }}>
                 <Typography variant="h5" sx={{ fontWeight: 800 }}>{displayName}</Typography>
                 <Typography color="text.secondary" sx={{ fontSize: "0.88rem" }}>{email}</Typography>
-                <Chip label={ACCOUNT.tier} size="small" color="primary" sx={{ mt: 0.75, fontFamily: MONO_FONT, letterSpacing: 0.5 }} />
+                <Chip
+                  label={clientTier?.name || "Member"}
+                  size="small"
+                  variant="outlined"
+                  sx={{
+                    mt: 0.75,
+                    fontFamily: MONO_FONT,
+                    letterSpacing: 0.5,
+                    color: clientTier?.badgeColor || "primary.main",
+                    borderColor: clientTier?.badgeColor || "primary.main",
+                    bgcolor: clientTier?.badgeColor ? alpha(clientTier.badgeColor, 0.12) : undefined,
+                  }}
+                />
               </Box>
             )}
           </Stack>
-          <Button variant="outlined" color="inherit" onClick={signOutCustomer} disabled={profileLoading} sx={{ borderColor: surfaceBorderColor }}>Sign out</Button>
+          <Button variant="outlined" color="inherit" onClick={signOutCustomer} disabled={profileLoading} sx={{ borderColor: surfaceBorderColor, flexShrink: 0 }}>Sign out</Button>
         </Stack>
       </Box>
 
-      <Grid container spacing={2.5}>
+      <Grid container spacing={2} sx={{ flexShrink: 0 }}>
         <Grid size={{ xs: 6, sm: 6 }}>
           <StatCard panelSx={panelSx} icon={CardIcon} label="Total orders" value={customerOrders.length} accent={accents[0]} />
         </Grid>
@@ -288,86 +469,134 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
         </Grid>
       </Grid>
 
-      <Box sx={{ ...panelSx, overflow: "hidden" }}>
-        <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ px: 2, borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
-          <Tab label={`Orders (${customerOrders.length})`} sx={{ fontWeight: 700, textTransform: "none" }} />
-          <Tab label={`Wishlist (${wishlistItems.length})`} sx={{ fontWeight: 700, textTransform: "none" }} />
-          <Tab label="Profile" sx={{ fontWeight: 700, textTransform: "none" }} />
+      <Box
+        sx={{
+          ...panelSx,
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        <Tabs
+          value={tab}
+          onChange={(_, value) => setTab(value)}
+          sx={{ px: 2, flexShrink: 0, borderBottom: "1px solid", borderColor: surfaceBorderColor }}
+        >
+          <Tab label={`Orders (${customerOrders.length})`} />
+          <Tab label={`Wishlist (${wishlistItems.length})`} />
+          <Tab label="Profile" />
         </Tabs>
 
-        {tab === 0 ? (
-          <Stack spacing={2} sx={{ p: 3 }}>
-            {!ordersReady ? (
-              <Stack spacing={1.5} alignItems="center" sx={{ py: 5, color: "text.secondary" }}>
-                <CircularProgress size={28} />
-                <Typography variant="body2">Loading your orders…</Typography>
-              </Stack>
-            ) : customerOrders.length === 0 ? (
-              <Stack spacing={1.5} alignItems="center" sx={{ py: 5, textAlign: "center", color: "text.secondary" }}>
-                <CardIcon sx={{ fontSize: 40, color: "text.secondary" }} />
-                <Typography>No orders yet.</Typography>
-                <Typography variant="body2">Your order history will appear here after checkout.</Typography>
-              </Stack>
-            ) : customerOrders.map((order) => (
-              <CustomerOrderCard
-                key={order.id}
-                order={order}
-                surfaceBorderColor={surfaceBorderColor}
-              />
-            ))}
-          </Stack>
-        ) : tab === 1 ? (
-          wishlistItems.length === 0 ? (
-          <Stack spacing={1.5} alignItems="center" sx={{ p: 5, textAlign: "center", color: "text.secondary" }}>
-            <HeartIcon sx={{ fontSize: 40, color: "text.secondary" }} />
-            <Typography>Your wishlist is empty.</Typography>
-            <Typography variant="body2">Tap the heart on any product while signed in to save it here.</Typography>
-          </Stack>
-        ) : (
-          <Stack spacing={1.5} sx={{ p: 3 }}>
-            {wishlistItems.map((item) => {
-              const isPreorder = item.tag === "Pre-order";
-              const soldOut = !isPreorder && item.stock <= 0;
-              return (
-                <Stack
-                  key={item.id}
-                  direction={{ xs: "column", sm: "row" }}
-                  alignItems={{ xs: "stretch", sm: "center" }}
-                  justifyContent="space-between"
-                  spacing={1.5}
-                  sx={{ p: 2, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}
-                >
-                  <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minWidth: 0 }}>
-                    <CardIcon sx={{ color: item.accent || "primary.main", flexShrink: 0 }} />
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography sx={{ fontWeight: 600, lineHeight: 1.3 }}>{item.name}</Typography>
-                      <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", fontFamily: MONO_FONT }}>
-                        {item.tag} · {PESO.format(item.price)}
-                      </Typography>
-                    </Box>
-                  </Stack>
-                  <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
-                    {!soldOut ? (
-                      <Button size="small" variant="contained" color="primary" onClick={() => addItem(item)}>
-                        Add to cart
-                      </Button>
-                    ) : (
-                      <Button size="small" variant="outlined" color="inherit" disabled sx={{ borderColor: surfaceBorderColor }}>
-                        Out of stock
-                      </Button>
-                    )}
-                    <Button size="small" color="error" onClick={() => removeFromWishlist(item.id)}>
-                      Remove
-                    </Button>
-                  </Stack>
+        <Box
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            overscrollBehavior: "contain",
+          }}
+        >
+          {tab === 0 ? (
+            <Stack spacing={2} sx={{ p: 3 }}>
+              {customerOrders.length > 0 ? (
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="Search order or item…"
+                  value={orderQuery}
+                  onChange={(e) => setOrderQuery(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              ) : null}
+              {!ordersReady ? (
+                <Stack spacing={1.5} alignItems="center" sx={{ py: 5, color: "text.secondary" }}>
+                  <CircularProgress size={28} />
+                  <Typography variant="body2">Loading your orders…</Typography>
                 </Stack>
-              );
-            })}
-          </Stack>
-        )
-        ) : (
-          <ProfileTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} />
-        )}
+              ) : customerOrders.length === 0 ? (
+                <Stack spacing={1.5} alignItems="center" sx={{ py: 5, textAlign: "center", color: "text.secondary" }}>
+                  <CardIcon sx={{ fontSize: 40, color: "text.secondary" }} />
+                  <Typography>No orders yet.</Typography>
+                  <Typography variant="body2">Your order history will appear here after checkout.</Typography>
+                </Stack>
+              ) : filteredCustomerOrders.length === 0 ? (
+                <Stack spacing={1.5} alignItems="center" sx={{ py: 4, textAlign: "center", color: "text.secondary" }}>
+                  <Typography>No orders match your search.</Typography>
+                </Stack>
+              ) : filteredCustomerOrders.map((order) => (
+                <CustomerOrderCard
+                  key={order.id}
+                  order={order}
+                  surfaceBorderColor={surfaceBorderColor}
+                />
+              ))}
+            </Stack>
+          ) : tab === 1 ? (
+            wishlistItems.length === 0 ? (
+              <Stack spacing={1.5} alignItems="center" sx={{ p: 5, textAlign: "center", color: "text.secondary" }}>
+                <HeartIcon sx={{ fontSize: 40, color: "text.secondary" }} />
+                <Typography>Your wishlist is empty.</Typography>
+                <Typography variant="body2">Tap the heart on any product while signed in to save it here.</Typography>
+              </Stack>
+            ) : (
+              <Stack spacing={1.5} sx={{ p: 3 }}>
+                {wishlistItems.map((item) => {
+                  const isPreorder = item.tag === "Pre-order";
+                  const soldOut = !isPreorder && item.stock <= 0;
+                  return (
+                    <Stack
+                      key={item.id}
+                      direction={{ xs: "column", sm: "row" }}
+                      alignItems={{ xs: "stretch", sm: "center" }}
+                      justifyContent="space-between"
+                      spacing={1.5}
+                      sx={{ p: 2, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}
+                    >
+                      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minWidth: 0 }}>
+                        <CardIcon sx={{ color: item.accent || "primary.main", flexShrink: 0 }} />
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography sx={{ fontWeight: 600, lineHeight: 1.3 }}>{item.name}</Typography>
+                          <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", fontFamily: MONO_FONT }}>
+                            {item.tag} · {PESO.format(item.price)}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                      <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+                        {!soldOut ? (
+                          <Button size="small" variant="contained" color="primary" onClick={() => addItem(item)}>
+                            Add to cart
+                          </Button>
+                        ) : (
+                          <Button size="small" variant="outlined" color="inherit" disabled sx={{ borderColor: surfaceBorderColor }}>
+                            Out of stock
+                          </Button>
+                        )}
+                        <Button size="small" color="error" onClick={() => removeFromWishlist(item.id)}>
+                          Remove
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  );
+                })}
+              </Stack>
+            )
+          ) : (
+            <ProfileTab
+              panelSx={panelSx}
+              surfaceBorderColor={surfaceBorderColor}
+              clientTier={clientTier}
+              tierProgress={tierProgress}
+              fulfilledSpend={fulfilledSpend}
+            />
+          )}
+        </Box>
       </Box>
     </Stack>
   );
@@ -384,11 +613,22 @@ export default function AccountPage() {
   }, [reconcileCustomerSession]);
 
   return (
-    <Container maxWidth="lg" sx={{ py: { xs: 5, md: 8 } }}>
+    <Container
+      maxWidth="lg"
+      sx={{
+        py: { xs: 2.5, md: 3 },
+        flex: 1,
+        minHeight: 0,
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
+    >
       {isCustomer || loading ? (
         <Dashboard panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} authLoading={loading && !isCustomer} />
       ) : (
-        <Stack spacing={4} alignItems="center">
+        <Stack spacing={4} alignItems="center" sx={{ py: { xs: 3, md: 5 } }}>
           <Stack spacing={1} alignItems="center" textAlign="center">
             <UserIcon sx={{ fontSize: 40, color: "primary.main" }} />
             <Typography variant="h3">Your account</Typography>

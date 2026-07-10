@@ -127,13 +127,63 @@ export function getCustomerCheckoutDefaults(email, user = null) {
     postal: address.postal || "",
   };
 }
+
+function isBlank(value) {
+  return !String(value ?? "").trim();
+}
+
+function addressFieldEmpty(profile, key) {
+  const addr = profile?.address;
+  if (!addr || typeof addr !== "object") return true;
+  return isBlank(addr[key]);
+}
+
+/** Only writes fields that are currently empty on the saved profile. */
+export async function patchCustomerProfileIfEmpty(email, patch) {
+  const key = normalizeEmail(email);
+  if (!key) return null;
+
+  const existing = getCustomerProfile(email);
+  const fill = { email: key, uid: patch.uid || existing?.uid };
+
+  if (isBlank(existing?.name) && !isBlank(patch.name)) fill.name = String(patch.name).trim();
+  if (isBlank(existing?.phone) && !isBlank(patch.phone)) fill.phone = String(patch.phone).trim();
+
+  const addressPatch = {};
+  const incoming = patch.address && typeof patch.address === "object" ? patch.address : {};
+  if (addressFieldEmpty(existing, "street") && !isBlank(incoming.street)) {
+    addressPatch.street = String(incoming.street).trim();
+  }
+  if (addressFieldEmpty(existing, "city") && !isBlank(incoming.city)) {
+    addressPatch.city = String(incoming.city).trim();
+  }
+  if (addressFieldEmpty(existing, "province") && !isBlank(incoming.province)) {
+    addressPatch.province = String(incoming.province).trim();
+  }
+  if (addressFieldEmpty(existing, "postal") && !isBlank(incoming.postal)) {
+    addressPatch.postal = String(incoming.postal).trim();
+  }
+
+  if (Object.keys(addressPatch).length) {
+    fill.address = {
+      ...(existing?.address && typeof existing.address === "object" ? existing.address : {}),
+      ...addressPatch,
+    };
+  }
+
+  // Only email + uid means nothing to fill
+  const fillKeys = Object.keys(fill).filter((k) => k !== "email" && k !== "uid");
+  if (!fillKeys.length) return existing;
+
+  return upsertCustomerProfile({ ...existing, ...fill, email: key });
+}
 function mergeProfile(existing, input) {
   const email = input.email?.trim() || existing?.email || "";
   const merged = {
     uid: input.uid || existing?.uid || email,
     email,
     name: input.name?.trim() || existing?.name || email.split("@")[0] || "Member",
-    phone: input.phone?.trim() ?? existing?.phone ?? "",
+    phone: (input.phone && String(input.phone).trim()) || existing?.phone || "",
     address: normalizeAddressInput(input, existing),
     marketingOptIn: input.marketingOptIn ?? existing?.marketingOptIn ?? false,
     authProvider: input.authProvider || existing?.authProvider || "unknown",
@@ -201,7 +251,7 @@ export function recordCustomerFromAuth(user) {
     uid: user.uid,
     email: user.email,
     name: user.displayName,
-    phone: user.phone || "",
+    ...(user.phone ? { phone: user.phone } : {}),
     photoURL: user.photoURL || "",
     authProvider: provider === "google.com" ? "google" : provider,
   }).catch((error) => {

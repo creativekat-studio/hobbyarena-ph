@@ -26,7 +26,7 @@ export const PROPOSAL_1 = {
       secondary: { main: isDarkMode ? "#22d3ee" : "#06b6d4", contrastText: OFF_WHITE.textBright },
       warning: { main: "#f59e0b" },
       success: { main: "#22c55e" },
-      error: { main: "#f43f5e" },
+      error: { main: "#D45252", light: "#E07A7A", dark: "#B03C3C" },
       background: {
         default: isDarkMode ? "#0b0b14" : "#f4f5fb",
         paper: isDarkMode ? "#15151f" : OFF_WHITE.paper,
@@ -41,7 +41,7 @@ export const PROPOSAL_1 = {
     const isDarkMode = mode === "dark";
     return {
       accentCyan: "#06b6d4",
-      accentRose: "#f43f5e",
+      accentRose: "#D45252",
       accentGold: "#f59e0b",
       liveDot: "#22c55e",
       heroGradient: isDarkMode
@@ -68,9 +68,7 @@ export const PROPOSAL_1 = {
     const surfaceBackground = isDarkMode
       ? alpha(theme.palette.background.paper, 0.82)
       : alpha(OFF_WHITE.paper, 0.92);
-    const surfaceShadow = isDarkMode
-      ? "0 24px 70px rgba(0,0,0,0.5)"
-      : "0 20px 50px rgba(86, 64, 160, 0.1)";
+    const surfaceShadow = "none";
     const navbarBackground = isDarkMode
       ? alpha(theme.palette.background.default, 0.78)
       : alpha(OFF_WHITE.paper, 0.82);

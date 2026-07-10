@@ -30,25 +30,19 @@ import BannerMarquee from "../components/BannerMarquee.jsx";
 import PaymentMethodsMarquee from "../components/PaymentMethodsMarquee.jsx";
 import TestimonialsShowcase from "../components/TestimonialsShowcase.jsx";
 import {
-  BoltIcon,
   BoxIcon,
   CardIcon,
   FacebookIcon,
   InstagramIcon,
   PokeballIcon,
-  ShieldIcon,
   SparkleIcon,
   TiktokIcon,
-  TruckIcon,
 } from "../components/icons.jsx";
+import { getPerkIcon } from "../lib/perkIcons.js";
 import {
   ALL_PRODUCTS,
 } from "../data/mockData.js";
 
-const floatY = keyframes`
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-8px); }
-`;
 const shimmer = keyframes`
   0%   { transform: translateX(-120%) rotate(8deg); }
   100% { transform: translateX(220%)  rotate(8deg); }
@@ -83,13 +77,6 @@ function resolveProductAccent(product, theme) {
 function resolveFeatureDropProduct(drop) {
   return ALL_PRODUCTS.find((p) => p.id === drop.productId) ?? ALL_PRODUCTS[0];
 }
-
-const PERKS = [
-  { icon: ShieldIcon, title: "100% authentic & sealed", description: "Every box is sourced from official distributors. Factory-sealed, never resealed." },
-  { icon: TruckIcon, title: "Collector-grade shipping", description: "Double-boxed and bubble-wrapped. 48-hour delivery within Metro Manila." },
-  { icon: SparkleIcon, title: "Secure your pre-orders", description: "Lock incoming Pokémon & One Piece sets early — we hold your slot until release." },
-  { icon: BoltIcon, title: "The thrill of the pull", description: "Live drops, hot restocks, and the chase for the next big hit. This is where it begins." },
-];
 
 function scrollToId(id) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -178,7 +165,7 @@ function PromoBannerVisual({ link, accent, isDarkMode, hovered }) {
               bgcolor: alpha(accent, 0.14),
               transform: hovered ? "rotate(-10deg) translateY(-4px)" : "rotate(-14deg)",
               transition: "transform 280ms ease",
-              boxShadow: `0 8px 24px ${alpha(accent, 0.2)}`,
+              boxShadow: "none",
             }}
           />
           <Box
@@ -223,7 +210,7 @@ function PromoBannerVisual({ link, accent, isDarkMode, hovered }) {
           transform: "translate(-50%, -50%)",
           fontSize: { xs: 44, sm: 52 },
           color: alpha(accent, hovered ? 0.85 : 0.65),
-          filter: `drop-shadow(0 4px 16px ${alpha(accent, 0.35)})`,
+          filter: "none",
           transition: "color 280ms ease",
         }}
       />
@@ -283,15 +270,9 @@ function PromoBannerCard({ banner, isDarkMode, surfaceBorderColor }) {
         borderColor: hovered ? alpha(accent, 0.5) : surfaceBorderColor,
         background: cardBg,
         color: isDarkMode ? OFF_WHITE.textBright : theme.palette.text.primary,
-        boxShadow: hovered
-          ? isDarkMode
-            ? `0 24px 56px rgba(0,0,0,0.45), 0 0 0 1px ${alpha(accent, 0.2)}, 0 0 40px ${alpha(accent, 0.15)}`
-            : `0 20px 48px ${alpha(accent, 0.14)}, 0 0 0 1px ${alpha(accent, 0.12)}`
-          : isDarkMode
-            ? "0 16px 40px rgba(0,0,0,0.35)"
-            : `0 14px 36px ${alpha("#1E3A8A", 0.06)}`,
+        boxShadow: "none",
         transform: hovered ? "translateY(-4px)" : "none",
-        transition: "transform 280ms cubic-bezier(0.34, 1.4, 0.64, 1), border-color 280ms ease, box-shadow 320ms ease",
+        transition: "transform 280ms cubic-bezier(0.34, 1.4, 0.64, 1), border-color 280ms ease",
         textDecoration: "none",
       }}
     >
@@ -473,15 +454,13 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
         },
         transition: tilt.hovered ? "transform 80ms ease-out" : "transform 500ms cubic-bezier(0.2, 0.8, 0.2, 1)",
         willChange: "transform",
-        boxShadow: isDarkMode
-          ? `0 30px 80px rgba(0,0,0,0.6), 0 0 60px ${alpha(accent, tilt.hovered ? 0.4 : 0.22)}`
-          : `0 26px 60px ${alpha(accent, tilt.hovered ? 0.28 : 0.16)}`,
+        boxShadow: "none",
       }}
     >
       <Stack spacing={2}>
         <Stack direction="row" alignItems="center" justifyContent="space-between">
           <Stack direction="row" spacing={1} alignItems="center">
-            <Box sx={{ width: 9, height: 9, borderRadius: "50%", bgcolor: brand.liveDot, boxShadow: `0 0 10px ${brand.liveDot}`, animation: `${liveDot} 1.6s ease-in-out infinite` }} />
+            <Box sx={{ width: 9, height: 9, borderRadius: "50%", bgcolor: brand.liveDot, animation: `${liveDot} 1.6s ease-in-out infinite` }} />
             <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 700, fontSize: "0.7rem", letterSpacing: 1.5 }}>
               {isPreorder ? "PRE-ORDER ▸ LIVE" : "DROP ▸ LIVE"}
             </Typography>
@@ -495,11 +474,8 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
             position: "relative",
             borderRadius: 1,
             overflow: "hidden",
-            aspectRatio: "16 / 11",
+            aspectRatio: "4 / 3",
             ...productMediaSurface(isDarkMode),
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
             animation: `${fadeSlide} 480ms ease-out`,
             "&::after": {
               content: '""',
@@ -510,6 +486,8 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
               height: "200%",
               background: `linear-gradient(110deg, transparent 30%, ${OFF_WHITE.shimmer} 50%, transparent 70%)`,
               animation: `${shimmer} 5.5s ease-in-out infinite`,
+              pointerEvents: "none",
+              zIndex: 1,
             },
           }}
         >
@@ -519,19 +497,36 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
               src={product.image}
               alt={product.name}
               sx={{
-                position: "relative",
-                zIndex: 1,
-                maxHeight: "86%",
-                maxWidth: "86%",
-                objectFit: "contain",
-                filter: "drop-shadow(0 16px 28px rgba(0,0,0,0.45))",
-                animation: `${floatY} 5s ease-in-out infinite`,
+                position: "absolute",
+                inset: 0,
+                zIndex: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                objectPosition: "center",
               }}
             />
           ) : (
-            <Glyph sx={{ fontSize: 140, color: OFF_WHITE.glyph, filter: "drop-shadow(0 12px 24px rgba(0,0,0,0.3))", animation: `${floatY} 5s ease-in-out infinite` }} />
+            <Box sx={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}>
+              <Glyph sx={{ fontSize: 140, color: OFF_WHITE.glyph }} />
+            </Box>
           )}
-          <Chip label={current.badge || (isPreorder ? "PRE-ORDER" : "FEATURED DROP")} size="small" sx={{ position: "absolute", top: 12, left: 12, zIndex: 2, bgcolor: "rgba(0,0,0,0.45)", color: OFF_WHITE.textBright, fontFamily: MONO_FONT, letterSpacing: 1, backdropFilter: "blur(4px)" }} />
+          <Chip
+            label={current.badge || (isPreorder ? "PRE-ORDER" : "FEATURED DROP")}
+            size="small"
+            sx={{
+              position: "absolute",
+              top: 12,
+              left: 12,
+              zIndex: 2,
+              bgcolor: current.color ? alpha(current.color, 0.92) : "rgba(0,0,0,0.45)",
+              color: current.color ? "#0B1538" : OFF_WHITE.textBright,
+              fontFamily: MONO_FONT,
+              letterSpacing: 1,
+              backdropFilter: "blur(4px)",
+              border: current.color ? `1px solid ${alpha(current.color, 0.5)}` : "none",
+            }}
+          />
           {isPreorder && product.preorderEndsAt ? (
             <Box
               sx={{
@@ -540,10 +535,12 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
                 left: 12,
                 right: 12,
                 zIndex: 2,
-                "& > *": { backdropFilter: "blur(8px)", bgcolor: alpha(theme.palette.background.paper, 0.92) },
+                display: "flex",
+                justifyContent: "center",
+                "& > *": { width: "100%" },
               }}
             >
-              <PreorderCountdown endsAt={product.preorderEndsAt} compact />
+              <PreorderCountdown endsAt={product.preorderEndsAt} compact tone="dark" wrapLabel featured />
             </Box>
           ) : null}
         </Box>
@@ -720,7 +717,7 @@ export default function HomePage() {
             <Grid size={{ xs: 12, md: hasHeroShowcase ? 6 : 12 }}>
               <Stack spacing={3}>
                 <Box sx={{ display: "inline-flex", alignSelf: "flex-start", alignItems: "center", gap: 1, px: 1.5, py: 0.5, borderRadius: 1, border: "1px solid", borderColor: alpha(theme.palette.primary.main, 0.45) }}>
-                  <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: brand.liveDot, boxShadow: `0 0 8px ${brand.liveDot}`, animation: `${liveDot} 1.6s ease-in-out infinite` }} />
+                  <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: brand.liveDot, animation: `${liveDot} 1.6s ease-in-out infinite` }} />
                   <Typography variant="caption" sx={{ letterSpacing: 1.5, color: "primary.main", fontWeight: 800, textTransform: "uppercase", fontFamily: MONO_FONT }}>{hero.tagline}</Typography>
                 </Box>
 
@@ -766,7 +763,7 @@ export default function HomePage() {
             </Stack>
             <Grid container spacing={2.5}>
               {preorderProducts.map((product) => (
-                <Grid size={{ xs: 6, sm: 6, md: 3 }} key={product.id}>
+                <Grid size={{ xs: 12, sm: 6, md: 3 }} key={product.id}>
                   <ProductCard product={product} panelSx={panelSx} isDarkMode={isDarkMode} />
                 </Grid>
               ))}
@@ -789,35 +786,41 @@ export default function HomePage() {
             </Stack>
             <Grid container spacing={2.5}>
               {sealedProducts.map((product) => (
-                <Grid size={{ xs: 6, sm: 6, md: 3 }} key={product.id}>
+                <Grid size={{ xs: 12, sm: 6, md: 3 }} key={product.id}>
                   <ProductCard product={product} panelSx={panelSx} isDarkMode={isDarkMode} />
                 </Grid>
               ))}
             </Grid>
           </Box>
 
-          <Box>
-            <Stack spacing={1} alignItems="center" textAlign="center" sx={{ mb: 4 }}>
-              <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2 }}>Why Hobby Arena</Typography>
-              <Typography variant="h4">TCG starts here.</Typography>
-            </Stack>
-            <Grid container spacing={2.5}>
-              {PERKS.map((perk) => {
-                const Icon = perk.icon;
-                return (
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }} key={perk.title}>
-                    <Box sx={{ ...panelSx, p: 3, height: "100%" }}>
-                      <Box sx={{ width: 44, height: 44, borderRadius: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "primary.main", bgcolor: alpha(theme.palette.primary.main, 0.12), mb: 1.5 }}>
-                        <Icon />
+          {content.perks?.enabled !== false && (content.perks?.items || []).some((p) => p.active !== false) ? (
+            <Box>
+              <Stack spacing={1} alignItems="center" textAlign="center" sx={{ mb: 4 }}>
+                <Typography variant="h3" sx={{ fontWeight: 800, fontSize: { xs: "1.75rem", md: "2.25rem" } }}>
+                  {content.perks.title || "Why choose Hobby Arena?"}
+                </Typography>
+              </Stack>
+              <Grid container spacing={2.5}>
+                {(content.perks.items || []).filter((p) => p.active !== false).map((perk) => {
+                  const Icon = getPerkIcon(perk.icon);
+                  const accent = perk.color || theme.palette.primary.main;
+                  const activeCount = (content.perks.items || []).filter((p) => p.active !== false).length;
+                  const mdCols = activeCount <= 3 ? 12 / activeCount : activeCount === 4 ? 3 : 4;
+                  return (
+                    <Grid size={{ xs: 12, sm: 6, md: mdCols }} key={perk.id}>
+                      <Box sx={{ ...panelSx, p: 3, height: "100%" }}>
+                        <Box sx={{ width: 44, height: 44, borderRadius: 1, display: "flex", alignItems: "center", justifyContent: "center", color: accent, bgcolor: alpha(accent, 0.12), mb: 1.5 }}>
+                          <Icon />
+                        </Box>
+                        <Typography variant="h6" sx={{ fontWeight: 700 }}>{perk.title}</Typography>
+                        <Typography color="text.secondary" sx={{ fontSize: "0.9rem", mt: 0.5 }}>{perk.description}</Typography>
                       </Box>
-                      <Typography variant="h6" sx={{ fontWeight: 700 }}>{perk.title}</Typography>
-                      <Typography color="text.secondary" sx={{ fontSize: "0.9rem", mt: 0.5 }}>{perk.description}</Typography>
-                    </Box>
-                  </Grid>
-                );
-              })}
-            </Grid>
-          </Box>
+                    </Grid>
+                  );
+                })}
+              </Grid>
+            </Box>
+          ) : null}
 
           {content.testimonials.enabled ? (
             <TestimonialsShowcase
@@ -830,7 +833,7 @@ export default function HomePage() {
             />
           ) : null}
 
-          <PaymentMethodsMarquee panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} />
+          <PaymentMethodsMarquee panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} bankDetails={content.bankDetails} />
         </Stack>
       </Container>
     </Box>

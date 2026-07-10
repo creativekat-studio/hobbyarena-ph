@@ -35,6 +35,12 @@ export const SHOP_FILTER_LAYOUTS = {
   },
 };
 
+export function normalizeShopFilterLayout(value) {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(SHOP_FILTER_LAYOUTS, value)
+    ? value
+    : DEFAULT_SHOP_FILTER_LAYOUT;
+}
+
 export const MOCK_LINE_FILTERS = [
   { id: "all", label: "All lines", short: "All", logo: null, count: 12 },
   { id: "pokemon", label: "Pokémon TCG", short: "Pokémon", logo: "/TCG logos/Pokemon Logo.png", count: 4 },

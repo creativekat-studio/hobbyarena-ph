@@ -155,6 +155,7 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
           quantity: qty,
           tag: picker.tag,
           line: picker.line,
+          image: picker.image || null,
         },
       ];
     });

@@ -27,7 +27,9 @@ export default function CustomerLayout() {
     setSearchOpen(false);
   }, [location.pathname]);
 
-  const showGlobalFooter = !["/checkout"].includes(location.pathname);
+  const isAccount = location.pathname === "/account";
+  const isCheckout = location.pathname === "/checkout";
+  const showGlobalFooter = !isCheckout && !isAccount;
 
   if (!hydrated) {
     return (
@@ -61,7 +63,15 @@ export default function CustomerLayout() {
   return (
     <Box
       sx={{
-        minHeight: "100dvh",
+        ...(isAccount
+          ? { height: "100dvh", overflow: "hidden" }
+          : isCheckout
+            ? {
+                minHeight: "100dvh",
+                height: { xs: "auto", md: "100dvh" },
+                overflow: { xs: "visible", md: "hidden" },
+              }
+            : { minHeight: "100dvh" }),
         bgcolor: "background.default",
         color: "text.primary",
         backgroundImage: surfaces.pageBackground,
@@ -73,7 +83,7 @@ export default function CustomerLayout() {
       <StorefrontNavbar surfaces={surfaces} onOpenCart={() => setCartOpen(true)} onOpenSearch={() => setSearchOpen(true)} />
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} surfaceBorderColor={surfaces.surfaceBorderColor} isDarkMode={isDarkMode} />
       <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} surfaceBorderColor={surfaces.surfaceBorderColor} />
-      <Box sx={{ flexGrow: 1 }}>
+      <Box sx={{ flexGrow: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
         <Outlet context={{ surfaces, isDarkMode }} />
       </Box>
       {showGlobalFooter ? (

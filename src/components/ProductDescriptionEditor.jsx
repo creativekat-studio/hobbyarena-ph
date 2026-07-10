@@ -96,114 +96,147 @@ export default function ProductDescriptionEditor({ sections, onChange, surfaceBo
   }
 
   return (
-    <Stack spacing={2}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center">
-        <Box>
+    <Stack spacing={0} sx={{ flex: 1, minHeight: 0, height: "100%" }}>
+      <Stack
+        direction="row"
+        justifyContent="space-between"
+        alignItems="center"
+        spacing={2}
+        sx={{
+          position: "sticky",
+          top: 0,
+          zIndex: 2,
+          pb: 2,
+          mb: 0,
+          flexShrink: 0,
+        borderBottom: "1px solid",
+          borderColor: border,
+        }}
+      >
+        <Box sx={{ minWidth: 0 }}>
           <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }}>Product description</Typography>
           <Typography sx={{ color: "text.secondary", fontSize: "0.78rem" }}>
             Add custom sections — not every product needs Color, SKU, etc.
           </Typography>
         </Box>
-        <Button size="small" startIcon={<PlusIcon />} onClick={addSection} variant="outlined" color="inherit" sx={{ borderColor: border }}>
+        <Button
+          size="small"
+          startIcon={<PlusIcon />}
+          onClick={addSection}
+          variant="outlined"
+          color="inherit"
+          sx={{ borderColor: border, flexShrink: 0, whiteSpace: "nowrap" }}
+        >
           Add section
         </Button>
       </Stack>
 
-      {sections.length === 0 ? (
-        <Box sx={{ p: 2, borderRadius: 1, border: "1px dashed", borderColor: border, textAlign: "center" }}>
-          <Typography sx={{ color: "text.secondary", fontSize: "0.85rem" }}>
-            No custom description yet. Add a section or leave blank to use defaults on the storefront.
-          </Typography>
-        </Box>
-      ) : null}
-
-      {sections.map((section, sectionIndex) => (
-        <Box key={sectionIndex} sx={{ p: 2, borderRadius: 1, border: "1px solid", borderColor: border }}>
-          <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1.5 }}>
-            <Typography sx={{ fontWeight: 700, fontSize: "0.82rem", color: "text.secondary" }}>
-              Section {sectionIndex + 1}
+      <Stack spacing={2} sx={{ flex: 1, minHeight: 0, overflow: "auto", pt: 2, pr: 0.5 }}>
+        {sections.length === 0 ? (
+          <Box sx={{ p: 2, borderRadius: 1, border: "1px dashed", borderColor: border, textAlign: "center" }}>
+            <Typography sx={{ color: "text.secondary", fontSize: "0.85rem" }}>
+              No custom description yet. Add a section or leave blank to use defaults on the storefront.
             </Typography>
-            <IconButton size="small" color="error" onClick={() => removeSection(sectionIndex)} aria-label="Remove section">
-              <TrashIcon sx={{ fontSize: 18 }} />
-            </IconButton>
-          </Stack>
+          </Box>
+        ) : null}
 
-          <Stack spacing={1.5}>
-            <TextField
-              label="Section title"
-              size="small"
-              fullWidth
-              value={section.title}
-              onChange={(e) => updateSection(sectionIndex, { title: e.target.value })}
-              placeholder="e.g. Set details, What's included"
-            />
-            <TextField
-              label="Intro paragraph (optional)"
-              size="small"
-              fullWidth
-              multiline
-              minRows={2}
-              value={section.intro}
-              onChange={(e) => updateSection(sectionIndex, { intro: e.target.value })}
-            />
+        {sections.map((section, sectionIndex) => (
+          <Box key={sectionIndex} sx={{ p: 2, borderRadius: 1, border: "1px solid", borderColor: border }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1.5 }}>
+              <Typography
+                variant="overline"
+                sx={{
+                  color: "primary.main",
+                  fontWeight: 800,
+                  letterSpacing: "0.08em",
+                  fontSize: "0.65rem",
+                  lineHeight: 1.2,
+                }}
+              >
+                Section {sectionIndex + 1}
+              </Typography>
+              <IconButton size="small" color="error" onClick={() => removeSection(sectionIndex)} aria-label="Remove section">
+                <TrashIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Stack>
 
-            <Box>
-              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                <Typography sx={{ fontWeight: 600, fontSize: "0.8rem" }}>Spec rows</Typography>
-                <Button size="small" onClick={() => addSpec(sectionIndex)} startIcon={<PlusIcon sx={{ fontSize: 16 }} />}>
-                  Add row
-                </Button>
-              </Stack>
-              {section.specs.length === 0 ? (
-                <Typography sx={{ color: "text.secondary", fontSize: "0.78rem" }}>No spec rows — add label/value pairs as needed.</Typography>
-              ) : (
-                <Stack spacing={1}>
-                  {section.specs.map((row, specIndex) => (
-                    <Stack key={specIndex} direction="row" spacing={1} alignItems="center">
-                      <TextField
-                        size="small"
-                        label="Label"
-                        value={row.label}
-                        onChange={(e) => updateSpec(sectionIndex, specIndex, "label", e.target.value)}
-                        sx={{ flex: 1 }}
-                      />
-                      <TextField
-                        size="small"
-                        label="Value"
-                        value={row.value}
-                        onChange={(e) => updateSpec(sectionIndex, specIndex, "value", e.target.value)}
-                        sx={{ flex: 1 }}
-                      />
-                      <IconButton size="small" onClick={() => removeSpec(sectionIndex, specIndex)} aria-label="Remove row">
-                        <TrashIcon sx={{ fontSize: 16 }} />
-                      </IconButton>
-                    </Stack>
-                  ))}
+            <Stack spacing={1.5}>
+              <TextField
+                label="Section title"
+                size="small"
+                fullWidth
+                value={section.title}
+                onChange={(e) => updateSection(sectionIndex, { title: e.target.value })}
+                placeholder="e.g. Set details, What's included"
+              />
+              <TextField
+                label="Intro paragraph (optional)"
+                size="small"
+                fullWidth
+                multiline
+                minRows={2}
+                value={section.intro}
+                onChange={(e) => updateSection(sectionIndex, { intro: e.target.value })}
+              />
+
+              <Box>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                  <Typography sx={{ fontWeight: 600, fontSize: "0.8rem" }}>Spec rows</Typography>
+                  <Button size="small" onClick={() => addSpec(sectionIndex)} startIcon={<PlusIcon sx={{ fontSize: 16 }} />}>
+                    Add row
+                  </Button>
                 </Stack>
-              )}
-            </Box>
+                {section.specs.length === 0 ? (
+                  <Typography sx={{ color: "text.secondary", fontSize: "0.78rem" }}>No spec rows — add label/value pairs as needed.</Typography>
+                ) : (
+                  <Stack spacing={1}>
+                    {section.specs.map((row, specIndex) => (
+                      <Stack key={specIndex} direction="row" spacing={1} alignItems="center">
+                        <TextField
+                          size="small"
+                          label="Label"
+                          value={row.label}
+                          onChange={(e) => updateSpec(sectionIndex, specIndex, "label", e.target.value)}
+                          sx={{ flex: 1 }}
+                        />
+                        <TextField
+                          size="small"
+                          label="Value"
+                          value={row.value}
+                          onChange={(e) => updateSpec(sectionIndex, specIndex, "value", e.target.value)}
+                          sx={{ flex: 1 }}
+                        />
+                        <IconButton size="small" onClick={() => removeSpec(sectionIndex, specIndex)} aria-label="Remove row">
+                          <TrashIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Stack>
+                    ))}
+                  </Stack>
+                )}
+              </Box>
 
-            <TextField
-              label="Bullet points (one per line, optional)"
-              size="small"
-              fullWidth
-              multiline
-              minRows={3}
-              value={section.bullets.join("\n")}
-              onChange={(e) => updateSection(sectionIndex, { bullets: e.target.value.split("\n") })}
-            />
-            <TextField
-              label="Footnote (optional)"
-              size="small"
-              fullWidth
-              value={section.note}
-              onChange={(e) => updateSection(sectionIndex, { note: e.target.value })}
-            />
-          </Stack>
+              <TextField
+                label="Bullet points (one per line, optional)"
+                size="small"
+                fullWidth
+                multiline
+                minRows={3}
+                value={section.bullets.join("\n")}
+                onChange={(e) => updateSection(sectionIndex, { bullets: e.target.value.split("\n") })}
+              />
+              <TextField
+                label="Footnote (optional)"
+                size="small"
+                fullWidth
+                value={section.note}
+                onChange={(e) => updateSection(sectionIndex, { note: e.target.value })}
+              />
+            </Stack>
 
-          {sectionIndex < sections.length - 1 ? <Divider sx={{ mt: 2, borderColor: border }} /> : null}
-        </Box>
-      ))}
+            {sectionIndex < sections.length - 1 ? <Divider sx={{ mt: 2, borderColor: border }} /> : null}
+          </Box>
+        ))}
+      </Stack>
     </Stack>
   );
 }

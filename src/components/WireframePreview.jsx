@@ -46,7 +46,7 @@ export function BrowserChrome({ url, children, contentSx }) {
         overflow: "hidden",
         border: "1px solid",
         borderColor: alpha(theme.palette.text.primary, 0.12),
-        boxShadow: `0 12px 40px ${alpha(theme.palette.common.black, 0.22)}`,
+        boxShadow: "none",
       }}
     >
       <Stack

@@ -68,7 +68,7 @@ export default function AdminNotificationBell({ surfaceBorderColor }) {
   function tooltipLabel() {
     if (isEmpty) return "Notifications";
     const parts = [];
-    if (notificationCount) parts.push(`${notificationCount} new order${notificationCount === 1 ? "" : "s"}`);
+    if (notificationCount) parts.push(`${notificationCount} order alert${notificationCount === 1 ? "" : "s"}`);
     if (unreadCount) parts.push(`${unreadCount} new inquir${unreadCount === 1 ? "y" : "ies"}`);
     return parts.join(", ");
   }
@@ -135,21 +135,27 @@ export default function AdminNotificationBell({ surfaceBorderColor }) {
         </Box>
         <Divider />
 
-        <SectionHeader icon={BoxIcon} label="New orders" count={menuOrders.length} />
+        <SectionHeader icon={BoxIcon} label="Order alerts" count={menuOrders.length} />
         {menuOrders.length === 0 ? (
           <MenuItem disabled sx={{ whiteSpace: "normal", py: 1.5, opacity: 0.7 }}>
-            <Typography variant="body2" color="text.secondary">No new order alerts.</Typography>
+            <Typography variant="body2" color="text.secondary">No order alerts.</Typography>
           </MenuItem>
         ) : (
-          menuOrders.map((order) => (
+          menuOrders.map((order) => {
+            const latest = [...(order.trail ?? [])].sort((a, b) => new Date(b.at) - new Date(a.at))[0];
+            const hint = latest?.title?.includes("proof") || latest?.title === "Refund details submitted"
+              ? latest.title
+              : (order.payment === "Pending Verification" ? "New order — verify payment" : "Customer update");
+            return (
             <MenuItem key={order.id} onClick={() => goToOrder(order.id)} sx={{ whiteSpace: "normal", alignItems: "flex-start", py: 1.5 }}>
               <Stack spacing={0.25} sx={{ minWidth: 0 }}>
                 <Typography sx={{ fontWeight: 700, fontSize: "0.88rem", fontFamily: MONO_FONT }}>{order.id}</Typography>
                 <Typography sx={{ fontSize: "0.82rem" }}>{order.customer} · {PESO.format(order.total)}</Typography>
-                <Typography variant="caption" color="text.secondary">{formatWhen(order.date)}</Typography>
+                <Typography variant="caption" color="text.secondary">{hint} · {formatWhen(order.date)}</Typography>
               </Stack>
             </MenuItem>
-          ))
+            );
+          })
         )}
 
         <Divider sx={{ my: 0.5 }} />

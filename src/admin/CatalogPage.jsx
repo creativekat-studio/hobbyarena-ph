@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import {
   Box,
   Button,
+  CircularProgress,
   Stack,
   Switch,
   Tab,
@@ -15,18 +16,128 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useOutletContext } from "react-router-dom";
+import { alpha, useTheme } from "@mui/material/styles";
+import { useOutletContext, useSearchParams } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import { useCatalog } from "../lib/catalogStore.jsx";
+import { useFirebaseData } from "../lib/firebase/config.js";
+import { uploadCmsAsset } from "../lib/firebase/repositories/uploads.js";
+import { compressProductImageFile } from "../lib/imageCompression.js";
+import { resolveLineLogo } from "../lib/shopFilterUi.js";
 import TermsEditor from "./TermsEditor.jsx";
 
+const MemberRanksPanel = lazy(() =>
+  import("./MemberRanksPanel.jsx").then((mod) => ({ default: mod.MemberRanksPanel })),
+);
+
 const TABS = [
-  "Product lines",
-  "Product types",
-  "Pre-order terms",
-  "In-stock terms",
+  { id: "product-lines", label: "Product lines" },
+  { id: "product-types", label: "Product types" },
+  { id: "member-ranks", label: "Member ranks" },
+  { id: "pre-order-terms", label: "Pre-order terms" },
+  { id: "in-stock-terms", label: "In-stock terms" },
 ];
+
+function tabIndexFromParam(param) {
+  const idx = TABS.findIndex((tab) => tab.id === param);
+  return idx >= 0 ? idx : 0;
+}
+
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Could not read file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function LineLogoUpload({ line, onChange, surfaceBorderColor }) {
+  const theme = useTheme();
+  const firebaseEnabled = useFirebaseData();
+  const inputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const preview = line.logo || resolveLineLogo(line);
+
+  async function handleFileChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return;
+    if (file.size > 5 * 1024 * 1024) return;
+
+    setUploading(true);
+    try {
+      const compressedFile = await compressProductImageFile(file);
+      const url = firebaseEnabled
+        ? await uploadCmsAsset(compressedFile, `line-${line.id || "logo"}`)
+        : await readAsDataUrl(compressedFile);
+      onChange(url);
+    } catch (error) {
+      console.error("[catalog] Line logo upload failed:", error);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <Stack direction="row" spacing={1} alignItems="center">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/*"
+        hidden
+        onChange={handleFileChange}
+      />
+      <Box
+        sx={{
+          width: 56,
+          height: 36,
+          borderRadius: 1,
+          border: "1px solid",
+          borderColor: surfaceBorderColor,
+          bgcolor: preview ? "#fff" : alpha(theme.palette.text.primary, 0.04),
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+          flexShrink: 0,
+        }}
+      >
+        {uploading ? (
+          <CircularProgress size={16} />
+        ) : preview ? (
+          <Box component="img" src={preview} alt="" sx={{ width: "100%", height: "100%", objectFit: "contain", p: 0.5 }} />
+        ) : (
+          <Typography sx={{ fontSize: "0.58rem", color: "text.secondary", fontFamily: MONO_FONT }}>LOGO</Typography>
+        )}
+      </Box>
+      <Stack spacing={0.25}>
+        <Button
+          size="small"
+          variant="outlined"
+          disabled={uploading}
+          onClick={() => inputRef.current?.click()}
+          sx={{ fontSize: "0.65rem", minWidth: 0, px: 1, py: 0.25, lineHeight: 1.4 }}
+        >
+          {line.logo ? "Replace" : "Upload"}
+        </Button>
+        {line.logo ? (
+          <Button
+            size="small"
+            color="inherit"
+            disabled={uploading}
+            onClick={() => onChange("")}
+            sx={{ fontSize: "0.62rem", minWidth: 0, px: 1, py: 0, color: "text.secondary" }}
+          >
+            Remove
+          </Button>
+        ) : null}
+      </Stack>
+    </Stack>
+  );
+}
 
 function TabIntro({ children }) {
   return (
@@ -64,13 +175,15 @@ function ProductLinesTab({ panelSx, surfaceBorderColor, lines, addLine, updateLi
       <TabIntro>
         Product lines are the game or franchise groupings shoppers filter by — for example Pokémon TCG or One Piece.
         Each product in Inventory must use a <strong>Line</strong> value that matches the inventory match text below.
+        Upload a logo to show on the shop filters; without one, a built-in fallback is used when available.
       </TabIntro>
 
       <TableContainer sx={{ display: { xs: "none", md: "block" } }}>
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell sx={{ fontWeight: 800, width: "28%" }}>Shop label</TableCell>
+              <TableCell sx={{ fontWeight: 800, width: 140 }}>Logo</TableCell>
+              <TableCell sx={{ fontWeight: 800, width: "24%" }}>Shop label</TableCell>
               <TableCell sx={{ fontWeight: 800 }}>Inventory match</TableCell>
               <TableCell sx={{ fontWeight: 800, width: 88 }} align="center">Active</TableCell>
               <TableCell sx={{ fontWeight: 800, width: 88 }} align="right" />
@@ -79,6 +192,13 @@ function ProductLinesTab({ panelSx, surfaceBorderColor, lines, addLine, updateLi
           <TableBody>
             {lines.map((line) => (
               <TableRow key={line.id}>
+                <TableCell>
+                  <LineLogoUpload
+                    line={line}
+                    surfaceBorderColor={surfaceBorderColor}
+                    onChange={(logo) => updateLine(line.id, { logo })}
+                  />
+                </TableCell>
                 <TableCell>
                   <TextField
                     size="small"
@@ -116,6 +236,13 @@ function ProductLinesTab({ panelSx, surfaceBorderColor, lines, addLine, updateLi
       <Stack spacing={1.5} sx={{ display: { xs: "flex", md: "none" } }}>
         {lines.map((line) => (
           <Box key={line.id} sx={{ p: 1.5, border: "1px solid", borderColor: surfaceBorderColor, borderRadius: 1 }}>
+            <Box sx={{ mb: 1.5 }}>
+              <LineLogoUpload
+                line={line}
+                surfaceBorderColor={surfaceBorderColor}
+                onChange={(logo) => updateLine(line.id, { logo })}
+              />
+            </Box>
             <TextField size="small" fullWidth label="Shop label" value={line.label} onChange={(e) => updateLine(line.id, { label: e.target.value })} sx={{ mb: 1.5 }} />
             <TextField size="small" fullWidth label="Inventory match" value={line.match ?? line.label} onChange={(e) => updateLine(line.id, { match: e.target.value })} sx={{ mb: 1 }} />
             <Stack direction="row" alignItems="center" justifyContent="space-between">
@@ -274,30 +401,39 @@ export default function CatalogPage() {
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
   const { lines, categories, terms, addLine, addCategory, updateLine, updateCategory, removeLine, removeCategory, setTerms } = useCatalog();
-  const [tab, setTab] = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState(() => tabIndexFromParam(searchParams.get("tab")));
+
+  useEffect(() => {
+    const next = tabIndexFromParam(searchParams.get("tab"));
+    setTab((current) => (current === next ? current : next));
+  }, [searchParams]);
+
+  function handleTabChange(_, value) {
+    setTab(value);
+    setSearchParams({ tab: TABS[value].id }, { replace: true });
+  }
 
   return (
     <Stack spacing={ADMIN_PAGE_SPACING}>
       <AdminPageHeader
         eyebrow="Store setup"
-        title="Product classifications"
-        subtitle="Define product lines, in-stock types, and legal terms — used by shop filters, inventory, and product pages."
+        title="Classifications"
+        subtitle="Product lines, types, member ranks, and legal terms — used by shop filters, inventory, and account badges."
       />
 
       <Tabs
         value={tab}
-        onChange={(_, value) => setTab(value)}
+        onChange={handleTabChange}
         variant="scrollable"
         scrollButtons="auto"
         sx={{
-          minHeight: 40,
           borderBottom: "1px solid",
           borderColor: surfaceBorderColor,
-          "& .MuiTab-root": { minHeight: 40, py: 1, fontSize: "0.82rem" },
         }}
       >
-        {TABS.map((label) => (
-          <Tab key={label} label={label} sx={{ fontWeight: 700, textTransform: "none" }} />
+        {TABS.map((item) => (
+          <Tab key={item.id} label={item.label} />
         ))}
       </Tabs>
 
@@ -308,9 +444,20 @@ export default function CatalogPage() {
         <ProductTypesTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} categories={categories} addCategory={addCategory} updateCategory={updateCategory} removeCategory={removeCategory} />
       ) : null}
       {tab === 2 ? (
-        <PreorderTermsTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} terms={terms} setTerms={setTerms} />
+        <Suspense
+          fallback={(
+            <Box sx={{ ...panelSx, p: 4, display: "flex", justifyContent: "center" }}>
+              <CircularProgress size={28} />
+            </Box>
+          )}
+        >
+          <MemberRanksPanel panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} />
+        </Suspense>
       ) : null}
       {tab === 3 ? (
+        <PreorderTermsTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} terms={terms} setTerms={setTerms} />
+      ) : null}
+      {tab === 4 ? (
         <InstockTermsTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} terms={terms} setTerms={setTerms} />
       ) : null}
     </Stack>

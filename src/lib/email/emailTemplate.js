@@ -1,11 +1,10 @@
-import { getEmailLinks, getSupportEmail } from "./emailUtils.js";
+import { getEmailLinks, getSupportContactHtml } from "./emailUtils.js";
 
 /** Minimal Hobby Arena email shell — clean, invoice-friendly. */
 
 export const EMAIL_BRAND = {
-  name: "Hobby Arena",
+  name: "Hobby Arena PH",
   tagline: "Your Trusted Source for Premium TCG",
-  supportEmail: "hello@hobbyarena.ph",
   siteUrl: "https://hobbyarena.vercel.app",
   logoPath: "/hobby_arena_hd.png",
   logoAspect: 1536 / 1024,
@@ -154,8 +153,53 @@ export function statusList(items) {
  * }} options
  */
 export function defaultFooterNote() {
-  const supportEmail = getSupportEmail();
-  return `Questions? Email us at <a href="mailto:${escapeHtml(supportEmail)}" style="color:${EMAIL_BRAND.colors.muted};text-decoration:underline">${escapeHtml(supportEmail)}</a>. Please do not reply to this message — this inbox is not monitored.`;
+  return getSupportContactHtml();
+}
+
+/** Pre-order reminder — only for customers who have not fully paid. */
+export function preorderReminderBlock({ depositPercent = 30 } = {}) {
+  const c = EMAIL_BRAND.colors;
+  const dp = Math.max(0, Math.min(100, Number(depositPercent) || 30));
+  const balance = Math.max(0, 100 - dp);
+  const links = getEmailLinks();
+
+  return `
+    <div style="margin:0 0 8px;padding:16px 18px;border-radius:8px;background:${c.page};border:1px solid ${c.border}">
+      <p style="margin:0 0 10px;font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${c.ink}">
+        Pre-Order Reminder
+      </p>
+      <p style="margin:0 0 8px;font-family:${FONT};font-size:13px;line-height:1.6;color:${c.text}">
+        ${dp}% down payment is non-refundable (unless it is due to country allocation cuts)
+      </p>
+      <p style="margin:0 0 8px;font-family:${FONT};font-size:13px;line-height:1.6;color:${c.text}">
+        The remaining ${balance}% balance must be fully settled before the Product Release Day to ensure smooth processing and timely turnover of your order.
+      </p>
+      <p style="margin:0 0 12px;font-family:${FONT};font-size:13px;line-height:1.6;color:${c.text}">
+        Orders that remain unpaid or unclaimed seven (7) days after the Product Release Day will be considered abandoned, and the corresponding down payment will strictly be forfeited.
+      </p>
+      <p style="margin:0;font-family:${FONT};font-size:13px;line-height:1.6;color:${c.muted}">
+        Questions? Message us directly at
+        <a href="${escapeHtml(links.messengerUrl)}" style="color:${c.ink};font-weight:600;text-decoration:underline">Hobby Arena PH</a>
+      </p>
+    </div>
+  `;
+}
+
+export function preorderReminderText({ depositPercent = 30 } = {}) {
+  const dp = Math.max(0, Math.min(100, Number(depositPercent) || 30));
+  const balance = Math.max(0, 100 - dp);
+  const links = getEmailLinks();
+  return [
+    "Pre-Order Reminder",
+    "",
+    `${dp}% down payment is non-refundable (unless it is due to country allocation cuts)`,
+    "",
+    `The remaining ${balance}% balance must be fully settled before the Product Release Day to ensure smooth processing and timely turnover of your order.`,
+    "",
+    "Orders that remain unpaid or unclaimed seven (7) days after the Product Release Day will be considered abandoned, and the corresponding down payment will strictly be forfeited.",
+    "",
+    `Questions? Message us directly at Hobby Arena PH (${links.messengerUrl})`,
+  ].join("\n");
 }
 
 /**
@@ -201,10 +245,30 @@ export function customerResponseButtons({
   `;
 }
 
+/** Single Messenger CTA (e.g. ready for pickup). */
+export function messengerButton({
+  caption = "Message us to schedule pickup.",
+  label = "Message Hobby Arena PH",
+  href,
+} = {}) {
+  const c = EMAIL_BRAND.colors;
+  const links = getEmailLinks();
+  const target = href || links.messengerUrl;
+  return `
+    <div style="margin:16px 0 8px;text-align:center">
+      ${caption ? `<p style="margin:0 0 12px;font-family:${FONT};font-size:14px;line-height:1.6;color:${c.muted}">${escapeHtml(caption)}</p>` : ""}
+      <a href="${escapeHtml(target)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 22px;border-radius:8px;background:${c.gold};color:${c.ink};font-family:${FONT};font-size:13px;font-weight:700;text-decoration:none;border:1px solid ${c.gold}">
+        ${escapeHtml(label)}
+      </a>
+    </div>
+  `;
+}
+
 export function wrapSimpleEmail({ preheader = "", bodyHtml, footerNote = "" }) {
   const c = EMAIL_BRAND.colors;
   const year = new Date().getFullYear();
   const links = getEmailLinks();
+  const displayHost = String(links.displaySiteUrl || links.siteUrl).replace(/^https?:\/\//, "");
 
   return `
 <!DOCTYPE html>
@@ -226,13 +290,11 @@ export function wrapSimpleEmail({ preheader = "", bodyHtml, footerNote = "" }) {
               ${emailHeader()}
               ${bodyHtml}
               ${divider()}
-              <p style="margin:0 0 8px;font-family:${FONT};font-size:12px;line-height:1.6;color:${c.muted}">
-                ${footerNote || defaultFooterNote()}
-              </p>
+              ${footerNote ? `<div style="margin:0 0 12px;font-family:${FONT};font-size:12px;line-height:1.6;color:${c.muted}">${footerNote}</div>` : ""}
               <p style="margin:0;font-family:${FONT};font-size:12px;color:${c.muted}">
-                <a href="${links.siteUrl}" style="color:${c.muted};text-decoration:none">${links.siteUrl.replace(/^https?:\/\//, "")}</a>
+                <a href="${escapeHtml(links.displaySiteUrl || links.siteUrl)}" style="color:${c.muted};text-decoration:none">${escapeHtml(displayHost)}</a>
                 <span style="color:${c.faint}"> · </span>
-                <a href="mailto:${escapeHtml(links.supportEmail)}" style="color:${c.muted};text-decoration:none">${escapeHtml(links.supportEmail)}</a>
+                <a href="${escapeHtml(links.messengerUrl || links.facebookUrl)}" style="color:${c.muted};text-decoration:none">Hobby Arena PH</a>
               </p>
               <p style="margin:16px 0 0;font-family:${FONT};font-size:11px;color:${c.faint}">© ${year} ${EMAIL_BRAND.name}</p>
             </td>
@@ -250,11 +312,19 @@ export function invoiceTable(lineItems, { highlightId = null } = {}) {
   const c = EMAIL_BRAND.colors;
   const rows = lineItems
     .map((item) => {
-      const amount = item.lineTotal > 0
-        ? `₱${Number(item.lineTotal).toLocaleString("en-PH")}`
-        : item.price > 0
-          ? `₱${Number(item.price * item.quantity).toLocaleString("en-PH")}`
-          : "—";
+      const qty = Number(item.quantity) || 1;
+      const unitPrice = Number(item.price) || (item.lineTotal > 0 ? Number(item.lineTotal) / qty : 0);
+      const lineTotal = item.lineTotal > 0
+        ? Number(item.lineTotal)
+        : unitPrice > 0
+          ? unitPrice * qty
+          : 0;
+      const unitLabel = unitPrice > 0
+        ? `₱${unitPrice.toLocaleString("en-PH")}`
+        : "—";
+      const totalLabel = lineTotal > 0
+        ? `₱${lineTotal.toLocaleString("en-PH")}`
+        : "—";
       const tag = item.tag
         ? `<span style="display:block;margin-top:2px;font-size:12px;color:${c.muted}">${escapeHtml(item.tag)}</span>`
         : "";
@@ -268,11 +338,14 @@ export function invoiceTable(lineItems, { highlightId = null } = {}) {
           <td style="padding:12px 0;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;line-height:1.45;color:${c.text};vertical-align:top;${rowBg}${highlighted ? `font-weight:600;` : ""}">
             ${escapeHtml(item.name)}${tag}${statusMeta}
           </td>
-          <td align="center" style="padding:12px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;color:${c.muted};vertical-align:top;width:48px;${rowBg}">
-            ${item.quantity}
+          <td align="right" style="padding:12px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;color:${c.muted};vertical-align:top;width:88px;white-space:nowrap;${rowBg}">
+            ${unitLabel}
+          </td>
+          <td align="center" style="padding:12px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;color:${c.muted};vertical-align:top;width:40px;${rowBg}">
+            ${qty}
           </td>
           <td align="right" style="padding:12px 0;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;color:${c.text};vertical-align:top;width:96px;white-space:nowrap;${rowBg}">
-            ${amount}
+            ${totalLabel}
           </td>
         </tr>
       `;
@@ -283,8 +356,9 @@ export function invoiceTable(lineItems, { highlightId = null } = {}) {
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px">
       <tr>
         <td style="padding:0 0 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted}">Item</td>
-        <td align="center" style="padding:0 8px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted};width:48px">Qty</td>
-        <td align="right" style="padding:0 0 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted};width:96px">Amount</td>
+        <td align="right" style="padding:0 8px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted};width:88px">Unit Price</td>
+        <td align="center" style="padding:0 8px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted};width:40px">Qty</td>
+        <td align="right" style="padding:0 0 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted};width:96px">Total</td>
       </tr>
       ${rows}
     </table>

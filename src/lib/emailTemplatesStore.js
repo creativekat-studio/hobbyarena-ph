@@ -44,7 +44,7 @@ export const DEFAULT_EMAIL_BODIES = {
   full_refund_sent:
     "We have sent your full refund of {{refund}}. Please confirm once received.",
   payment_not_received:
-    "We have not received your payment for this order, so we can no longer hold the stock for you — it has been released and may be purchased by other customers. If you still want the item, please place a new order while stock lasts. If you've already paid, email hello@hobbyarena.ph with your proof of payment and we'll sort it out.",
+    "We have not received your payment for this order, so we can no longer hold the stock for you — it has been released and may be purchased by other customers. If you still want the item, please place a new order while stock lasts. If you've already paid, upload proof via your account or Hobby Arena PH and we'll sort it out.",
 };
 
 export const EMAIL_TYPES = Object.keys(ORDER_STATUS_EMAIL_LABELS);

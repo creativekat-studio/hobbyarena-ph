@@ -63,9 +63,9 @@ export function AdminPageHeaderToolbar({
       direction="row"
       alignItems="center"
       spacing={{ xs: 1.5, md: 2 }}
-      sx={{ width: "100%", minHeight: { xs: 64, md: 76 }, py: { xs: 0.75, md: 1 } }}
+      sx={{ width: "100%", minHeight: { xs: 72, md: 96 }, py: { xs: 1.5, md: 2.25 } }}
     >
-      <Box sx={{ flex: 1, minWidth: 0, pr: { md: 2 } }}>
+      <Box sx={{ flex: 1, minWidth: 0, pr: { md: 2 }, py: { xs: 0.5, md: 0.75 } }}>
         {header ? (
           <Box>
             {header.eyebrow ? (
@@ -78,6 +78,7 @@ export function AdminPageHeaderToolbar({
                   fontSize: { xs: "0.62rem", md: "0.68rem" },
                   lineHeight: 1.2,
                   display: "block",
+                  mb: 0.5,
                 }}
               >
                 {header.eyebrow}
@@ -90,7 +91,6 @@ export function AdminPageHeaderToolbar({
                 fontSize: { xs: "1.28rem", md: "1.55rem" },
                 lineHeight: 1.15,
                 m: 0,
-                mt: header.eyebrow ? 0.15 : 0,
               }}
             >
               {header.title}
@@ -99,7 +99,7 @@ export function AdminPageHeaderToolbar({
               <Typography
                 color="text.secondary"
                 sx={{
-                  mt: 0.35,
+                  mt: 0.75,
                   fontSize: { xs: "0.8rem", md: "0.88rem" },
                   lineHeight: 1.45,
                   maxWidth: 760,

@@ -1,32 +1,39 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Box,
   Button,
   Chip,
+  CircularProgress,
   Grid,
   IconButton,
   InputAdornment,
   Link,
   MenuItem,
+  Popover,
   Stack,
-  Switch,
+  Switch as MuiSwitch,
   Tab,
   Tabs,
-  TextField,
+  TextField as MuiTextField,
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { useOutletContext } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
-import { FacebookIcon, InstagramIcon, TiktokIcon, SparkleIcon, BoxIcon } from "../components/icons.jsx";
+import { FacebookIcon, InstagramIcon, TiktokIcon, SparkleIcon, BoxIcon, EditIcon } from "../components/icons.jsx";
 import { OFF_WHITE } from "../lib/colors.js";
 import { useCms } from "../lib/cmsContent.jsx";
+import { useFirebaseData } from "../lib/firebase/config.js";
+import { uploadCmsAsset } from "../lib/firebase/repositories/uploads.js";
+import { compressProductImageFile } from "../lib/imageCompression.js";
 import { PREVIEW_STOREFRONT_URL } from "../lib/siteAccess.js";
 import { ALL_PRODUCTS } from "../data/mockData.js";
 import CmsPreviewMockup from "../components/CmsPreviewMockup.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
+import AdminColorPicker from "../components/AdminColorPicker.jsx";
+import { PERK_ICON_OPTIONS, getPerkIcon } from "../lib/perkIcons.js";
 
 const LINK_OPTIONS = [
   { value: "featured-products", label: "Products page (/products)" },
@@ -34,13 +41,372 @@ const LINK_OPTIONS = [
   { value: "newsletter", label: "Newsletter section (scroll)" },
 ];
 
-const SWATCHES_FALLBACK = ["#7c3aed", "#06b6d4", "#f43f5e", "#f59e0b", "#22c55e", "#ec4899"];
+const CMS_SWITCH_LABEL_SX = {
+  fontSize: "0.84rem",
+  fontWeight: 700,
+  lineHeight: 1.35,
+};
+
+function TextField(props) {
+  return <MuiTextField size="small" {...props} />;
+}
+
+function Switch(props) {
+  return <MuiSwitch size="small" {...props} />;
+}
+
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Could not read file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function BankAssetUpload({ label, value, onChange, surfaceBorderColor, kind }) {
+  const theme = useTheme();
+  const firebaseEnabled = useFirebaseData();
+  const inputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleFileChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Image must be a PNG, JPG, or WebP file.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Image must be smaller than 5MB.");
+      return;
+    }
+
+    setUploading(true);
+    setError("");
+    try {
+      const compressedFile = await compressProductImageFile(file);
+      const url = firebaseEnabled
+        ? await uploadCmsAsset(compressedFile, kind)
+        : await readAsDataUrl(compressedFile);
+      onChange(url);
+    } catch (uploadError) {
+      console.error("[cms] Asset upload failed:", uploadError);
+      setError("Could not upload the image. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <Stack spacing={0.75} sx={{ minWidth: 0 }}>
+      <Typography
+        sx={{
+          fontFamily: MONO_FONT,
+          fontSize: "0.65rem",
+          letterSpacing: 0.8,
+          textTransform: "uppercase",
+          color: "text.secondary",
+        }}
+      >
+        {label}
+      </Typography>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/*"
+        hidden
+        onChange={handleFileChange}
+      />
+      <Box
+        role={value ? undefined : "button"}
+        tabIndex={uploading || value ? undefined : 0}
+        aria-label={value ? undefined : `Upload ${label}`}
+        onClick={() => {
+          if (!uploading && !value) inputRef.current?.click();
+        }}
+        onKeyDown={(event) => {
+          if (!uploading && !value && (event.key === "Enter" || event.key === " ")) {
+            event.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
+        sx={{
+          position: "relative",
+          aspectRatio: "1 / 1",
+          minHeight: 112,
+          borderRadius: 1.25,
+          border: "1px solid",
+          borderColor: value ? surfaceBorderColor : alpha(theme.palette.primary.main, 0.45),
+          borderStyle: value ? "solid" : "dashed",
+          bgcolor: alpha("#fff", value ? 0.035 : 0.025),
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+          cursor: uploading ? "default" : value ? "default" : "pointer",
+          transition: "border-color 160ms ease, background-color 160ms ease",
+          "&:hover, &:focus-visible": {
+            borderColor: value ? alpha(theme.palette.primary.main, 0.5) : theme.palette.primary.main,
+            bgcolor: alpha(theme.palette.primary.main, 0.06),
+          },
+          "&:hover .bank-asset-actions, &:focus-within .bank-asset-actions": {
+            opacity: 1,
+            transform: "translateY(0)",
+            pointerEvents: "auto",
+          },
+        }}
+      >
+        {uploading ? (
+          <CircularProgress size={24} />
+        ) : value ? (
+          <Box component="img" src={value} alt="" sx={{ width: "100%", height: "100%", objectFit: "contain", p: 1 }} />
+        ) : (
+          <Stack spacing={0.75} alignItems="center" sx={{ px: 1.25, textAlign: "center", color: "text.secondary" }}>
+            <EditIcon sx={{ fontSize: 20, color: alpha(theme.palette.primary.main, 0.85) }} />
+            <Typography sx={{ fontSize: "0.68rem", lineHeight: 1.25 }}>
+              Upload image
+            </Typography>
+          </Stack>
+        )}
+        {value && !uploading ? (
+          <Stack
+            className="bank-asset-actions"
+            direction="row"
+            spacing={0.75}
+            sx={{
+              position: "absolute",
+              inset: 0,
+              alignItems: "center",
+              justifyContent: "center",
+              bgcolor: alpha("#050505", 0.58),
+              opacity: 0,
+              transform: "translateY(4px)",
+              pointerEvents: "none",
+              transition: "opacity 160ms ease, transform 160ms ease",
+            }}
+          >
+            <IconButton
+              size="small"
+              aria-label={`Replace ${label}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                inputRef.current?.click();
+              }}
+              sx={{
+                width: 32,
+                height: 32,
+                p: 0,
+                borderRadius: "50%",
+                color: "primary.main",
+                bgcolor: alpha("#000", 0.45),
+                border: "1px solid",
+                borderColor: alpha(theme.palette.primary.main, 0.45),
+                "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.18) },
+              }}
+            >
+              <EditIcon sx={{ fontSize: 17 }} />
+            </IconButton>
+            <IconButton
+              size="small"
+              aria-label={`Remove ${label}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onChange("");
+              }}
+              sx={{
+                width: 32,
+                height: 32,
+                p: 0,
+                borderRadius: "50%",
+                color: "text.primary",
+                bgcolor: alpha("#000", 0.45),
+                border: "1px solid",
+                borderColor: alpha("#fff", 0.18),
+                fontSize: "0.85rem",
+                lineHeight: 1,
+                "&:hover": { bgcolor: alpha(theme.palette.error.main, 0.22), color: "error.light" },
+              }}
+            >
+              ✕
+            </IconButton>
+          </Stack>
+        ) : null}
+      </Box>
+      {error ? (
+        <Typography sx={{ fontSize: "0.72rem", color: "error.main" }}>{error}</Typography>
+      ) : null}
+    </Stack>
+  );
+}
 
 function SectionHeader({ title, action }) {
   return (
     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-      <AdminSectionTitle variant="h6">{title}</AdminSectionTitle>
+      <AdminSectionTitle>{title}</AdminSectionTitle>
       {action}
+    </Stack>
+  );
+}
+
+function PerkIconPicker({ pickerId, value, accent, onChange, surfaceBorderColor, ariaLabel }) {
+  const theme = useTheme();
+  const [anchorEl, setAnchorEl] = useState(null);
+  const optionRefs = useRef([]);
+  const selectedId = value || "sparkle";
+  const selectedOption = PERK_ICON_OPTIONS.find((option) => option.id === selectedId) ?? PERK_ICON_OPTIONS[0];
+  const selectedIndex = Math.max(0, PERK_ICON_OPTIONS.findIndex((option) => option.id === selectedId));
+  const SelectedIcon = getPerkIcon(selectedId);
+  const open = Boolean(anchorEl);
+  const popoverId = `${pickerId}-popover`;
+
+  function focusOption(index) {
+    const boundedIndex = (index + PERK_ICON_OPTIONS.length) % PERK_ICON_OPTIONS.length;
+    optionRefs.current[boundedIndex]?.focus();
+  }
+
+  function handleOptionKeyDown(event, index) {
+    const columns = 4;
+    const lastIndex = PERK_ICON_OPTIONS.length - 1;
+    let nextIndex = null;
+
+    if (event.key === "ArrowRight") nextIndex = index + 1;
+    if (event.key === "ArrowLeft") nextIndex = index - 1;
+    if (event.key === "ArrowDown") nextIndex = index + columns;
+    if (event.key === "ArrowUp") nextIndex = index - columns;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = lastIndex;
+
+    if (nextIndex === null) return;
+    event.preventDefault();
+    focusOption(Math.max(0, Math.min(lastIndex, nextIndex)));
+  }
+
+  function handleSelect(iconId) {
+    onChange(iconId);
+    setAnchorEl(null);
+  }
+
+  function handleOpen(event) {
+    setAnchorEl(event.currentTarget);
+    window.setTimeout(() => focusOption(selectedIndex), 0);
+  }
+
+  return (
+    <Stack spacing={0.5} sx={{ width: 96, flexShrink: 0 }}>
+      <Typography
+        component="label"
+        id={`${pickerId}-label`}
+        sx={{
+          color: "text.secondary",
+          fontFamily: MONO_FONT,
+          fontSize: "0.62rem",
+          fontWeight: 700,
+          letterSpacing: 1,
+          textTransform: "uppercase",
+        }}
+      >
+        Icon
+      </Typography>
+      <Button
+        type="button"
+        variant="outlined"
+        aria-label={`${ariaLabel}. Current icon: ${selectedOption.label}`}
+        aria-haspopup="dialog"
+        aria-expanded={open ? "true" : undefined}
+        aria-controls={open ? popoverId : undefined}
+        onClick={handleOpen}
+        sx={{
+          minWidth: 0,
+          height: 40,
+          px: 1,
+          borderColor: open ? alpha(theme.palette.primary.main, 0.8) : surfaceBorderColor,
+          bgcolor: alpha("#fff", 0.03),
+          color: accent,
+          "&:hover": {
+            borderColor: alpha(theme.palette.primary.main, 0.8),
+            bgcolor: alpha(theme.palette.primary.main, 0.08),
+          },
+          "&.Mui-focusVisible": {
+            borderColor: theme.palette.primary.main,
+            boxShadow: `0 0 0 3px ${alpha(theme.palette.primary.main, 0.22)}`,
+          },
+        }}
+      >
+        <SelectedIcon sx={{ fontSize: 22 }} />
+      </Button>
+      <Popover
+        open={open}
+        anchorEl={anchorEl}
+        onClose={() => setAnchorEl(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
+        slotProps={{
+          paper: {
+            sx: {
+              mt: 0.75,
+              p: 1.25,
+              border: "1px solid",
+              borderColor: surfaceBorderColor,
+              bgcolor: "background.paper",
+              backgroundImage: "none",
+              boxShadow: `0 18px 48px ${alpha("#000", 0.32)}`,
+            },
+          },
+        }}
+      >
+        <Box
+          id={popoverId}
+          role="group"
+          aria-labelledby={`${pickerId}-label`}
+          sx={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 40px)",
+            gap: 0.75,
+          }}
+        >
+          {PERK_ICON_OPTIONS.map((option, index) => {
+            const Icon = getPerkIcon(option.id);
+            const selected = option.id === selectedId;
+            return (
+              <IconButton
+                key={option.id}
+                ref={(element) => {
+                  optionRefs.current[index] = element;
+                }}
+                size="small"
+                aria-pressed={selected}
+                aria-label={`${option.label}${selected ? ", selected" : ""}`}
+                title={option.label}
+                onClick={() => handleSelect(option.id)}
+                onKeyDown={(event) => handleOptionKeyDown(event, index)}
+                sx={{
+                  width: 40,
+                  height: 40,
+                  border: "1px solid",
+                  borderColor: selected ? theme.palette.primary.main : surfaceBorderColor,
+                  bgcolor: selected ? alpha(theme.palette.primary.main, 0.16) : alpha("#fff", 0.03),
+                  color: selected ? theme.palette.primary.main : "text.secondary",
+                  "&:hover": {
+                    borderColor: alpha(theme.palette.primary.main, 0.8),
+                    bgcolor: alpha(theme.palette.primary.main, 0.1),
+                    color: theme.palette.primary.main,
+                  },
+                  "&.Mui-focusVisible": {
+                    borderColor: theme.palette.primary.main,
+                    boxShadow: `0 0 0 3px ${alpha(theme.palette.primary.main, 0.22)}`,
+                    color: theme.palette.primary.main,
+                  },
+                }}
+              >
+                <Icon sx={{ fontSize: 21 }} />
+              </IconButton>
+            );
+          })}
+        </Box>
+      </Popover>
     </Stack>
   );
 }
@@ -55,9 +421,9 @@ function SiteModeTab({ panelSx, surfaceBorderColor }) {
       <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
         <SectionHeader title="Public landing page" />
         <Typography sx={{ color: "text.secondary", fontSize: "0.85rem", mb: 2.5, lineHeight: 1.55 }}>
-          When enabled, visitors on your production domain (and localhost while testing) see a &ldquo;coming soon&rdquo; page
-          instead of the full shop. The Vercel preview site always shows the full storefront. Append{" "}
-          <Box component="code" sx={{ fontFamily: MONO_FONT, fontSize: "0.8rem" }}>?storefront=1</Box> to any URL to
+          When enabled, visitors on your production domain see a &ldquo;coming soon&rdquo; page
+          instead of the full shop. Localhost and the Vercel preview site always show the full storefront. Append{" "}
+          <Box component="code" sx={{ fontFamily: MONO_FONT, fontSize: "0.8rem" }}>?storefront=1</Box> on production to
           preview the full shop while landing mode is on.
         </Typography>
         <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2.5 }}>
@@ -67,7 +433,7 @@ function SiteModeTab({ panelSx, surfaceBorderColor }) {
             color="primary"
           />
           <Box>
-            <Typography sx={{ fontWeight: 700 }}>
+            <Typography sx={CMS_SWITCH_LABEL_SX}>
               {storefront.landingMode ? "Landing page live on production" : "Full storefront live on production"}
             </Typography>
             <Typography sx={{ color: "text.secondary", fontSize: "0.82rem", mt: 0.25 }}>
@@ -139,10 +505,12 @@ function SiteModeTab({ panelSx, surfaceBorderColor }) {
 }
 
 function HomepageTab({ panelSx, surfaceBorderColor }) {
-  const { content, setHero, setHomepageSection, addFeatureDrop, updateFeatureDrop, removeFeatureDrop } = useCms();
+  const { content, setHero, setHomepageSection, addFeatureDrop, updateFeatureDrop, removeFeatureDrop, setPerks, addPerk, updatePerk, removePerk } = useCms();
   const hero = content.hero;
   const sections = content.homepageSections;
+  const perks = content.perks ?? { enabled: true, overline: "", title: "", items: [] };
   const [saved, setSaved] = useState(false);
+  const theme = useTheme();
 
   return (
     <Stack spacing={2.5}>
@@ -195,48 +563,213 @@ function HomepageTab({ panelSx, surfaceBorderColor }) {
         <Typography sx={{ color: "text.secondary", fontSize: "0.85rem", mb: 2 }}>
           Active drops rotate in the hero card on the homepage. Pick a product and customize the badge labels.
         </Typography>
-        <Stack spacing={2}>
+        <Grid container spacing={2}>
           {content.featureDrops.map((drop) => {
             const product = ALL_PRODUCTS.find((p) => p.id === drop.productId);
             return (
-              <Stack
-                key={drop.id}
-                direction={{ xs: "column", md: "row" }}
-                spacing={1.5}
-                alignItems={{ xs: "stretch", md: "center" }}
-                sx={{ p: 2, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor, opacity: drop.active ? 1 : 0.55 }}
-              >
-                <TextField
-                  size="small"
-                  label="Product"
-                  select
-                  fullWidth
-                  value={drop.productId}
-                  onChange={(e) => updateFeatureDrop(drop.id, { productId: e.target.value })}
-                  sx={{ flex: 2 }}
+              <Grid size={{ xs: 12, md: 6 }} key={drop.id}>
+                <Box
+                  sx={{
+                    ...panelSx,
+                    p: 0,
+                    overflow: "hidden",
+                    height: "100%",
+                    opacity: drop.active ? 1 : 0.55,
+                  }}
                 >
-                  {ALL_PRODUCTS.map((p) => (
-                    <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
-                  ))}
-                </TextField>
-                <TextField size="small" label="Badge" fullWidth value={drop.badge} onChange={(e) => updateFeatureDrop(drop.id, { badge: e.target.value })} sx={{ flex: 1 }} />
-                <TextField size="small" label="Tier label" fullWidth value={drop.tier} onChange={(e) => updateFeatureDrop(drop.id, { tier: e.target.value })} sx={{ flex: 1 }} />
-                <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
-                  <Switch checked={drop.active} onChange={(e) => updateFeatureDrop(drop.id, { active: e.target.checked })} color="primary" />
-                  <IconButton size="small" onClick={() => removeFeatureDrop(drop.id)} sx={{ color: "text.secondary", border: "1px solid", borderColor: surfaceBorderColor }}>✕</IconButton>
-                </Stack>
-                {product ? (
-                  <Typography sx={{ display: { xs: "block", md: "none" }, fontSize: "0.78rem", color: "text.secondary", fontFamily: MONO_FONT }}>
-                    {PESO.format(product.price)} · {product.line}
-                  </Typography>
-                ) : null}
-              </Stack>
+                  <Box
+                    aria-hidden
+                    sx={{
+                      height: 3,
+                      background: `linear-gradient(90deg, ${drop.color || theme.palette.primary.main}, ${alpha(drop.color || theme.palette.primary.main, 0.15)})`,
+                    }}
+                  />
+                  <Stack spacing={1.5} sx={{ p: 2.5 }}>
+                    <TextField
+                      size="small"
+                      label="Product"
+                      select
+                      fullWidth
+                      value={drop.productId}
+                      onChange={(e) => updateFeatureDrop(drop.id, { productId: e.target.value })}
+                    >
+                      {ALL_PRODUCTS.map((p) => (
+                        <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                      ))}
+                    </TextField>
+                    <Stack direction="row" spacing={1.5}>
+                      <TextField
+                        size="small"
+                        label="Badge"
+                        fullWidth
+                        value={drop.badge}
+                        onChange={(e) => updateFeatureDrop(drop.id, { badge: e.target.value })}
+                      />
+                      <TextField
+                        size="small"
+                        label="Tier label"
+                        fullWidth
+                        value={drop.tier}
+                        onChange={(e) => updateFeatureDrop(drop.id, { tier: e.target.value })}
+                      />
+                    </Stack>
+                    {product ? (
+                      <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", fontFamily: MONO_FONT }}>
+                        {PESO.format(product.price)} · {product.line}
+                      </Typography>
+                    ) : null}
+                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                      <AdminColorPicker
+                        value={drop.color}
+                        onChange={(color) => updateFeatureDrop(drop.id, { color })}
+                        ariaLabel={`Accent for ${drop.badge || "feature drop"}`}
+                        fallback={theme.palette.primary.main}
+                      />
+                      <Stack direction="row" spacing={0.5} alignItems="center">
+                        <Switch
+                          checked={drop.active}
+                          onChange={(e) => updateFeatureDrop(drop.id, { active: e.target.checked })}
+                          color="primary"
+                        />
+                        <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>Active</Typography>
+                        <IconButton
+                          size="small"
+                          onClick={() => removeFeatureDrop(drop.id)}
+                          sx={{ color: "text.secondary", border: "1px solid", borderColor: surfaceBorderColor }}
+                        >
+                          ✕
+                        </IconButton>
+                      </Stack>
+                    </Stack>
+                  </Stack>
+                </Box>
+              </Grid>
             );
           })}
           {content.featureDrops.length === 0 ? (
-            <Typography sx={{ color: "text.secondary", textAlign: "center", py: 3 }}>No feature drops yet. Add one to populate the hero showcase.</Typography>
+            <Grid size={{ xs: 12 }}>
+              <Box sx={{ ...panelSx, p: 5, textAlign: "center", color: "text.secondary" }}>
+                No feature drops yet. Add one to populate the hero showcase.
+              </Box>
+            </Grid>
           ) : null}
+        </Grid>
+      </Box>
+
+      <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
+        <SectionHeader
+          title="Why Hobby Arena"
+          action={
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={() => addPerk({})}
+              disabled={(perks.items?.length ?? 0) >= 6}
+              sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}
+            >
+              + Add box
+            </Button>
+          }
+        />
+        <Typography sx={{ color: "text.secondary", fontSize: "0.85rem", mb: 2 }}>
+          Active boxes shown on the homepage (1–6). Pick an icon, color, title, and description for each.
+        </Typography>
+        <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
+          <Switch
+            checked={perks.enabled !== false}
+            onChange={(e) => setPerks({ enabled: e.target.checked })}
+            color="primary"
+          />
+          <Typography sx={CMS_SWITCH_LABEL_SX}>{perks.enabled !== false ? "Visible on homepage" : "Hidden on homepage"}</Typography>
         </Stack>
+        <Stack spacing={2} sx={{ mb: 2 }}>
+          <TextField label="Section overline" fullWidth value={perks.overline || ""} onChange={(e) => setPerks({ overline: e.target.value })} />
+          <TextField label="Section title" fullWidth value={perks.title || ""} onChange={(e) => setPerks({ title: e.target.value })} />
+        </Stack>
+        <Grid container spacing={2}>
+          {(perks.items || []).map((perk) => {
+            const accent = perk.color || theme.palette.primary.main;
+            return (
+              <Grid size={{ xs: 12, md: 6 }} key={perk.id}>
+                <Box
+                  sx={{
+                    ...panelSx,
+                    p: 0,
+                    overflow: "hidden",
+                    height: "100%",
+                    opacity: perk.active !== false ? 1 : 0.55,
+                  }}
+                >
+                  <Box
+                    aria-hidden
+                    sx={{
+                      height: 3,
+                      background: `linear-gradient(90deg, ${accent}, ${alpha(accent, 0.15)})`,
+                    }}
+                  />
+                  <Stack spacing={1.5} sx={{ p: 2.5 }}>
+                    <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                      <PerkIconPicker
+                        pickerId={`perk-icon-${perk.id}`}
+                        value={perk.icon}
+                        accent={accent}
+                        surfaceBorderColor={surfaceBorderColor}
+                        ariaLabel={`Icon for ${perk.title || "perk"}`}
+                        onChange={(icon) => updatePerk(perk.id, { icon })}
+                      />
+                      <TextField
+                        size="small"
+                        label="Title"
+                        fullWidth
+                        value={perk.title || ""}
+                        onChange={(e) => updatePerk(perk.id, { title: e.target.value })}
+                      />
+                    </Stack>
+                    <TextField
+                      size="small"
+                      label="Description"
+                      fullWidth
+                      multiline
+                      minRows={3}
+                      value={perk.description || ""}
+                      onChange={(e) => updatePerk(perk.id, { description: e.target.value })}
+                    />
+                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                      <AdminColorPicker
+                        value={perk.color}
+                        onChange={(color) => updatePerk(perk.id, { color })}
+                        ariaLabel={`Color for ${perk.title || "perk"}`}
+                        fallback={theme.palette.primary.main}
+                      />
+                      <Stack direction="row" spacing={0.5} alignItems="center">
+                        <Switch
+                          checked={perk.active !== false}
+                          onChange={(e) => updatePerk(perk.id, { active: e.target.checked })}
+                          color="primary"
+                        />
+                        <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>Active</Typography>
+                        <IconButton
+                          size="small"
+                          onClick={() => removePerk(perk.id)}
+                          sx={{ color: "text.secondary", border: "1px solid", borderColor: surfaceBorderColor }}
+                        >
+                          ✕
+                        </IconButton>
+                      </Stack>
+                    </Stack>
+                  </Stack>
+                </Box>
+              </Grid>
+            );
+          })}
+          {(perks.items || []).length === 0 ? (
+            <Grid size={{ xs: 12 }}>
+              <Box sx={{ ...panelSx, p: 5, textAlign: "center", color: "text.secondary" }}>
+                No boxes yet. Add one to show a perk on the homepage.
+              </Box>
+            </Grid>
+          ) : null}
+        </Grid>
       </Box>
     </Stack>
   );
@@ -246,7 +779,6 @@ function HomepageTab({ panelSx, surfaceBorderColor }) {
 function BannerCard({ banner, panelSx, surfaceBorderColor, updateBanner, removeBanner }) {
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === "dark";
-  const swatches = theme.ha?.cmsSwatches ?? SWATCHES_FALLBACK;
   const accent = banner.color || theme.palette.primary.main;
   const PreviewIcon = banner.link === "featured-preorders" || banner.link === "preorders" ? SparkleIcon : BoxIcon;
   const headerBg = isDarkMode
@@ -291,15 +823,12 @@ function BannerCard({ banner, panelSx, surfaceBorderColor, updateBanner, removeB
         </Stack>
 
         <Stack direction="row" alignItems="center" justifyContent="space-between">
-          <Stack direction="row" spacing={0.75} alignItems="center">
-            {swatches.map((color) => (
-              <Box
-                key={color}
-                onClick={() => updateBanner(banner.id, { color })}
-                sx={{ width: 22, height: 22, borderRadius: "50%", bgcolor: color, cursor: "pointer", border: "2px solid", borderColor: banner.color === color ? "text.primary" : "transparent" }}
-              />
-            ))}
-          </Stack>
+          <AdminColorPicker
+            value={banner.color}
+            onChange={(color) => updateBanner(banner.id, { color })}
+            ariaLabel={`Color for ${banner.title || "banner"}`}
+            fallback={theme.palette.primary.main}
+          />
           <Stack direction="row" spacing={0.5} alignItems="center">
             <Switch checked={banner.active} onChange={(e) => updateBanner(banner.id, { active: e.target.checked })} color="primary" />
             <IconButton size="small" onClick={() => removeBanner(banner.id)} sx={{ color: "text.secondary", border: "1px solid", borderColor: surfaceBorderColor }}>✕</IconButton>
@@ -389,7 +918,7 @@ function TestimonialsTab({ panelSx, surfaceBorderColor }) {
             onChange={(e) => setProductReviews({ showRatings: e.target.checked })}
             color="primary"
           />
-          <Typography sx={{ fontWeight: 700 }}>
+          <Typography sx={CMS_SWITCH_LABEL_SX}>
             {productReviews.showRatings ? "Ratings visible on storefront" : "Ratings hidden (recommended until real reviews)"}
           </Typography>
         </Stack>
@@ -406,7 +935,7 @@ function TestimonialsTab({ panelSx, surfaceBorderColor }) {
             onChange={(e) => setTestimonials({ enabled: e.target.checked })}
             color="primary"
           />
-          <Typography sx={{ fontWeight: 700 }}>{testimonials.enabled ? "Visible on homepage" : "Hidden on homepage"}</Typography>
+          <Typography sx={CMS_SWITCH_LABEL_SX}>{testimonials.enabled ? "Visible on homepage" : "Hidden on homepage"}</Typography>
         </Stack>
         <Stack spacing={2} sx={{ mb: 2 }}>
           <TextField label="Section overline" fullWidth value={testimonials.overline} onChange={(e) => setTestimonials({ overline: e.target.value })} />
@@ -452,13 +981,13 @@ function BankDetailsTab({ panelSx, surfaceBorderColor }) {
         <Stack spacing={2}>
           <Stack direction="row" alignItems="center" spacing={2}>
             <Switch checked={bank.enabled} onChange={(e) => setBankDetails({ enabled: e.target.checked })} color="primary" />
-            <Typography sx={{ fontWeight: 700 }}>{bank.enabled ? "Shown on homepage" : "Hidden"}</Typography>
+            <Typography sx={CMS_SWITCH_LABEL_SX}>{bank.enabled ? "Shown on homepage" : "Hidden"}</Typography>
           </Stack>
           <TextField label="Section title" fullWidth value={bank.title} onChange={(e) => setBankDetails({ title: e.target.value })} />
           <TextField label="Section subtitle" fullWidth multiline minRows={2} value={bank.subtitle} onChange={(e) => setBankDetails({ subtitle: e.target.value })} />
           <Stack direction="row" alignItems="center" spacing={2}>
             <Switch checked={bank.showBirSeal} onChange={(e) => setBankDetails({ showBirSeal: e.target.checked })} color="primary" />
-            <Typography sx={{ fontWeight: 600 }}>Show BIR QR placeholder</Typography>
+            <Typography sx={{ ...CMS_SWITCH_LABEL_SX, fontWeight: 600 }}>Show BIR QR placeholder</Typography>
           </Stack>
           <TextField label="BIR seal note" fullWidth value={bank.birSealNote} onChange={(e) => setBankDetails({ birSealNote: e.target.value })} />
           <TextField label="BIR QR image URL (optional)" fullWidth placeholder="/payment/bir-qr.png" value={bank.birQrImage ?? ""} onChange={(e) => setBankDetails({ birQrImage: e.target.value })} />
@@ -482,7 +1011,26 @@ function BankDetailsTab({ panelSx, surfaceBorderColor }) {
                 <TextField size="small" label="Account name" fullWidth value={account.accountName} onChange={(e) => updateBankAccount(account.id, { accountName: e.target.value })} />
                 <TextField size="small" label="Account number" fullWidth value={account.accountNumber} onChange={(e) => updateBankAccount(account.id, { accountNumber: e.target.value })} />
                 <TextField size="small" label="Note" fullWidth value={account.note ?? ""} onChange={(e) => updateBankAccount(account.id, { note: e.target.value })} />
-                <TextField size="small" label="QR image URL" fullWidth placeholder="/payment/gcash-qr.png" value={account.qrImage ?? ""} onChange={(e) => updateBankAccount(account.id, { qrImage: e.target.value })} />
+                <Grid container spacing={1.5}>
+                  <Grid size={{ xs: 6 }}>
+                    <BankAssetUpload
+                      label="Logo"
+                      kind="bank-logo"
+                      value={account.logo ?? ""}
+                      surfaceBorderColor={surfaceBorderColor}
+                      onChange={(url) => updateBankAccount(account.id, { logo: url })}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 6 }}>
+                    <BankAssetUpload
+                      label="QR code"
+                      kind="bank-qr"
+                      value={account.qrImage ?? ""}
+                      surfaceBorderColor={surfaceBorderColor}
+                      onChange={(url) => updateBankAccount(account.id, { qrImage: url })}
+                    />
+                  </Grid>
+                </Grid>
                 <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="space-between">
                   <Stack direction="row" spacing={0.5} alignItems="center">
                     <Switch checked={account.active !== false} onChange={(e) => updateBankAccount(account.id, { active: e.target.checked })} color="primary" />
@@ -573,14 +1121,12 @@ export default function CmsPage() {
               variant="scrollable"
               scrollButtons="auto"
               sx={{
-                minHeight: 40,
                 borderBottom: "1px solid",
                 borderColor: surfaceBorderColor,
-                "& .MuiTab-root": { minHeight: 40, py: 1, fontSize: "0.82rem" },
               }}
             >
               {TABS.map((label) => (
-                <Tab key={label} label={label} sx={{ fontWeight: 700, textTransform: "none" }} />
+                <Tab key={label} label={label} />
               ))}
             </Tabs>
             {tab === 0 ? <SiteModeTab panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} /> : null}

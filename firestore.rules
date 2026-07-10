@@ -23,7 +23,7 @@ service cloud.firestore {
         && resource.data.email == request.auth.token.email
         && request.resource.data.email == resource.data.email
         && request.resource.data.diff(resource.data).changedKeys().hasOnly([
-          'trail', 'notificationSeen', 'updatedAt'
+          'trail', 'notificationSeen', 'updatedAt', 'refundDetails'
         ])
         && request.resource.data.trail.size() == resource.data.trail.size() + 1;
     }

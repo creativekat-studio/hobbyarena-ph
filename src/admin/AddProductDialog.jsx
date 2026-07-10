@@ -12,6 +12,7 @@ import {
   Stack,
   Switch,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import ProductDescriptionEditor, { normalizeDescriptionSections, serializeDescriptionSections } from "../components/ProductDescriptionEditor.jsx";
@@ -45,6 +46,60 @@ const EMPTY = {
   category: "tcg",
   descriptionSections: [],
 };
+
+function InfoIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden {...props}>
+      <path d="M11 7h2v2h-2V7zm0 4h2v6h-2v-6zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" />
+    </svg>
+  );
+}
+
+/** Label with optional (i) tooltip — tip uses sentence case, not all-caps helper text. */
+function fieldLabel(text, tip) {
+  if (!tip) return text;
+  return (
+    <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 0.4 }}>
+      <Box component="span">{text}</Box>
+      <Tooltip
+        title={tip}
+        arrow
+        placement="top"
+        enterTouchDelay={0}
+        slotProps={{
+          tooltip: {
+            sx: {
+              fontFamily: MONO_FONT,
+              fontSize: "0.72rem",
+              fontWeight: 500,
+              letterSpacing: 0.2,
+              textTransform: "none",
+              lineHeight: 1.45,
+              maxWidth: 260,
+            },
+          },
+        }}
+      >
+        <Box
+          component="span"
+          role="img"
+          aria-label={tip}
+          onMouseDown={(event) => event.preventDefault()}
+          sx={{
+            display: "inline-flex",
+            alignItems: "center",
+            color: "text.secondary",
+            cursor: "help",
+            lineHeight: 0,
+            "&:hover": { color: "primary.main" },
+          }}
+        >
+          <InfoIcon style={{ fontSize: 13 }} />
+        </Box>
+      </Tooltip>
+    </Box>
+  );
+}
 
 function readAsDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -244,232 +299,270 @@ export default function AddProductDialog({
   }
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth component="form" onSubmit={handleSubmit}>
+    <Dialog
+      open={open}
+      onClose={handleClose}
+      maxWidth={false}
+      fullWidth
+      component="form"
+      onSubmit={handleSubmit}
+      PaperProps={{
+        sx: {
+          width: "min(1320px, calc(100vw - 32px))",
+          maxHeight: "min(900px, calc(100vh - 32px))",
+        },
+      }}
+    >
       <DialogTitle sx={{ fontWeight: 800 }}>
         {isEdit ? "Edit product" : copyMode ? "Add product from copy" : "Add product"}
       </DialogTitle>
-      <DialogContent dividers>
-        <Stack spacing={2} sx={{ pt: 0.5 }}>
-          {!isEdit && copyMode ? (
+      <DialogContent dividers sx={{ p: { xs: 2, md: 2.5 } }}>
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1.05fr) minmax(0, 0.95fr)" },
+            gap: { xs: 2.5, md: 3 },
+            alignItems: "start",
+            pt: 0.5,
+          }}
+        >
+          <Stack spacing={2} sx={{ minWidth: 0 }}>
+            {!isEdit && copyMode ? (
+              <TextField
+                label={fieldLabel(
+                  "Copy from product",
+                  "Pre-fills line, pricing, description, and pre-order settings. Name gets “(Copy)” and stock resets to 0.",
+                )}
+                select
+                required
+                fullWidth
+                value={copyFromId}
+                onChange={(e) => handleCopyFromChange(e.target.value)}
+                autoFocus
+              >
+                <MenuItem value="" disabled>Select a product…</MenuItem>
+                {products.map((row) => (
+                  <MenuItem key={row.id} value={row.id}>
+                    {row.name} · {row.sku}
+                  </MenuItem>
+                ))}
+              </TextField>
+            ) : null}
+            {isEdit ? (
+              <TextField
+                label={fieldLabel("SKU", "SKU cannot be changed.")}
+                fullWidth
+                value={product.sku}
+                disabled
+              />
+            ) : null}
             <TextField
-              label="Copy from product"
-              select
+              label="Product name"
               required
               fullWidth
-              value={copyFromId}
-              onChange={(e) => handleCopyFromChange(e.target.value)}
-              helperText="Pre-fills line, pricing, description, and pre-order settings. Name gets “(Copy)” and stock resets to 0."
-              autoFocus
-            >
-              <MenuItem value="" disabled>Select a product…</MenuItem>
-              {products.map((row) => (
-                <MenuItem key={row.id} value={row.id}>
-                  {row.name} · {row.sku}
-                </MenuItem>
-              ))}
-            </TextField>
-          ) : null}
-          {isEdit ? (
-            <TextField
-              label="SKU"
-              fullWidth
-              value={product.sku}
-              disabled
-              helperText="SKU cannot be changed."
+              value={form.name}
+              onChange={(e) => update("name", e.target.value)}
+              autoFocus={!copyMode || isEdit}
             />
-          ) : null}
-          <TextField
-            label="Product name"
-            required
-            fullWidth
-            value={form.name}
-            onChange={(e) => update("name", e.target.value)}
-            autoFocus={!copyMode || isEdit}
-          />
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <TextField
-              label="Line"
-              select
-              fullWidth
-              value={form.line}
-              onChange={(e) => update("line", e.target.value)}
-            >
-              {activeLines.map((item) => (
-                <MenuItem key={item.id} value={item.label}>{item.label}</MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              label="Type"
-              select
-              fullWidth
-              value={form.type}
-              onChange={(e) => update("type", e.target.value)}
-            >
-              {TYPES.map((item) => (
-                <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
-              ))}
-            </TextField>
-          </Stack>
-          {form.type !== "Pre-order" ? (
-            <TextField
-              label="Category"
-              select
-              fullWidth
-              value={form.category}
-              onChange={(e) => update("category", e.target.value)}
-            >
-              {activeCategories.map((item) => (
-                <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
-              ))}
-            </TextField>
-          ) : null}
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <TextField
-              label="Selling price (₱)"
-              type="number"
-              fullWidth
-              inputProps={{ min: 0, step: "any" }}
-              value={form.price}
-              onChange={(e) => update("price", e.target.value)}
-              helperText="Shown to customers on the storefront."
-            />
-            <TextField
-              label="Cost (₱)"
-              type="number"
-              fullWidth
-              inputProps={{ min: 0, step: "any" }}
-              value={form.cost}
-              onChange={(e) => update("cost", e.target.value)}
-              helperText={isEdit ? "What Hobby Arena pays to buy it. Drives net revenue & stock value." : "What Hobby Arena pays to buy it. Defaults to ~72% of price if blank."}
-            />
-          </Stack>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <TextField
-              label="Stock"
-              type="number"
-              fullWidth
-              inputProps={{ min: 0, step: 1 }}
-              value={form.stock}
-              onChange={(e) => update("stock", e.target.value)}
-            />
-            <TextField
-              label="Reorder at"
-              type="number"
-              fullWidth
-              inputProps={{ min: 0, step: 1 }}
-              value={form.reorderAt}
-              onChange={(e) => update("reorderAt", e.target.value)}
-              helperText="Low-stock alert threshold."
-            />
-          </Stack>
-          {form.type === "Pre-order" ? (
             <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
               <TextField
-                label="Pre-order deadline"
-                type="datetime-local"
+                label="Line"
+                select
                 fullWidth
-                value={form.preorderEndsAt}
-                onChange={(e) => update("preorderEndsAt", e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                helperText="Countdown timer on the storefront ends at this date."
-              />
+                value={form.line}
+                onChange={(e) => update("line", e.target.value)}
+              >
+                {activeLines.map((item) => (
+                  <MenuItem key={item.id} value={item.label}>{item.label}</MenuItem>
+                ))}
+              </TextField>
               <TextField
-                label="Deposit % (due now)"
+                label="Type"
+                select
+                fullWidth
+                value={form.type}
+                onChange={(e) => update("type", e.target.value)}
+              >
+                {TYPES.map((item) => (
+                  <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+            {form.type !== "Pre-order" ? (
+              <TextField
+                label="Category"
+                select
+                fullWidth
+                value={form.category}
+                onChange={(e) => update("category", e.target.value)}
+              >
+                {activeCategories.map((item) => (
+                  <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
+                ))}
+              </TextField>
+            ) : null}
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+              <TextField
+                label={fieldLabel("Selling price (₱)", "Shown to customers on the storefront.")}
                 type="number"
                 fullWidth
-                inputProps={{ min: 1, max: 99, step: 1 }}
-                value={form.depositPercent}
-                onChange={(e) => update("depositPercent", e.target.value)}
-                helperText="Balance due before release (e.g. 30% now, 70% later)."
+                inputProps={{ min: 0, step: "any" }}
+                value={form.price}
+                onChange={(e) => update("price", e.target.value)}
+              />
+              <TextField
+                label={fieldLabel(
+                  "Cost (₱)",
+                  isEdit
+                    ? "What Hobby Arena pays to buy it. Drives net revenue & stock value."
+                    : "What Hobby Arena pays to buy it. Defaults to ~72% of price if blank.",
+                )}
+                type="number"
+                fullWidth
+                inputProps={{ min: 0, step: "any" }}
+                value={form.cost}
+                onChange={(e) => update("cost", e.target.value)}
               />
             </Stack>
-          ) : null}
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <TextField
-              label="Rating (0–5)"
-              type="number"
-              fullWidth
-              inputProps={{ min: 0, max: 5, step: 0.1 }}
-              value={form.rating}
-              onChange={(e) => update("rating", e.target.value)}
-              helperText="Leave at 0 to hide until reviews are enabled in CMS."
-            />
-            <TextField
-              label="Review count"
-              type="number"
-              fullWidth
-              inputProps={{ min: 0, step: 1 }}
-              value={form.reviews}
-              onChange={(e) => update("reviews", e.target.value)}
-            />
-          </Stack>
-          <Box>
-            <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, mb: 1, color: "text.secondary" }}>
-              Product image
-            </Typography>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/*"
-              hidden
-              onChange={handleImageChange}
-            />
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Box
-                sx={{
-                  width: 88,
-                  height: 88,
-                  borderRadius: 2,
-                  border: "1px dashed",
-                  borderColor: surfaceBorderColor || "divider",
-                  bgcolor: "action.hover",
-                  overflow: "hidden",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                {imagePreview}
-              </Box>
-              <Stack spacing={0.75} sx={{ minWidth: 0 }}>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    disabled={uploading}
-                    onClick={() => fileInputRef.current?.click()}
-                    sx={{ textTransform: "none" }}
-                  >
-                    {form.image ? "Replace image" : "Upload image"}
-                  </Button>
-                  {form.image && !uploading ? (
-                    <Button
-                      variant="text"
-                      size="small"
-                      color="inherit"
-                      onClick={() => update("image", "")}
-                      sx={{ textTransform: "none" }}
-                    >
-                      Remove
-                    </Button>
-                  ) : null}
-                </Stack>
-                <Typography sx={{ fontSize: "0.72rem", color: "text.disabled", lineHeight: 1.4 }}>
-                  PNG, JPG, or WebP · up to 5MB. Stored in Firebase Storage.
-                </Typography>
-              </Stack>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+              <TextField
+                label="Stock"
+                type="number"
+                fullWidth
+                inputProps={{ min: 0, step: 1 }}
+                value={form.stock}
+                onChange={(e) => update("stock", e.target.value)}
+              />
+              <TextField
+                label={fieldLabel("Reorder at", "Low-stock alert threshold.")}
+                type="number"
+                fullWidth
+                inputProps={{ min: 0, step: 1 }}
+                value={form.reorderAt}
+                onChange={(e) => update("reorderAt", e.target.value)}
+              />
             </Stack>
+            {form.type === "Pre-order" ? (
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                <TextField
+                  label={fieldLabel("Pre-order deadline", "Countdown timer on the storefront ends at this date.")}
+                  type="datetime-local"
+                  fullWidth
+                  value={form.preorderEndsAt}
+                  onChange={(e) => update("preorderEndsAt", e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+                <TextField
+                  label={fieldLabel("Deposit % (due now)", "Balance due before release (e.g. 30% now, 70% later).")}
+                  type="number"
+                  fullWidth
+                  inputProps={{ min: 1, max: 99, step: 1 }}
+                  value={form.depositPercent}
+                  onChange={(e) => update("depositPercent", e.target.value)}
+                />
+              </Stack>
+            ) : null}
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+              <TextField
+                label={fieldLabel("Rating (0–5)", "Leave at 0 to hide until reviews are enabled in CMS.")}
+                type="number"
+                fullWidth
+                inputProps={{ min: 0, max: 5, step: 0.1 }}
+                value={form.rating}
+                onChange={(e) => update("rating", e.target.value)}
+              />
+              <TextField
+                label="Review count"
+                type="number"
+                fullWidth
+                inputProps={{ min: 0, step: 1 }}
+                value={form.reviews}
+                onChange={(e) => update("reviews", e.target.value)}
+              />
+            </Stack>
+            <Box>
+              <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, mb: 1, color: "text.secondary" }}>
+                Product image
+              </Typography>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/*"
+                hidden
+                onChange={handleImageChange}
+              />
+              <Stack direction="row" spacing={2} alignItems="center">
+                <Box
+                  sx={{
+                    width: 88,
+                    height: 88,
+                    borderRadius: 2,
+                    border: "1px dashed",
+                    borderColor: surfaceBorderColor || "divider",
+                    bgcolor: "action.hover",
+                    overflow: "hidden",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  {imagePreview}
+                </Box>
+                <Stack spacing={0.75} sx={{ minWidth: 0 }}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      disabled={uploading}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      {form.image ? "Replace image" : "Upload image"}
+                    </Button>
+                    {form.image && !uploading ? (
+                      <Button
+                        variant="text"
+                        size="small"
+                        color="inherit"
+                        onClick={() => update("image", "")}
+                      >
+                        Remove
+                      </Button>
+                    ) : null}
+                  </Stack>
+                  <Typography sx={{ fontSize: "0.72rem", color: "text.disabled", lineHeight: 1.4 }}>
+                    PNG, JPG, or WebP · up to 5MB. Stored in Firebase Storage.
+                  </Typography>
+                </Stack>
+              </Stack>
+            </Box>
+            {error ? (
+              <Typography color="error" sx={{ fontSize: "0.85rem" }}>{error}</Typography>
+            ) : null}
+          </Stack>
+
+          <Box
+            sx={{
+              minWidth: 0,
+              height: { md: "100%" },
+              p: { xs: 1.75, md: 2 },
+              borderRadius: 1.5,
+              border: "1px solid",
+              borderColor: surfaceBorderColor || "divider",
+              bgcolor: "action.hover",
+              display: "flex",
+              flexDirection: "column",
+              maxHeight: { md: "min(640px, calc(100vh - 220px))" },
+              overflow: "hidden",
+            }}
+          >
+            <ProductDescriptionEditor
+              sections={form.descriptionSections}
+              onChange={(descriptionSections) => update("descriptionSections", descriptionSections)}
+              surfaceBorderColor={surfaceBorderColor}
+            />
           </Box>
-          <ProductDescriptionEditor
-            sections={form.descriptionSections}
-            onChange={(descriptionSections) => update("descriptionSections", descriptionSections)}
-            surfaceBorderColor={surfaceBorderColor}
-          />
-          {error ? (
-            <Typography color="error" sx={{ fontSize: "0.85rem" }}>{error}</Typography>
-          ) : null}
-        </Stack>
+        </Box>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2, borderTop: "1px solid", borderColor: surfaceBorderColor }}>
         <FormControlLabel

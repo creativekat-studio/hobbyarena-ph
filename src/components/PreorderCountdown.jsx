@@ -1,31 +1,40 @@
 import { useEffect, useState } from "react";
-import { Box, Chip, Stack, Typography } from "@mui/material";
+import { Box, Chip, Stack, Typography, useMediaQuery } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { MONO_FONT } from "../theme.js";
-import { formatCountdownLabel, formatCountdownUnit, getCountdownParts } from "../lib/preorder.js";
+import { formatCountdownUnit, getCountdownParts } from "../lib/preorder.js";
 import { usePreorderDisplay } from "../lib/preorderDisplayLayout.jsx";
 
-function CountdownSegment({ value, label, compact }) {
+function CountdownSegment({ value, label, compact, accent, muted, featured }) {
+  const valueSize = featured
+    ? { xs: "0.95rem", md: "1.15rem" }
+    : compact ? "0.85rem" : "1rem";
+  const labelSize = featured
+    ? { xs: "0.48rem", md: "0.56rem" }
+    : compact ? "0.48rem" : "0.54rem";
   return (
-    <Stack alignItems="center" spacing={0.15} sx={{ minWidth: compact ? 28 : 32 }}>
+    <Stack alignItems="center" spacing={0.15} sx={{ minWidth: featured ? { xs: 28, md: 34 } : compact ? 26 : 32 }}>
       <Typography
         sx={{
           fontFamily: MONO_FONT,
           fontWeight: 800,
-          fontSize: compact ? "0.78rem" : "0.9rem",
+          fontSize: valueSize,
           lineHeight: 1,
           fontVariantNumeric: "tabular-nums",
+          color: accent,
         }}
       >
         {value}
       </Typography>
       <Typography
         sx={{
-          fontSize: compact ? "0.5rem" : "0.54rem",
-          letterSpacing: 0.6,
+          fontFamily: MONO_FONT,
+          fontSize: labelSize,
+          letterSpacing: 0.5,
           textTransform: "uppercase",
-          color: "text.secondary",
+          color: muted,
           fontWeight: 700,
+          lineHeight: 1,
         }}
       >
         {label}
@@ -34,80 +43,121 @@ function CountdownSegment({ value, label, compact }) {
   );
 }
 
-function SegmentsCountdown({ parts, compact, accent, panelSx }) {
-  const segments = [
-    { value: String(parts.days), label: "days" },
+function panelStyles(accent, compact, panelSx, dark, featured) {
+  const cardPad = compact || featured;
+  return {
+    ...(panelSx ?? {}),
+    px: cardPad ? 1 : 1.25,
+    py: cardPad ? 0.7 : 0.9,
+    borderRadius: 1,
+    bgcolor: dark ? "rgba(8, 14, 36, 0.92)" : alpha(accent, 0.16),
+    border: "1.5px solid",
+    borderColor: dark ? alpha(accent, 0.65) : alpha(accent, 0.55),
+    boxShadow: "none",
+    backdropFilter: dark ? "blur(10px)" : undefined,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: featured ? { xs: 0.75, md: 1 } : compact ? 1 : 1.5,
+  };
+}
+
+function buildSegments(parts) {
+  return [
+    { value: formatCountdownUnit(parts.days), label: "days" },
     { value: formatCountdownUnit(parts.hours), label: "hrs" },
-    { value: formatCountdownUnit(parts.minutes), label: "min" },
-    { value: formatCountdownUnit(parts.seconds), label: "sec" },
+    { value: formatCountdownUnit(parts.minutes), label: "mins" },
+    { value: formatCountdownUnit(parts.seconds), label: "secs" },
   ];
+}
+
+function SegmentsCountdown({ parts, compact, accent, panelSx, dark, wrapLabel, featured }) {
+  const segments = buildSegments(parts);
+  const muted = dark ? "rgba(255,255,255,0.55)" : "text.secondary";
+  const segmentGap = featured ? { xs: 0.45, md: 0.65 } : compact ? 0.5 : 0.75;
 
   return (
-    <Box
-      sx={{
-        ...(panelSx ?? {}),
-        px: compact ? 0.9 : 1.15,
-        py: compact ? 0.65 : 0.8,
-        borderRadius: 1,
-        bgcolor: alpha(accent, 0.1),
-        border: "1px solid",
-        borderColor: alpha(accent, 0.35),
-      }}
-    >
+    <Box sx={panelStyles(accent, compact, panelSx, dark, featured)}>
       <Typography
         sx={{
           fontFamily: MONO_FONT,
-          fontSize: compact ? "0.56rem" : "0.6rem",
+          fontSize: featured ? { xs: "0.62rem", md: "0.78rem" } : compact ? "0.58rem" : "0.68rem",
           fontWeight: 800,
-          letterSpacing: 1.2,
+          letterSpacing: featured ? { xs: 0.5, md: 0.8 } : 0.8,
           textTransform: "uppercase",
           color: accent,
-          mb: compact ? 0.4 : 0.5,
+          lineHeight: 1.25,
+          ...(wrapLabel
+            ? { maxWidth: compact ? 72 : 96, flexShrink: 1, minWidth: 0 }
+            : { flexShrink: 0, whiteSpace: "nowrap" }),
         }}
       >
-        Pre-order closes in
+        {wrapLabel ? (
+          <>
+            Pre-order{" "}
+            <Box component="span" sx={{ display: "block" }}>closes in</Box>
+          </>
+        ) : (
+          "Pre-order closes in"
+        )}
       </Typography>
-      <Stack direction="row" spacing={compact ? 0.5 : 0.75} alignItems="center" justifyContent={compact ? "flex-start" : "center"}>
-        {segments.map((segment, index) => (
-          <Stack key={segment.label} direction="row" spacing={compact ? 0.5 : 0.75} alignItems="center">
-            <CountdownSegment value={segment.value} label={segment.label} compact={compact} />
-            {index < segments.length - 1 ? (
-              <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 800, color: "text.secondary", fontSize: compact ? "0.68rem" : "0.75rem", mb: compact ? 0.55 : 0.65 }}>
-                :
-              </Typography>
-            ) : null}
-          </Stack>
+      <Stack direction="row" spacing={segmentGap} alignItems="center" justifyContent="flex-end" sx={{ flexShrink: 0 }}>
+        {segments.map((segment) => (
+          <CountdownSegment
+            key={segment.label}
+            value={segment.value}
+            label={segment.label}
+            compact={compact}
+            accent={accent}
+            muted={muted}
+            featured={featured}
+          />
         ))}
       </Stack>
-      {!compact ? (
-        <Typography sx={{ mt: 0.65, textAlign: "center", fontSize: "0.68rem", color: "text.secondary", fontFamily: MONO_FONT }}>
-          {formatCountdownLabel(parts)}
-        </Typography>
-      ) : null}
     </Box>
   );
 }
 
-function InlineCountdown({ parts, compact, accent, panelSx }) {
-  const label = `${parts.days}d ${formatCountdownUnit(parts.hours)}:${formatCountdownUnit(parts.minutes)}:${formatCountdownUnit(parts.seconds)}`;
+function InlineCountdown({ parts, compact, accent, panelSx, dark, wrapLabel, featured }) {
+  const timer = `${formatCountdownUnit(parts.days)}d ${formatCountdownUnit(parts.hours)}:${formatCountdownUnit(parts.minutes)}:${formatCountdownUnit(parts.seconds)}`;
 
   return (
-    <Box
-      sx={{
-        ...(panelSx ?? {}),
-        px: compact ? 1 : 1.25,
-        py: compact ? 0.65 : 0.85,
-        borderRadius: 1,
-        bgcolor: alpha(accent, 0.1),
-        border: "1px solid",
-        borderColor: alpha(accent, 0.35),
-      }}
-    >
-      <Typography sx={{ fontFamily: MONO_FONT, fontSize: compact ? "0.68rem" : "0.78rem", fontWeight: 800, color: accent, letterSpacing: 0.4 }}>
-        <Box component="span" sx={{ color: "text.secondary", fontWeight: 700, mr: 0.75 }}>
-          Closes in
-        </Box>
-        {label}
+    <Box sx={{ ...panelStyles(accent, compact, panelSx, dark, featured), py: compact || featured ? 0.55 : 0.7 }}>
+      <Typography
+        sx={{
+          fontFamily: MONO_FONT,
+          fontSize: featured ? { xs: "0.62rem", md: "0.78rem" } : compact ? "0.58rem" : "0.7rem",
+          fontWeight: 800,
+          color: accent,
+          letterSpacing: 0.6,
+          textTransform: "uppercase",
+          lineHeight: 1.25,
+          ...(wrapLabel
+            ? { maxWidth: compact ? 72 : 96, flexShrink: 1, minWidth: 0 }
+            : { flexShrink: 0, whiteSpace: "nowrap" }),
+        }}
+      >
+        {wrapLabel ? (
+          <>
+            Pre-order{" "}
+            <Box component="span" sx={{ display: "block" }}>closes in</Box>
+          </>
+        ) : (
+          "Pre-order closes in"
+        )}
+      </Typography>
+      <Typography
+        sx={{
+          fontFamily: MONO_FONT,
+          fontSize: featured ? { xs: "0.95rem", md: "1.15rem" } : compact ? "0.78rem" : "0.9rem",
+          fontWeight: 800,
+          color: accent,
+          letterSpacing: 0.4,
+          fontVariantNumeric: "tabular-nums",
+          flexShrink: 0,
+        }}
+      >
+        {timer}
       </Typography>
     </Box>
   );
@@ -138,30 +188,37 @@ function ChipCountdown({ parts, compact, accent }) {
   );
 }
 
-function ExpiredCountdown({ compact, accent, panelSx }) {
+function ExpiredCountdown({ compact, accent, panelSx, dark }) {
   return (
     <Box
       sx={{
-        ...(panelSx ?? {}),
-        px: compact ? 1 : 1.5,
-        py: compact ? 0.75 : 1,
-        borderRadius: 1,
-        bgcolor: alpha(accent, 0.1),
-        border: "1px solid",
-        borderColor: alpha(accent, 0.35),
+        ...panelStyles(accent, compact, panelSx, dark),
+        justifyContent: "center",
       }}
     >
       <Typography sx={{ fontFamily: MONO_FONT, fontSize: compact ? "0.68rem" : "0.75rem", fontWeight: 800, color: accent, letterSpacing: 0.6 }}>
-          CLOSED
-        </Typography>
+        CLOSED
+      </Typography>
     </Box>
   );
 }
 
-export default function PreorderCountdown({ endsAt, compact = false, panelSx, variant: variantProp }) {
+export default function PreorderCountdown({
+  endsAt,
+  compact = false,
+  panelSx,
+  variant: variantProp,
+  tone = "light",
+  wrapLabel = true,
+  featured = false,
+}) {
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  // Mobile product cards: one-line label. Desktop: allow wrapped label.
+  const effectiveWrapLabel = isMobile ? false : wrapLabel;
   const { countdownVariant } = usePreorderDisplay();
   const variant = variantProp ?? countdownVariant;
+  const dark = tone === "dark";
   const [parts, setParts] = useState(() => getCountdownParts(endsAt));
 
   useEffect(() => {
@@ -177,16 +234,16 @@ export default function PreorderCountdown({ endsAt, compact = false, panelSx, va
   const accent = parts.expired ? theme.palette.error.main : theme.palette.warning.main;
 
   if (parts.expired) {
-    return <ExpiredCountdown compact={compact} accent={accent} panelSx={panelSx} />;
+    return <ExpiredCountdown compact={compact} accent={accent} panelSx={panelSx} dark={dark} />;
   }
 
   if (variant === "inline") {
-    return <InlineCountdown parts={parts} compact={compact} accent={accent} panelSx={panelSx} />;
+    return <InlineCountdown parts={parts} compact={compact} accent={accent} panelSx={panelSx} dark={dark} wrapLabel={effectiveWrapLabel} featured={featured} />;
   }
 
   if (variant === "chip") {
     return <ChipCountdown parts={parts} compact={compact} accent={accent} />;
   }
 
-  return <SegmentsCountdown parts={parts} compact={compact} accent={accent} panelSx={panelSx} />;
+  return <SegmentsCountdown parts={parts} compact={compact} accent={accent} panelSx={panelSx} dark={dark} wrapLabel={effectiveWrapLabel} featured={featured} />;
 }

@@ -5,49 +5,50 @@ import { wider } from "../lib/layout.js";
 import { CardIcon, ShieldIcon, SparkleIcon } from "./icons.jsx";
 import { PAYMENT_METHODS } from "../data/checkoutSettings.js";
 
-function PaymentBadge({ method, surfaceBorderColor }) {
-  const theme = useTheme();
-  const isBank = method.type === "bank";
+function PaymentBadge({ method, account, surfaceBorderColor }) {
+  const logo = account?.logo;
+  const isChinabank = method.id === "chinabank";
 
   return (
     <Box
+      aria-label={method.name}
       sx={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 1,
-        px: 1.5,
-        py: 1,
-        borderRadius: 1,
+        width: 168,
+        height: 88,
+        borderRadius: 1.5,
         border: "1px solid",
         borderColor: surfaceBorderColor,
-        bgcolor: alpha(theme.palette.background.paper, 0.72),
+        bgcolor: logo ? "transparent" : (theme) => alpha(method.accent, 0.14),
+        color: method.accent,
+        fontFamily: MONO_FONT,
+        fontWeight: 800,
+        fontSize: "0.85rem",
+        letterSpacing: 0.5,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
         flexShrink: 0,
+        p: logo ? (isChinabank ? 1.25 : 2.5) : 1,
       }}
     >
-      <Box
-        sx={{
-          width: 32,
-          height: 32,
-          borderRadius: 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          bgcolor: alpha(method.accent, 0.14),
-          color: method.accent,
-          fontFamily: MONO_FONT,
-          fontWeight: 800,
-          fontSize: "0.58rem",
-          letterSpacing: 0.4,
-          lineHeight: 1,
-          textAlign: "center",
-        }}
-      >
-        {method.name.slice(0, 4).toUpperCase()}
-      </Box>
-      <Typography sx={{ fontWeight: 800, fontSize: "0.82rem", lineHeight: 1.1 }}>{method.name}</Typography>
-      <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.58rem", letterSpacing: 0.6, color: "text.secondary", textTransform: "uppercase" }}>
-        {isBank ? "Bank" : "E-wallet"}
-      </Typography>
+      {logo ? (
+        <Box
+          component="img"
+          src={logo}
+          alt={method.name}
+          sx={{
+            width: "auto",
+            height: isChinabank ? 58 : 28,
+            maxWidth: isChinabank ? 148 : 108,
+            borderRadius: 0,
+            objectFit: "contain",
+            display: "block",
+          }}
+        />
+      ) : (
+        method.name.slice(0, 4).toUpperCase()
+      )}
     </Box>
   );
 }
@@ -145,9 +146,9 @@ export default function BankDetailsSection({ bankDetails, panelSx, surfaceBorder
 
   if (!bankDetails?.enabled) return null;
 
-  const activeIds = new Set(
-    (bankDetails.accounts ?? []).filter((account) => account.active !== false).map((account) => account.id),
-  );
+  const activeAccounts = (bankDetails.accounts ?? []).filter((account) => account.active !== false);
+  const accountsById = new Map(activeAccounts.map((account) => [account.id, account]));
+  const activeIds = new Set(activeAccounts.map((account) => account.id));
   const banks = PAYMENT_METHODS.filter((method) => method.type === "bank" && activeIds.has(method.id));
   const ewallets = PAYMENT_METHODS.filter((method) => method.type === "ewallet" && activeIds.has(method.id));
 
@@ -190,7 +191,7 @@ export default function BankDetailsSection({ bankDetails, panelSx, surfaceBorder
               panelSx={panelSx}
             >
               {banks.map((method) => (
-                <PaymentBadge key={method.id} method={method} surfaceBorderColor={surfaceBorderColor} />
+                <PaymentBadge key={method.id} method={method} account={accountsById.get(method.id)} surfaceBorderColor={surfaceBorderColor} />
               ))}
             </PaymentCategoryRow>
           ) : null}
@@ -203,7 +204,7 @@ export default function BankDetailsSection({ bankDetails, panelSx, surfaceBorder
               panelSx={panelSx}
             >
               {ewallets.map((method) => (
-                <PaymentBadge key={method.id} method={method} surfaceBorderColor={surfaceBorderColor} />
+                <PaymentBadge key={method.id} method={method} account={accountsById.get(method.id)} surfaceBorderColor={surfaceBorderColor} />
               ))}
             </PaymentCategoryRow>
           ) : null}

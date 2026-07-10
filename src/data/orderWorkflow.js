@@ -47,9 +47,31 @@ export const ORDER_STATUSES_BY_PAYMENT = {
 };
 
 export const PREORDER_PAYMENT_STATUSES = PAYMENT_STATUSES;
-export const INSTOCK_PAYMENT_STATUSES = PAYMENT_STATUSES;
+export const INSTOCK_PAYMENT_STATUSES = [
+  "Pending Verification",
+  "Unpaid",
+  "Fully Paid",
+  "For Full Refund",
+  "Refunded",
+];
 export const PREORDER_ORDER_STATUSES = ORDER_STATUSES;
-export const INSTOCK_ORDER_STATUSES = ORDER_STATUSES;
+export const INSTOCK_ORDER_STATUSES = [
+  "Pending Verification",
+  "Unpaid",
+  "Ready for Pickup",
+  "Fulfilled",
+  "For Full Refund",
+  "Refunded",
+];
+
+/** In-stock only — subset of payment → order status mappings. */
+export const INSTOCK_ORDER_STATUSES_BY_PAYMENT = {
+  "Pending Verification": ["Pending Verification"],
+  Unpaid: ["Unpaid"],
+  "Fully Paid": ["Ready for Pickup", "Fulfilled"],
+  "For Full Refund": ["For Full Refund"],
+  Refunded: ["Refunded"],
+};
 
 export const PAYMENT_COLOR = {
   "Pending Verification": "warning",
@@ -170,7 +192,8 @@ export function getStatusOptionsForKind(kind) {
 /** Visible order statuses for a selected payment status (admin dropdown). */
 export function getOrderStatusOptionsForPayment(payment, kind = "In-stock") {
   const normalized = migratePaymentStatus(payment);
-  const allowed = ORDER_STATUSES_BY_PAYMENT[normalized];
+  const map = kind === "Pre-order" ? ORDER_STATUSES_BY_PAYMENT : INSTOCK_ORDER_STATUSES_BY_PAYMENT;
+  const allowed = map[normalized];
   if (!allowed?.length) return getStatusOptionsForKind(kind);
   return allowed;
 }
@@ -551,6 +574,34 @@ export function buildTrailAttachment(url, label = "Attachment", kind = null) {
     ...(kind ? { kind } : {}),
     stored: true,
   };
+}
+
+/** Latest admin attachment on the order trail (for emails + customer UI). */
+export function findLatestAdminTrailAttachment(order, lineItemId = null) {
+  const entries = [...(order.trail ?? [])]
+    .filter((entry) => {
+      if (entry.attachment?.kind !== "admin") return false;
+      if (lineItemId && entry.lineItemId && entry.lineItemId !== lineItemId) return false;
+      const url = entry.attachment.storageUrl || entry.attachment.url;
+      return Boolean(url && (String(url).startsWith("http") || String(url).startsWith("data:")));
+    })
+    .sort((a, b) => new Date(b.at) - new Date(a.at));
+  const hit = entries[0];
+  if (!hit?.attachment) return null;
+  return {
+    label: hit.attachment.label || "Attachment",
+    url: hit.attachment.storageUrl || hit.attachment.url,
+    type: hit.attachment.type || "image",
+    at: hit.at,
+    title: hit.title,
+  };
+}
+
+/** Admin trail attachments for a line item (newest first). */
+export function adminTrailAttachmentsForLineItem(order, lineItemId) {
+  return [...(order.trail ?? [])]
+    .filter((entry) => entry.lineItemId === lineItemId && entry.attachment?.kind === "admin")
+    .sort((a, b) => new Date(b.at) - new Date(a.at));
 }
 
 export function buildStoredTrailAttachment({ label, type = "image", kind, lineItemId, proofId }) {

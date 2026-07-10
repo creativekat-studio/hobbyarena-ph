@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Avatar,
   Box,
   Button,
   Checkbox,
@@ -40,17 +41,21 @@ import {
   STORE_PICKUP_INFO,
   calcShipping,
 } from "../data/checkoutSettings.js";
+import { useCms } from "../lib/cmsContent.jsx";
 import { useCheckoutConfirmation, writeCheckoutConfirmation } from "../lib/checkoutConfirmation.js";
 import { compressProofFile } from "../lib/imageCompression.js";
-import { getCustomerCheckoutDefaults, useCustomers } from "../lib/customersStore.jsx";
+import { getCustomerCheckoutDefaults, patchCustomerProfileIfEmpty, useCustomers } from "../lib/customersStore.jsx";
+import { readCheckoutDetails, writeCheckoutDetails, clearCheckoutDetails } from "../lib/checkoutDetails.js";
+import { formatPhPhoneInput, isValidPhPhone } from "../lib/phone.js";
+import PasswordField from "../components/PasswordField.jsx";
 
 const STEPS = ["Account", "Details", "Payment"];
-const QR_TILE_SIZE = 168;
-const QR_TILE_SIZE_COMPACT = 112;
+const QR_TILE_SIZE = 180;
+const QR_TILE_SIZE_COMPACT = 140;
 
 function CheckoutStepShell({ panelSx, children, sx }) {
   return (
-    <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 }, ...sx }}>
+    <Box sx={{ ...panelSx, p: { xs: 2, md: 2.25 }, height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto", ...sx }}>
       {children}
     </Box>
   );
@@ -58,7 +63,7 @@ function CheckoutStepShell({ panelSx, children, sx }) {
 
 function StepHeading({ step, title, subtitle, action }) {
   return (
-    <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "center" }} spacing={1.5} sx={{ mb: 2.5 }}>
+    <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "center" }} spacing={1.5} sx={{ mb: 2 }}>
       <Box>
         <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2, fontFamily: MONO_FONT, display: "block" }}>
           {step}
@@ -143,7 +148,7 @@ function QrCodeTile({ label, imageUrl, surfaceBorderColor, size = "default" }) {
             bgcolor: alpha(theme.palette.background.paper, 0.94),
             border: "1px solid",
             borderColor: surfaceBorderColor,
-            boxShadow: 1,
+            boxShadow: "none",
             "&:hover": { bgcolor: "background.paper" },
           }}
         >
@@ -296,7 +301,7 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
             size="large"
             disabled={busy}
             onClick={handleGoogleSignIn}
-            sx={{ py: 1.35, borderColor: surfaceBorderColor, textTransform: "none", fontWeight: 700 }}
+            sx={{ py: 1.35, borderColor: surfaceBorderColor, fontWeight: 700 }}
           >
             Continue with Google
           </Button>
@@ -369,7 +374,7 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
               <TextField label="Full name" fullWidth value={name} onChange={(e) => setName(e.target.value)} required />
             ) : null}
             <TextField label="Email" type="email" fullWidth value={email} onChange={(e) => setEmail(e.target.value)} required />
-            <TextField label="Password" type="password" fullWidth value={password} onChange={(e) => setPassword(e.target.value)} required helperText={mode === "signup" ? "At least 8 characters." : " "} />
+            <PasswordField value={password} onChange={(e) => setPassword(e.target.value)} required helperText={mode === "signup" ? "At least 8 characters." : " "} autoComplete={mode === "signup" ? "new-password" : "current-password"} />
             {mode === "signup" ? (
               <FormControlLabel
                 control={<Checkbox checked={acceptedTerms} onChange={(e) => setAcceptedTerms(e.target.checked)} size="small" />}
@@ -404,6 +409,10 @@ function DetailsStep({ panelSx, surfaceBorderColor, details, setDetails, onBack,
       setError("Name, email, and phone are required.");
       return;
     }
+    if (!isValidPhPhone(details.phone)) {
+      setError("Enter a valid PH mobile number (09XX XXX XXXX).");
+      return;
+    }
     if (!details.street.trim() || !details.city.trim() || !details.province.trim()) {
       setError("Please complete your delivery address.");
       return;
@@ -412,67 +421,109 @@ function DetailsStep({ panelSx, surfaceBorderColor, details, setDetails, onBack,
   }
 
   return (
-    <Box component="form" onSubmit={handleSubmit}>
-      <CheckoutStepShell panelSx={panelSx}>
-      <StepHeading
-        step="Step 2"
-        title="Contact & delivery"
-        subtitle="Where should we send your order?"
-      />
+    <Box component="form" onSubmit={handleSubmit} sx={{ height: { xs: "auto", md: "100%" }, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <CheckoutStepShell panelSx={panelSx} sx={{ flex: 1, overflow: { xs: "visible", md: "hidden" } }}>
+        <Box sx={{ flexShrink: 0 }}>
+          <StepHeading
+            step="Step 2"
+            title="Contact & delivery"
+            subtitle="Where should we send your order?"
+          />
+          {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
+        </Box>
 
-      {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
+        <Grid container spacing={1.75} sx={{ flexShrink: 0 }}>
+          <Grid size={{ xs: 12 }}>
+            <TextField label="Full name" fullWidth required size="small" value={details.name} onChange={(e) => setDetails({ name: e.target.value })} />
+          </Grid>
+          <Grid size={{ xs: 12 }}>
+            <TextField
+              label="Phone"
+              fullWidth
+              required
+              size="small"
+              value={details.phone}
+              onChange={(e) => setDetails({ phone: formatPhPhoneInput(e.target.value) })}
+              placeholder="09XX XXX XXXX"
+              inputProps={{ inputMode: "numeric", autoComplete: "tel-national" }}
+            />
+          </Grid>
+          <Grid size={{ xs: 12 }}>
+            <TextField label="Email" type="email" fullWidth required size="small" value={details.email} onChange={(e) => setDetails({ email: e.target.value })} />
+          </Grid>
 
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField label="Full name" fullWidth required size="small" value={details.name} onChange={(e) => setDetails({ name: e.target.value })} />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField label="Phone" fullWidth required size="small" value={details.phone} onChange={(e) => setDetails({ phone: e.target.value })} placeholder="09XX XXX XXXX" />
-        </Grid>
-        <Grid size={{ xs: 12 }}>
-          <TextField label="Email" type="email" fullWidth required size="small" value={details.email} onChange={(e) => setDetails({ email: e.target.value })} />
+          <Grid size={{ xs: 12 }}>
+            <TextField
+              label="Street address"
+              fullWidth
+              required
+              size="small"
+              multiline
+              minRows={4}
+              value={details.street}
+              onChange={(e) => setDetails({ street: e.target.value })}
+            />
+          </Grid>
+          <Grid size={{ xs: 12 }}>
+            <TextField label="City" fullWidth required size="small" value={details.city} onChange={(e) => setDetails({ city: e.target.value })} />
+          </Grid>
+          <Grid size={{ xs: 12 }}>
+            <TextField label="Province" fullWidth required size="small" value={details.province} onChange={(e) => setDetails({ province: e.target.value })} />
+          </Grid>
+          <Grid size={{ xs: 12 }}>
+            <TextField label="Postal code" fullWidth size="small" value={details.postal} onChange={(e) => setDetails({ postal: e.target.value })} />
+          </Grid>
         </Grid>
 
-        <Grid size={{ xs: 12 }}>
-          <Box
+        <Box sx={{ flex: 1, minHeight: 88, mt: 1.75, display: "flex", flexDirection: "column" }}>
+          <TextField
+            label="Order notes (optional)"
+            fullWidth
+            multiline
+            minRows={2}
+            size="small"
+            value={details.notes}
+            onChange={(e) => setDetails({ notes: e.target.value })}
             sx={{
-              p: 1.5,
-              borderRadius: 1,
-              border: "1px solid",
-              borderColor: surfaceBorderColor,
-              bgcolor: (theme) => alpha(theme.palette.info.main, 0.06),
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              "& .MuiInputBase-root": {
+                flex: 1,
+                alignItems: "stretch",
+                height: "100%",
+              },
+              "& textarea": {
+                height: "100% !important",
+                overflow: "auto !important",
+              },
             }}
-          >
-            <Typography variant="body2" sx={{ lineHeight: 1.5, fontSize: "0.82rem" }}>
-              {SHIPPING_DISCLAIMER} {STORE_PICKUP_INFO} {PROCESSING_HOURS}
-            </Typography>
-          </Box>
-        </Grid>
+          />
+        </Box>
 
-        <Grid size={{ xs: 12 }}>
-          <TextField label="Street address" fullWidth required size="small" value={details.street} onChange={(e) => setDetails({ street: e.target.value })} />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 4 }}>
-          <TextField label="City" fullWidth required size="small" value={details.city} onChange={(e) => setDetails({ city: e.target.value })} />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 4 }}>
-          <TextField label="Province" fullWidth required size="small" value={details.province} onChange={(e) => setDetails({ province: e.target.value })} />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 4 }}>
-          <TextField label="Postal code" fullWidth size="small" value={details.postal} onChange={(e) => setDetails({ postal: e.target.value })} />
-        </Grid>
+        <Box
+          sx={{
+            flexShrink: 0,
+            mt: 1.5,
+            mb: 1.5,
+            p: 1.25,
+            borderRadius: 1,
+            border: "1px solid",
+            borderColor: surfaceBorderColor,
+            bgcolor: (theme) => alpha(theme.palette.info.main, 0.06),
+          }}
+        >
+          <Typography variant="body2" sx={{ lineHeight: 1.45, fontSize: "0.8rem" }}>
+            {SHIPPING_DISCLAIMER} {STORE_PICKUP_INFO} {PROCESSING_HOURS}
+          </Typography>
+        </Box>
 
-        <Grid size={{ xs: 12 }}>
-          <TextField label="Order notes (optional)" fullWidth multiline minRows={2} size="small" value={details.notes} onChange={(e) => setDetails({ notes: e.target.value })} />
-        </Grid>
-      </Grid>
-
-      <Stack direction="row" spacing={1.5} sx={{ mt: 2.5 }}>
-        <Button variant="outlined" color="inherit" onClick={onBack} sx={{ borderColor: surfaceBorderColor }}>Back</Button>
-        <Button type="submit" variant="contained" sx={{ flexGrow: 1, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
-          Continue to payment
-        </Button>
-      </Stack>
+        <Stack direction="row" spacing={1.5} sx={{ flexShrink: 0 }}>
+          <Button variant="outlined" color="inherit" onClick={onBack} sx={{ borderColor: surfaceBorderColor }}>Back</Button>
+          <Button type="submit" variant="contained" sx={{ flexGrow: 1, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
+            Continue to payment
+          </Button>
+        </Stack>
       </CheckoutStepShell>
     </Box>
   );
@@ -494,25 +545,23 @@ function StockHoldBanner({ hold, surfaceBorderColor }) {
       <Box
         sx={{
           mb: 2,
-          p: 1.75,
+          p: { xs: 1, md: 1.25 },
           borderRadius: 1,
-          border: "1px solid",
-          borderColor: alpha(theme.palette.warning.main, 0.4),
-          bgcolor: alpha(theme.palette.warning.main, 0.1),
+          border: "1.5px solid",
+          borderColor: alpha(theme.palette.warning.main, 0.55),
+          bgcolor: alpha(theme.palette.warning.main, 0.16),
+          boxShadow: `0 0 0 1px ${alpha(theme.palette.warning.main, 0.12)}`,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           gap: 1.5,
         }}
       >
-        <Box>
-          <Typography sx={{ fontWeight: 800, fontSize: "0.85rem" }}>Stock reserved for you</Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", lineHeight: 1.4 }}>
-            Complete payment before the timer runs out or the stock is released to other shoppers.
-          </Typography>
-        </Box>
+        <Typography sx={{ fontWeight: 800, fontSize: "0.78rem", minWidth: 0, color: "warning.main", fontFamily: MONO_FONT, letterSpacing: 0.6, textTransform: "uppercase" }}>
+          Reserved
+        </Typography>
         <Typography
-          sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: "1.35rem", color: "warning.main", letterSpacing: 0.5, flexShrink: 0 }}
+          sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: "1.05rem", color: "warning.main", letterSpacing: 0.5, flexShrink: 0, fontVariantNumeric: "tabular-nums" }}
         >
           {formatHoldClock(hold.remainingMs)}
         </Typography>
@@ -540,7 +589,11 @@ function StockHoldBanner({ hold, surfaceBorderColor }) {
 
 function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proofFile, setProofFile, confirmedTransfer, setConfirmedTransfer, onBack, onPlaceOrder, busy, error, hold }) {
   const theme = useTheme();
-  const banks = useMemo(() => BANK_ACCOUNTS.filter((bank) => bank.active !== false), []);
+  const { content } = useCms();
+  const banks = useMemo(
+    () => (content.bankDetails?.accounts ?? BANK_ACCOUNTS).filter((bank) => bank.active !== false),
+    [content.bankDetails?.accounts],
+  );
   const [selectedBankId, setSelectedBankId] = useState(banks[0]?.id ?? "");
   const selectedBank = banks.find((bank) => bank.id === selectedBankId) ?? banks[0];
 
@@ -589,7 +642,25 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
             onClick={() => setSelectedBankId(bank.id)}
             color={selectedBank?.id === bank.id ? "primary" : "default"}
             variant={selectedBank?.id === bank.id ? "filled" : "outlined"}
-            sx={{ fontWeight: 700 }}
+            avatar={
+              bank.logo ? (
+                <Avatar
+                  src={bank.logo}
+                  alt=""
+                  variant="rounded"
+                  sx={{ bgcolor: "transparent", p: 0.25 }}
+                />
+              ) : undefined
+            }
+            sx={{
+              fontWeight: 700,
+              "& .MuiChip-avatar": {
+                width: 24,
+                height: 24,
+                ml: 0.5,
+                "& img": { objectFit: "contain" },
+              },
+            }}
           />
         ))}
       </Stack>
@@ -597,7 +668,7 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
       {selectedBank ? (
         <Box
           sx={{
-            p: 2,
+            p: { xs: 2, md: 2.5 },
             mb: 2.5,
             borderRadius: 1,
             border: "1px solid",
@@ -605,23 +676,33 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
             display: "flex",
             flexDirection: { xs: "column", sm: "row" },
             alignItems: { xs: "stretch", sm: "center" },
-            gap: 2,
+            gap: { xs: 2, sm: 3 },
           }}
         >
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography sx={{ fontWeight: 800, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 1, color: "primary.main" }}>
-              {selectedBank.label.toUpperCase()}
-            </Typography>
-            <Typography sx={{ fontWeight: 700, mt: 0.75, fontSize: "0.95rem" }}>{selectedBank.accountName}</Typography>
-            <Typography sx={{ fontFamily: MONO_FONT, fontSize: "1.05rem", fontWeight: 800, mt: 0.35, letterSpacing: 0.3 }}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              {selectedBank.logo ? (
+                <Box
+                  component="img"
+                  src={selectedBank.logo}
+                  alt=""
+                  sx={{ width: 28, height: 28, objectFit: "contain", borderRadius: 0.5, bgcolor: "transparent", p: 0.35 }}
+                />
+              ) : null}
+              <Typography sx={{ fontWeight: 800, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 1, color: "primary.main" }}>
+                {selectedBank.label.toUpperCase()}
+              </Typography>
+            </Stack>
+            <Typography sx={{ fontWeight: 700, mt: 0.75, fontSize: "1rem" }}>{selectedBank.accountName}</Typography>
+            <Typography sx={{ fontFamily: MONO_FONT, fontSize: "1.15rem", fontWeight: 800, mt: 0.5, letterSpacing: 0.3 }}>
               {selectedBank.accountNumber}
             </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75, lineHeight: 1.45 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1, lineHeight: 1.45 }}>
               {selectedBank.note}
             </Typography>
           </Box>
-          <Box sx={{ flexShrink: 0, alignSelf: { xs: "center", sm: "flex-start" } }}>
-            <QrCodeTile label={selectedBank.label} imageUrl={selectedBank.qrImage} surfaceBorderColor={surfaceBorderColor} size="compact" />
+          <Box sx={{ flexShrink: 0, alignSelf: { xs: "center", sm: "center" } }}>
+            <QrCodeTile label={selectedBank.label} imageUrl={selectedBank.qrImage} surfaceBorderColor={surfaceBorderColor} />
           </Box>
         </Box>
       ) : null}
@@ -641,7 +722,7 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
         </Typography>
 
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
-          <Button component="label" variant="outlined" color="inherit" sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4, textTransform: "uppercase", flexShrink: 0 }}>
+          <Button component="label" variant="contained" color="primary" sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4, textTransform: "uppercase", flexShrink: 0 }}>
             {proofFile ? "Change file" : "Upload receipt"}
             <input type="file" hidden accept="image/*,application/pdf" onChange={handleFileChange} />
           </Button>
@@ -713,7 +794,7 @@ export default function CheckoutPage() {
   const outletContext = useOutletContext();
   const surfaces = outletContext?.surfaces ?? getSurfaces(theme, mode === "dark");
   const { panelSx, surfaceBorderColor } = surfaces;
-  const { user, isCustomer, loading } = useAuth();
+  const { user, isCustomer, loading, updateCustomerProfileDetails } = useAuth();
   const { customers } = useCustomers();
   const { items, subtotal, balanceDue, hasPreorder, clearCart } = useCart();
   const { placeOrder } = useOrders();
@@ -724,7 +805,10 @@ export default function CheckoutPage() {
   const [step, setStep] = useState(0);
   const [isGuest, setIsGuest] = useState(true);
   const [accountSkipped, setAccountSkipped] = useState(false);
-  const [details, setDetailsState] = useState(EMPTY_DETAILS);
+  const [details, setDetailsState] = useState(() => ({
+    ...EMPTY_DETAILS,
+    ...(readCheckoutDetails() || {}),
+  }));
   const [proofFile, setProofFile] = useState(null);
   const [confirmedTransfer, setConfirmedTransfer] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -783,15 +867,34 @@ export default function CheckoutPage() {
   }, [holdState.status, holdState.expiresAt]);
 
   function setDetails(patch) {
-    setDetailsState((prev) => ({ ...prev, ...patch }));
+    setDetailsState((prev) => {
+      const next = { ...prev, ...patch };
+      writeCheckoutDetails(next);
+      return next;
+    });
   }
+
+  useEffect(() => {
+    if (step < 1) return;
+    writeCheckoutDetails(details);
+  }, [details, step]);
 
   useEffect(() => {
     if (!loading && isCustomer && user && !accountSkipped) {
       setIsGuest(false);
+      const session = readCheckoutDetails() || {};
+      const defaults = getCustomerCheckoutDefaults(user.email, user);
       setDetailsState((prev) => ({
         ...prev,
-        ...getCustomerCheckoutDefaults(user.email, user),
+        ...session,
+        // Profile wins when it has a value; session fills empty profile fields
+        name: defaults.name || session.name || prev.name,
+        email: defaults.email || session.email || prev.email,
+        phone: formatPhPhoneInput(defaults.phone || session.phone || prev.phone),
+        street: defaults.street || session.street || prev.street,
+        city: defaults.city || session.city || prev.city,
+        province: defaults.province || session.province || prev.province,
+        postal: defaults.postal || session.postal || prev.postal,
       }));
       setStep(1);
       setAccountSkipped(true);
@@ -805,7 +908,7 @@ export default function CheckoutPage() {
       ...prev,
       name: defaults.name || prev.name,
       email: defaults.email || prev.email,
-      phone: defaults.phone || prev.phone,
+      phone: formatPhPhoneInput(defaults.phone || prev.phone),
       street: defaults.street || prev.street,
       city: defaults.city || prev.city,
       province: defaults.province || prev.province,
@@ -909,6 +1012,39 @@ export default function CheckoutPage() {
             email: order.email ?? "",
             userId: order.userId ?? null,
           });
+
+          if (!isGuest && user?.email && details.email.trim().toLowerCase() === user.email.toLowerCase()) {
+            try {
+              await updateCustomerProfileDetails({
+                name: details.name,
+                phone: formatPhPhoneInput(details.phone),
+                address: {
+                  street: details.street,
+                  city: details.city,
+                  province: details.province,
+                  postal: details.postal,
+                },
+              });
+            } catch (profileError) {
+              console.warn("[checkout] Could not save profile defaults:", profileError);
+              try {
+                await patchCustomerProfileIfEmpty(user.email, {
+                  uid: user.uid,
+                  name: details.name,
+                  phone: formatPhPhoneInput(details.phone),
+                  address: {
+                    street: details.street,
+                    city: details.city,
+                    province: details.province,
+                    postal: details.postal,
+                  },
+                });
+              } catch (fallbackError) {
+                console.warn("[checkout] Profile fallback save failed:", fallbackError);
+              }
+            }
+          }
+          clearCheckoutDetails();
         } else {
           setPaymentError("Could not place order. Please try again.");
           return;
@@ -935,71 +1071,111 @@ export default function CheckoutPage() {
   }
 
   return (
-    <Container maxWidth="md" sx={{ py: { xs: 4, md: 5 } }}>
-      <Stack spacing={3}>
-        <Box>
+    <Container
+      maxWidth="lg"
+      sx={{
+        py: { xs: 2, md: 2.5 },
+        flex: { xs: "none", md: 1 },
+        minHeight: 0,
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        overflow: { xs: "visible", md: "hidden" },
+      }}
+    >
+      <Stack spacing={2} sx={{ maxWidth: 1080, mx: "auto", width: "100%", flex: { xs: "none", md: 1 }, minHeight: 0, overflow: { xs: "visible", md: "hidden" } }}>
+        <Box sx={{ flexShrink: 0 }}>
           <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2, fontFamily: MONO_FONT }}>Checkout</Typography>
           <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>
-            <Typography variant="h3" sx={{ fontWeight: 800 }}>Complete your order</Typography>
+            <Typography variant="h4" sx={{ fontWeight: 800, fontSize: { xs: "1.5rem", md: "1.85rem" } }}>Complete your order</Typography>
             <Button component={RouterLink} to="/" variant="text" color="inherit" sx={{ color: "text.secondary" }}>
               ← Continue shopping
             </Button>
           </Stack>
         </Box>
 
-        <Stepper activeStep={step} alternativeLabel sx={{ display: { xs: "none", sm: "flex" } }}>
+        <Stepper activeStep={step} alternativeLabel sx={{ display: { xs: "none", sm: "flex" }, flexShrink: 0, py: 0.5 }}>
           {STEPS.map((label) => (
             <Step key={label}><StepLabel>{label}</StepLabel></Step>
           ))}
         </Stepper>
 
-        <Grid container spacing={3} alignItems="flex-start" justifyContent="center">
-          <Grid size={{ xs: 12, lg: 7 }} sx={{ maxWidth: { lg: 640 }, mx: { lg: 0 }, width: "100%" }}>
-            {step === 0 ? (
-              <AccountStep
-                panelSx={panelSx}
-                surfaceBorderColor={surfaceBorderColor}
-                onContinue={handleAccountContinue}
-                isGuest={isGuest}
-                setIsGuest={setIsGuest}
-              />
-            ) : null}
-            {step === 1 ? (
-              <DetailsStep
-                panelSx={panelSx}
-                surfaceBorderColor={surfaceBorderColor}
-                details={details}
-                setDetails={setDetails}
-                onBack={() => setStep(isCustomer && user ? 0 : 0)}
-                onContinue={() => setStep(2)}
-              />
-            ) : null}
-            {step === 2 ? (
-              <PaymentStep
-                panelSx={panelSx}
-                surfaceBorderColor={surfaceBorderColor}
-                total={total}
-                proofFile={proofFile}
-                setProofFile={setProofFile}
-                confirmedTransfer={confirmedTransfer}
-                setConfirmedTransfer={setConfirmedTransfer}
-                onBack={() => setStep(1)}
-                onPlaceOrder={handlePlaceOrder}
-                busy={busy}
-                error={paymentError}
-                hold={{
-                  status: holdState.status,
-                  remainingMs: holdRemaining,
-                  shortfalls: holdState.shortfalls,
-                  onRetry: attemptHold,
-                }}
-              />
-            ) : null}
+        <Grid container spacing={2.5} alignItems="stretch" justifyContent="center" sx={{ flex: { xs: "none", md: 1 }, minHeight: 0, overflow: { xs: "visible", md: "hidden" } }}>
+          <Grid size={{ xs: 12, md: 7 }} sx={{ display: "flex", minWidth: 0, minHeight: 0, height: { md: "100%" } }}>
+            <Box sx={{ width: "100%", height: { xs: "auto", md: "100%" }, display: "flex", flexDirection: "column", minHeight: 0, overflow: { xs: "visible", md: "auto" } }}>
+              {step === 0 ? (
+                <AccountStep
+                  panelSx={panelSx}
+                  surfaceBorderColor={surfaceBorderColor}
+                  onContinue={handleAccountContinue}
+                  isGuest={isGuest}
+                  setIsGuest={setIsGuest}
+                />
+              ) : null}
+              {step === 1 ? (
+                <DetailsStep
+                  panelSx={panelSx}
+                  surfaceBorderColor={surfaceBorderColor}
+                  details={details}
+                  setDetails={setDetails}
+                  onBack={() => setStep(isCustomer && user ? 0 : 0)}
+                  onContinue={async () => {
+                    if (isCustomer && user?.email) {
+                      try {
+                        await updateCustomerProfileDetails({
+                          name: details.name,
+                          phone: formatPhPhoneInput(details.phone),
+                          address: {
+                            street: details.street,
+                            city: details.city,
+                            province: details.province,
+                            postal: details.postal,
+                          },
+                        });
+                      } catch (profileError) {
+                        console.warn("[checkout] Could not save profile from details:", profileError);
+                      }
+                    }
+                    setStep(2);
+                  }}
+                />
+              ) : null}
+              {step === 2 ? (
+                <PaymentStep
+                  panelSx={panelSx}
+                  surfaceBorderColor={surfaceBorderColor}
+                  total={total}
+                  proofFile={proofFile}
+                  setProofFile={setProofFile}
+                  confirmedTransfer={confirmedTransfer}
+                  setConfirmedTransfer={setConfirmedTransfer}
+                  onBack={() => setStep(1)}
+                  onPlaceOrder={handlePlaceOrder}
+                  busy={busy}
+                  error={paymentError}
+                  hold={{
+                    status: holdState.status,
+                    remainingMs: holdRemaining,
+                    shortfalls: holdState.shortfalls,
+                    onRetry: attemptHold,
+                  }}
+                />
+              ) : null}
+            </Box>
           </Grid>
-          <Grid size={{ xs: 12, lg: 5 }} sx={{ maxWidth: { lg: 380 }, width: "100%", mx: { lg: "auto" } }}>
-            <Box sx={{ position: { lg: "sticky" }, top: 88 }}>
+          <Grid size={{ xs: 12, md: 5 }} sx={{ display: { xs: "none", md: "flex" }, minWidth: 0, minHeight: 0, height: "100%" }}>
+            <Box
+              sx={{
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                minHeight: 0,
+              }}
+            >
               <OrderSummaryPanel
                 compact
+                scrollable
                 items={items.map((item) => ({ ...item, amount: cartItemDueNow(item) }))}
                 subtotal={subtotal}
                 shippingFee={shippingFee}
@@ -1011,6 +1187,20 @@ export default function CheckoutPage() {
             </Box>
           </Grid>
         </Grid>
+
+        {/* Mobile order summary below the form */}
+        <Box sx={{ display: { xs: "block", md: "none" }, flexShrink: 0 }}>
+          <OrderSummaryPanel
+            compact
+            items={items.map((item) => ({ ...item, amount: cartItemDueNow(item) }))}
+            subtotal={subtotal}
+            shippingFee={shippingFee}
+            total={total}
+            balanceDue={balanceDue}
+            hasPreorder={hasPreorder}
+            panelSx={panelSx}
+          />
+        </Box>
       </Stack>
     </Container>
   );

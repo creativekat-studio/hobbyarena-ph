@@ -357,22 +357,6 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
   const showAttachment = trailEntryShowsAttachment(entry);
   const proofPurged = Boolean(entry.attachment?.purged);
   const canView = showAttachment && !proofPurged && Boolean(resolveProofAttachmentUrl(order, entry));
-  const canUpload = showAttachment && !canView && onUploadProof;
-
-  function handleUploadChange(event) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file || !onUploadProof) return;
-    if (!file.type.startsWith("image/") && file.type !== "application/pdf") return;
-    void (async () => {
-      try {
-        const dataUrl = await compressProofFile(file);
-        onUploadProof(entry, dataUrl);
-      } catch {
-        // ignore invalid/unreadable files
-      }
-    })();
-  }
 
   return (
     <Stack direction="row" spacing={1.25} sx={{ position: "relative", pb: isLast ? 0 : 1.25 }}>
@@ -485,29 +469,8 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
 
         {proofPurged ? (
           <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", mt: 0.5, lineHeight: 1.4 }}>
-            Proof file removed after retention period. Upload a new file if you still need a copy on record.
+            Proof file removed after retention period.
           </Typography>
-        ) : null}
-
-        {canUpload ? (
-          <Button
-            size="small"
-            variant="outlined"
-            component="label"
-            disabled={uploading}
-            startIcon={<AttachmentIcon sx={{ fontSize: 14 }} />}
-            sx={{
-              mt: 0.5,
-              fontFamily: MONO_FONT,
-              fontSize: "0.68rem",
-              letterSpacing: 0.3,
-              textTransform: "uppercase",
-              justifyContent: "flex-start",
-            }}
-          >
-            {uploading ? "Uploading…" : "Upload proof file"}
-            <input type="file" hidden accept="image/*,application/pdf" onChange={handleUploadChange} />
-          </Button>
         ) : null}
       </Box>
     </Stack>
@@ -608,13 +571,16 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
   const statusOptions = getOrderStatusOptionsForPayment(draftPayment, kind);
 
   useEffect(() => {
+    // Don't reset drafts while the backward/skip confirm dialog is open —
+    // a live order snapshot would clear dirty state and make Continue a no-op.
+    if (confirmTransition) return;
     setDraftPayment(lineItem.payment);
     setDraftStatus(resolveOrderStatusForPayment(lineItem.payment, lineItem.status, kind));
     setDraftQty(String(lineItem.allocatedQty ?? 0));
     setDraftRefund(lineItem.refundAmount != null ? String(lineItem.refundAmount) : "");
     setDraftAttachment(null);
     setSaveError("");
-  }, [lineItem.id, lineItem.payment, lineItem.status, lineItem.allocatedQty, kind]);
+  }, [lineItem.id, lineItem.payment, lineItem.status, lineItem.allocatedQty, kind, confirmTransition]);
 
   async function handleAttachmentChange(event) {
     const file = event.target.files?.[0];
@@ -728,22 +694,47 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
     if (paymentStatusDirty) {
       const transition = evaluateStepTransition(draftAllocatedForSave);
       if (transition) {
-        setConfirmTransition({ ...transition, draftAllocatedForSave, draftRefundForSave });
+        setConfirmTransition({
+          ...transition,
+          draftPayment,
+          draftStatus,
+          draftAttachment,
+          draftAllocatedForSave,
+          draftRefundForSave,
+        });
         return;
       }
     }
 
-    commitSave(draftAllocatedForSave, draftRefundForSave);
+    commitSave({
+      draftPayment,
+      draftStatus,
+      draftAttachment,
+      draftAllocatedForSave,
+      draftRefundForSave,
+      paymentStatusDirty,
+      allocationDirty,
+    });
   }
 
-  function commitSave(draftAllocatedForSave, draftRefundForSave) {
-    if (paymentStatusDirty && onSave) {
-      const attachment = draftAttachment
-        ? buildTrailAttachment(draftAttachment.dataUrl, draftAttachment.name || "Attachment", "admin")
+  function commitSave(pending) {
+    const {
+      draftPayment: nextPayment,
+      draftStatus: nextStatus,
+      draftAttachment: nextAttachment,
+      draftAllocatedForSave,
+      draftRefundForSave,
+      paymentStatusDirty: savePaymentStatus,
+      allocationDirty: saveAllocation,
+    } = pending;
+
+    if (savePaymentStatus && onSave) {
+      const attachment = nextAttachment
+        ? buildTrailAttachment(nextAttachment.dataUrl, nextAttachment.name || "Attachment", "admin")
         : undefined;
-      onSave(orderId, draftPayment, draftStatus, lineItem.id, "", attachment, draftAllocatedForSave, draftRefundForSave);
+      onSave(orderId, nextPayment, nextStatus, lineItem.id, "", attachment, draftAllocatedForSave, draftRefundForSave);
       setDraftAttachment(null);
-    } else if (allocationDirty && setAllocation) {
+    } else if (saveAllocation && setAllocation) {
       setAllocation(orderId, parsedQty, lineItem.id);
     }
   }
@@ -771,7 +762,17 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
   function handleConfirmTransition() {
     const pending = confirmTransition;
     setConfirmTransition(null);
-    if (pending) commitSave(pending.draftAllocatedForSave, pending.draftRefundForSave);
+    if (!pending) return;
+    // Commit the snapshot captured when the dialog opened — don't re-check live dirty flags.
+    commitSave({
+      draftPayment: pending.draftPayment,
+      draftStatus: pending.draftStatus,
+      draftAttachment: pending.draftAttachment,
+      draftAllocatedForSave: pending.draftAllocatedForSave,
+      draftRefundForSave: pending.draftRefundForSave,
+      paymentStatusDirty: true,
+      allocationDirty: false,
+    });
   }
 
   function computeAutoRefund(qty, status) {
@@ -983,18 +984,19 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
             <DialogContent>
               {confirmTransition.kind === "back" ? (
                 <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
-                  This order is already <strong>{orderStatusLabel(lineItem.status)}</strong>.
+                  Order <strong>{orderId}</strong> is already{" "}
+                  <strong>{orderStatusLabel(lineItem.status)}</strong>.
                   {" "}Are you sure you want to return it to{" "}
-                  <strong>{orderStatusLabel(draftStatus)}</strong>?
+                  <strong>{orderStatusLabel(confirmTransition.draftStatus ?? draftStatus)}</strong>?
                 </Typography>
               ) : (
                 <>
                   <Typography variant="body2" color="text.secondary">
-                    This change jumps past one or more stages. Double-check before continuing.
+                    Order <strong>{orderId}</strong> — this change jumps past one or more stages. Double-check before continuing.
                   </Typography>
                   <StepJourney
                     fromLabel={orderStatusLabel(lineItem.status)}
-                    toLabel={orderStatusLabel(draftStatus)}
+                    toLabel={orderStatusLabel(confirmTransition.draftStatus ?? draftStatus)}
                     accent="primary"
                   />
                   <Typography sx={{ mt: 2.5, fontWeight: 700 }}>Do you wish to continue?</Typography>
@@ -1283,7 +1285,7 @@ export function OrderStatusPanel({
 
   return (
     <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
-      <AdminSectionTitle sx={{ mb: 0.25 }}>Status</AdminSectionTitle>
+      <AdminSectionTitle suffix={order.id} sx={{ mb: 0.25 }}>Status</AdminSectionTitle>
       <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", mt: 0.25, mb: 2 }}>
         Payment, order status{isPreorderOrder(order) ? ", allocation (partial refund only)" : ""}, and refunds.
       </Typography>
@@ -1706,7 +1708,9 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
       quantity: item.quantity ?? 1,
       tag: item.tag ?? (isPreorder ? "Pre-order" : "In-stock"),
       depositPercent,
+      price: item.price ?? (item.quantity ? fullLine / item.quantity : fullLine),
       amount,
+      image: item.image || null,
       payment: item.payment,
       status: item.status,
       emailDisabled: isItemEmailDisabled(item),

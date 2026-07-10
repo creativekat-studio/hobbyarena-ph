@@ -18,6 +18,7 @@ export function embedsCategoryTabs(layoutId) {
 }
 
 export function resolveLineLogo(line) {
+  if (line?.logo) return line.logo;
   const text = `${line?.label ?? ""} ${line?.match ?? ""}`.toLowerCase();
   if (text.includes("pokémon") || text.includes("pokemon")) return "/TCG logos/Pokemon Logo.png";
   if (text.includes("one piece")) return "/TCG logos/One Piece Logo.png";

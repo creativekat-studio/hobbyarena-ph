@@ -143,7 +143,7 @@ export function CatalogProvider({ children }) {
   );
 
   const lineOptions = useMemo(
-    () => [{ value: "all", label: "All lines" }, ...activeLines.map((line) => ({ value: line.id, label: line.label, match: line.match }))],
+    () => [{ value: "all", label: "All lines" }, ...activeLines.map((line) => ({ value: line.id, label: line.label, match: line.match, logo: line.logo ?? "" }))],
     [activeLines],
   );
 
@@ -151,7 +151,7 @@ export function CatalogProvider({ children }) {
     const label = input.label?.trim();
     if (!label) return null;
     const id = input.id?.trim() || label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    const row = { id, label, match: input.match?.trim() || label, active: input.active !== false };
+    const row = { id, label, match: input.match?.trim() || label, logo: input.logo ?? "", active: input.active !== false };
     setCatalog((prev) => ({ ...prev, lines: [...prev.lines, row] }));
     return row;
   }, []);

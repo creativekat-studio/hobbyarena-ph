@@ -46,6 +46,7 @@ export function compactOrderForFirestore(order) {
         lineTotal: item.lineTotal ?? 0,
         tag: item.tag ?? null,
         line: item.line ?? null,
+        image: item.image ?? null,
         payment: item.payment,
         status: item.status,
         allocatedQty: item.allocatedQty ?? 0,
@@ -130,6 +131,9 @@ export function compactOrderForFirestore(order) {
     notificationSeen: Boolean(slim.notificationSeen),
     manual: Boolean(slim.manual),
     trail,
+    ...(slim.refundDetails && typeof slim.refundDetails === "object"
+      ? { refundDetails: slim.refundDetails }
+      : {}),
   });
 }
 
@@ -262,7 +266,7 @@ export async function upsertOrder(order) {
   return withProofs;
 }
 
-/** Customer self-service — append trail entries (balance proof, etc.) without touching other order fields. */
+/** Customer self-service — append trail entries (balance proof, refund details) without touching other order fields. */
 export async function patchCustomerOrderTrail(order) {
   const db = getFirestoreDb();
   if (!db || !order?.id) throw new Error("Firestore is not configured.");
@@ -275,16 +279,17 @@ export async function patchCustomerOrderTrail(order) {
     throw new Error("Could not upload proof to storage. Try a smaller image or PDF.");
   }
 
+  const patch = {
+    trail: compact.trail,
+    notificationSeen: compact.notificationSeen,
+    updatedAt: serverTimestamp(),
+  };
+  if (compact.refundDetails) {
+    patch.refundDetails = compact.refundDetails;
+  }
+
   await withTimeout(
-    setDoc(
-      orderRef(db, withProofs.id),
-      {
-        trail: compact.trail,
-        notificationSeen: compact.notificationSeen,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    ),
+    setDoc(orderRef(db, withProofs.id), patch, { merge: true }),
     SAVE_TIMEOUT_MS,
     "Order update",
   );

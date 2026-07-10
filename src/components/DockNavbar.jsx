@@ -61,7 +61,7 @@ function MegaPanel({ group, onNavigate, onClose, surfaceBorderColor }) {
         borderColor: alpha(accent, 0.35),
         bgcolor: alpha(theme.palette.background.paper, 0.96),
         backdropFilter: "blur(20px)",
-        boxShadow: `0 28px 64px ${alpha(theme.palette.common.black, 0.45)}, 0 0 0 1px ${alpha(accent, 0.12)}`,
+        boxShadow: "none",
         overflow: "hidden",
         animation: "dockPanelIn 220ms ease-out",
         "@keyframes dockPanelIn": {
@@ -141,88 +141,74 @@ function CatalogOverlay({ open, onClose, onNavigate, surfaceBorderColor }) {
       anchor="bottom"
       open={open}
       onClose={onClose}
+      elevation={0}
       PaperProps={{
         sx: {
-          height: { xs: "88dvh", sm: "auto" },
+          height: { xs: "auto", sm: "auto" },
           maxHeight: "92dvh",
           borderTopLeftRadius: 16,
           borderTopRightRadius: 16,
-          bgcolor: alpha(theme.palette.background.paper, 0.98),
-          backdropFilter: "blur(24px)",
+          bgcolor: theme.palette.background.paper,
           borderTop: "1px solid",
           borderColor: surfaceBorderColor,
+          boxShadow: "none",
+        },
+      }}
+      slotProps={{
+        backdrop: {
+          sx: { bgcolor: alpha(theme.palette.common.black, 0.45) },
         },
       }}
     >
-      <Box sx={{ p: { xs: 2.5, sm: 3 }, pb: 4 }}>
-        <Box sx={{ width: 40, height: 4, borderRadius: 99, bgcolor: "divider", mx: "auto", mb: 2.5 }} />
-        <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.65rem", letterSpacing: 2, textTransform: "uppercase", color: "primary.main", fontWeight: 800, mb: 0.5 }}>
+      <Box sx={{ p: { xs: 2.5, sm: 3 }, pb: { xs: 3, sm: 3.5 }, overflow: "auto" }}>
+        <Box sx={{ width: 40, height: 4, borderRadius: 99, bgcolor: "divider", mx: "auto", mb: 2 }} />
+        <Typography variant="h6" sx={{ fontWeight: 800, mb: 2.5 }}>
           Browse catalog
         </Typography>
-        <Typography variant="h5" sx={{ fontWeight: 800, mb: 3 }}>Where are we headed?</Typography>
 
-        <Stack spacing={3}>
+        <Stack spacing={2.5}>
           {NAV_GROUPS.map((group) => {
             const Icon = groupIcon(group.id);
             const accent = group.accent || theme.palette.primary.main;
             return (
               <Box key={group.id}>
-                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
-                  <Icon sx={{ color: accent, fontSize: 20 }} />
-                  <Typography sx={{ fontWeight: 800 }}>{group.label}</Typography>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+                  <Icon sx={{ color: accent, fontSize: 18 }} />
+                  <Typography sx={{ fontWeight: 800, fontSize: "0.95rem" }}>{group.label}</Typography>
                 </Stack>
-                <Grid container spacing={1}>
+                {group.tagline ? (
+                  <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", mb: 1.25, pl: 3.25 }}>
+                    {group.tagline}
+                  </Typography>
+                ) : null}
+                <Stack spacing={0.75}>
                   {(group.items ?? []).map((item) => (
-                    <Grid size={{ xs: 6 }} key={item.label}>
-                      <Button
-                        fullWidth
-                        variant="outlined"
-                        onClick={() => {
-                          onNavigate(item);
-                          onClose();
-                        }}
-                        sx={{
-                          py: 1.75,
-                          borderColor: surfaceBorderColor,
-                          fontWeight: 700,
-                          fontSize: "0.82rem",
-                          "&:hover": { borderColor: accent, bgcolor: alpha(accent, 0.08) },
-                        }}
-                      >
-                        {item.label}
-                      </Button>
-                    </Grid>
+                    <Button
+                      key={item.label}
+                      fullWidth
+                      variant="outlined"
+                      onClick={() => {
+                        onNavigate(item);
+                        onClose();
+                      }}
+                      sx={{
+                        justifyContent: "flex-start",
+                        py: 1.35,
+                        px: 1.75,
+                        borderColor: surfaceBorderColor,
+                        fontWeight: 700,
+                        fontSize: "0.88rem",
+                        color: "text.primary",
+                        "&:hover": { borderColor: accent, bgcolor: alpha(accent, 0.08) },
+                      }}
+                    >
+                      {item.label}
+                    </Button>
                   ))}
-                </Grid>
+                </Stack>
               </Box>
             );
           })}
-
-          <Stack direction="row" spacing={1}>
-            <Button
-              fullWidth
-              variant="contained"
-              color="primary"
-              onClick={() => {
-                onNavigate(NAV_DESTINATIONS.home);
-                onClose();
-              }}
-              sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}
-            >
-              Home
-            </Button>
-            <Button
-              fullWidth
-              variant="outlined"
-              onClick={() => {
-                onNavigate(NAV_DESTINATIONS.contact);
-                onClose();
-              }}
-              sx={{ borderColor: surfaceBorderColor, fontWeight: 700 }}
-            >
-              Contact
-            </Button>
-          </Stack>
         </Stack>
       </Box>
     </Drawer>
@@ -242,7 +228,7 @@ function DockSegment({ label, active, onClick, chevron, open }) {
         minWidth: 0,
         color: active ? "primary.contrastText" : "text.secondary",
         bgcolor: active ? "primary.main" : "transparent",
-        boxShadow: active ? `0 8px 24px ${alpha(theme.palette.primary.main, 0.35)}` : "none",
+        boxShadow: "none",
         "&:hover": {
           bgcolor: active ? "primary.main" : alpha(theme.palette.primary.main, 0.08),
           color: active ? "primary.contrastText" : "text.primary",
@@ -331,29 +317,32 @@ export default function DockNavbar({ surfaces, onOpenCart, onOpenSearch }) {
       >
         <Container maxWidth="lg">
           {/* Desktop — logo, dock, and utilities in one row */}
-          <Stack
-            direction="row"
-            alignItems="center"
-            spacing={2}
-            sx={{ display: { xs: "none", lg: "flex" }, minHeight: 56 }}
+          <Box
+            sx={{
+              display: { xs: "none", lg: "grid" },
+              gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+              alignItems: "center",
+              columnGap: 2,
+              minHeight: 56,
+            }}
           >
             <Stack
               direction="row"
               alignItems="center"
               onClick={() => { navigate("/"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-              sx={{ cursor: "pointer", flexShrink: 0 }}
+              sx={{ minWidth: 0, cursor: "pointer", justifySelf: "start" }}
             >
               <BrandLogo
                 sx={{
-                  fontSize: 46,
+                  fontSize: 55,
                   color: "primary.main",
-                  filter: useImageLogo ? undefined : `drop-shadow(0 0 12px ${alpha(gold, 0.5)})`,
+                  filter: undefined,
                 }}
-                imageSx={{ height: 62 }}
+                imageSx={{ height: 74 }}
               />
             </Stack>
 
-            <Box ref={dockRef} sx={{ position: "relative", flex: 1, display: "flex", justifyContent: "center" }}>
+            <Box ref={dockRef} sx={{ position: "relative", display: "flex", justifyContent: "center", justifySelf: "center" }}>
               <Stack
                 direction="row"
                 alignItems="center"
@@ -363,9 +352,7 @@ export default function DockNavbar({ surfaces, onOpenCart, onOpenSearch }) {
                   borderColor: alpha(gold, 0.28),
                   bgcolor: alpha(theme.palette.background.paper, 0.82),
                   backdropFilter: "blur(20px)",
-                  boxShadow: isDarkMode
-                    ? `0 16px 48px ${alpha("#000", 0.4)}, inset 0 1px 0 ${alpha(gold, 0.12)}`
-                    : `0 12px 32px ${alpha("#1E3A8A", 0.1)}, inset 0 1px 0 ${alpha("#fff", 0.8)}`,
+                  boxShadow: "none",
                   px: 0.75,
                   py: 0.75,
                 }}
@@ -389,7 +376,7 @@ export default function DockNavbar({ surfaces, onOpenCart, onOpenSearch }) {
               </Stack>
             </Box>
 
-            <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
+            <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0, justifySelf: "end" }}>
               <Tooltip title="Search">
                 <IconButton color="inherit" aria-label="Search" onClick={onOpenSearch}>
                   <SearchIcon sx={{ fontSize: 20 }} />
@@ -424,7 +411,7 @@ export default function DockNavbar({ surfaces, onOpenCart, onOpenSearch }) {
                 {user ? user.displayName?.split(" ")[0] || "Account" : "Account"}
               </Button>
             </Stack>
-          </Stack>
+          </Box>
 
           {/* Mobile — logo + utilities, then browse */}
           <Stack spacing={1.25} sx={{ display: { xs: "flex", lg: "none" } }}>
@@ -439,7 +426,7 @@ export default function DockNavbar({ surfaces, onOpenCart, onOpenSearch }) {
                   sx={{
                     fontSize: 38,
                     color: "primary.main",
-                    filter: useImageLogo ? undefined : `drop-shadow(0 0 12px ${alpha(gold, 0.5)})`,
+                    filter: undefined,
                   }}
                   imageSx={{ height: 52 }}
                 />
@@ -471,7 +458,8 @@ export default function DockNavbar({ surfaces, onOpenCart, onOpenSearch }) {
                 letterSpacing: 1,
                 textTransform: "uppercase",
                 fontSize: "0.78rem",
-                boxShadow: `0 12px 32px ${alpha(gold, 0.25)}`,
+                boxShadow: "none",
+                "&:hover": { boxShadow: "none" },
               }}
             >
               Browse catalog

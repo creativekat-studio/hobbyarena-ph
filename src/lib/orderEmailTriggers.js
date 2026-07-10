@@ -176,7 +176,7 @@ export function buildLineItemEmailContext(item) {
 }
 
 export const ORDER_STATUS_EMAIL_LABELS = {
-  deposit_received: "Deposit received",
+  deposit_received: "Payment verified",
   balance_due_full: "Balance due (full allocation)",
   balance_due_partial: "Balance due (partial allocation)",
   partial_refund_pending: "Partial refund pending",

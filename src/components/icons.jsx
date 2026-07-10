@@ -109,10 +109,16 @@ export function BellIcon(props) {
   );
 }
 
-export function HeartIcon(props) {
+export function HeartIcon({ solid = false, ...props }) {
   return (
     <SvgIcon viewBox="0 0 24 24" {...props}>
-      <path d="M12 20.5s-7-4.6-7-10a4 4 0 0 1 7-2.5 4 4 0 0 1 7 2.5c0 5.4-7 10-7 10Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path
+        d="M12 20.5s-7-4.6-7-10a4 4 0 0 1 7-2.5 4 4 0 0 1 7 2.5c0 5.4-7 10-7 10Z"
+        fill={solid ? "currentColor" : "none"}
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
     </SvgIcon>
   );
 }
@@ -265,6 +271,28 @@ export function TiktokIcon(props) {
     <SvgIcon viewBox="0 0 24 24" {...props}>
       <path
         d="M14 3c.4 2.4 1.9 4 4.3 4.3v3c-1.6 0-3-.5-4.3-1.4V15a6 6 0 1 1-6-6c.3 0 .7 0 1 .1v3.1a3 3 0 1 0 2 2.8V3h3Z"
+        fill="currentColor"
+      />
+    </SvgIcon>
+  );
+}
+
+export function EyeIcon(props) {
+  return (
+    <SvgIcon viewBox="0 0 24 24" {...props}>
+      <path
+        d="M12 5c5.2 0 9.2 4.2 10 7-.8 2.8-4.8 7-10 7S2.8 14.8 2 12c.8-2.8 4.8-7 10-7Zm0 2.5A4.5 4.5 0 1 0 16.5 12 4.5 4.5 0 0 0 12 7.5Zm0 2A2.5 2.5 0 1 1 9.5 12 2.5 2.5 0 0 1 12 9.5Z"
+        fill="currentColor"
+      />
+    </SvgIcon>
+  );
+}
+
+export function EyeOffIcon(props) {
+  return (
+    <SvgIcon viewBox="0 0 24 24" {...props}>
+      <path
+        d="M3.3 4.7 4.7 3.3l16 16-1.4 1.4-2.5-2.5A11.6 11.6 0 0 1 12 19c-5.2 0-9.2-4.2-10-7 .4-1.4 1.6-3.2 3.4-4.7L3.3 4.7ZM12 7c5.2 0 9.2 4.2 10 7-.3 1-1 2.2-2.1 3.4l-2.2-2.2A4.5 4.5 0 0 0 10.8 9.3L8.7 7.2C9.7 7.1 10.8 7 12 7Zm-4.4 4.5 5.9 5.9A4.5 4.5 0 0 1 7.6 11.5Z"
         fill="currentColor"
       />
     </SvgIcon>

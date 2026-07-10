@@ -4,7 +4,7 @@ import {
   DEFAULT_PRICING_VARIANT,
 } from "../data/preorderDisplay.js";
 
-const STORAGE_KEY = "hobbyarena:preorder-display";
+const STORAGE_KEY = "hobbyarena:preorder-display-v2";
 
 function loadStored() {
   if (typeof window === "undefined") {

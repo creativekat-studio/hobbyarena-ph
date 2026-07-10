@@ -37,8 +37,15 @@ export default function PreorderTermsDialog({
       fullWidth
       scroll="paper"
       aria-labelledby="preorder-terms-title"
+      PaperProps={{
+        sx: {
+          maxHeight: { xs: "85vh", sm: "80vh" },
+          display: "flex",
+          flexDirection: "column",
+        },
+      }}
     >
-      <DialogTitle id="preorder-terms-title" sx={{ fontWeight: 800, pb: 1 }}>
+      <DialogTitle id="preorder-terms-title" sx={{ fontWeight: 800, pb: 1, flexShrink: 0 }}>
         Pre-order terms
         {productName ? (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontWeight: 500, lineHeight: 1.45 }}>
@@ -47,7 +54,7 @@ export default function PreorderTermsDialog({
         ) : null}
       </DialogTitle>
 
-      <DialogContent dividers sx={{ p: 0 }}>
+      <DialogContent dividers sx={{ p: 0, overflowY: "auto", flex: 1 }}>
         <ProductTermsSection
           isPreorder
           compact
@@ -67,7 +74,7 @@ export default function PreorderTermsDialog({
         />
       </DialogContent>
 
-      <DialogActions sx={{ px: 2.5, py: 2, gap: 1, flexWrap: "wrap" }}>
+      <DialogActions sx={{ px: 2.5, py: 2, gap: 1, flexWrap: "wrap", flexShrink: 0 }}>
         <Button onClick={onClose} color="inherit">
           Cancel
         </Button>

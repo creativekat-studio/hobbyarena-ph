@@ -9,6 +9,7 @@ import {
   Tab,
   Tabs,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
@@ -220,7 +221,7 @@ function EmailEditor({ emailType, draft, onDraftChange, surfaceBorderColor, test
   }
 
   return (
-    <Stack spacing={1.5}>
+    <Stack spacing={1.5} sx={{ height: "100%" }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
         <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", color: "text.secondary" }}>
           Message body
@@ -239,6 +240,11 @@ function EmailEditor({ emailType, draft, onDraftChange, surfaceBorderColor, test
         value={draft}
         onChange={(e) => { onDraftChange(e.target.value); setSaved(false); }}
         placeholder={defaultBody}
+        sx={{
+          flex: 1,
+          "& .MuiInputBase-root": { height: "100%", alignItems: "flex-start" },
+          "& textarea": { height: "100% !important", overflow: "auto !important", resize: "none" },
+        }}
       />
 
       <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
@@ -332,10 +338,10 @@ export default function EmailTemplatesPage() {
       <Tabs
         value={pageMode}
         onChange={(_, value) => setPageMode(value)}
-        sx={{ ...panelSx, minHeight: 48, px: 1 }}
+        sx={{ ...panelSx, px: 1 }}
       >
-        <Tab value="templates" label="Templates" sx={{ fontWeight: 700, textTransform: "none" }} />
-        <Tab value="inbox" label="Simulated inbox" sx={{ fontWeight: 700, textTransform: "none" }} />
+        <Tab value="templates" label="Templates" />
+        <Tab value="inbox" label="Simulated inbox" />
       </Tabs>
 
       {pageMode === "inbox" ? (
@@ -343,7 +349,47 @@ export default function EmailTemplatesPage() {
       ) : (
         <>
       <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
-        <Typography sx={{ fontWeight: 800, fontSize: "0.9rem", mb: 1 }}>Test recipient</Typography>
+        <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, mb: 1 }}>
+          <Typography sx={{ fontWeight: 800, fontSize: "0.9rem" }}>Test recipient</Typography>
+          <Tooltip
+            title="With simulation on, test sends are captured in the Simulated inbox tab. With simulation off, Resend delivers to your account email in test mode."
+            arrow
+            placement="top"
+            enterTouchDelay={0}
+            slotProps={{
+              tooltip: {
+                sx: {
+                  fontFamily: MONO_FONT,
+                  fontSize: "0.72rem",
+                  fontWeight: 500,
+                  letterSpacing: 0.2,
+                  textTransform: "none",
+                  lineHeight: 1.45,
+                  maxWidth: 260,
+                },
+              },
+            }}
+          >
+            <Box
+              component="span"
+              role="img"
+              aria-label="Test recipient info"
+              onMouseDown={(e) => e.preventDefault()}
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                color: "text.secondary",
+                cursor: "help",
+                lineHeight: 0,
+                "&:hover": { color: "primary.main" },
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden style={{ fontSize: 13 }}>
+                <path d="M11 7h2v2h-2V7zm0 4h2v6h-2v-6zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" />
+              </svg>
+            </Box>
+          </Tooltip>
+        </Box>
         <TextField
           fullWidth
           type="email"
@@ -351,7 +397,6 @@ export default function EmailTemplatesPage() {
           value={testEmail}
           onChange={(e) => setTestEmail(e.target.value.trim())}
           placeholder="you@example.com"
-          helperText="With simulation on, test sends are captured in the Simulated inbox tab. With simulation off, Resend delivers to your account email in test mode."
         />
         {feedback ? (
           <Alert
@@ -378,7 +423,6 @@ export default function EmailTemplatesPage() {
               key={type}
               value={type}
               label={ORDER_STATUS_EMAIL_LABELS[type]}
-              sx={{ fontWeight: 700, textTransform: "none", fontSize: "0.8rem", minHeight: 48 }}
             />
           ))}
         </Tabs>
@@ -389,7 +433,7 @@ export default function EmailTemplatesPage() {
             display: "grid",
             gap: { xs: 3, md: 3 },
             gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) minmax(0, 1fr)" },
-            alignItems: "start",
+            alignItems: "stretch",
           }}
         >
           <EmailEditor

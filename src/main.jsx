@@ -38,10 +38,12 @@ import CustomersPage from "./admin/CustomersPage.jsx";
 import InquiriesPage from "./admin/InquiriesPage.jsx";
 import InventoryPage from "./admin/InventoryPage.jsx";
 import CatalogPage from "./admin/CatalogPage.jsx";
+import ClientTiersPage from "./admin/ClientTiersPage.jsx";
 import DesignPreviewPage from "./admin/DesignPreviewPage.jsx";
 import CmsPage from "./admin/CmsPage.jsx";
 import EmailTemplatesPage from "./admin/EmailTemplatesPage.jsx";
 import RouteErrorFallback from "./components/RouteErrorFallback.jsx";
+import { ClientTiersProvider } from "./lib/clientTiersStore.jsx";
 import "./styles.css";
 
 const router = createBrowserRouter([
@@ -76,6 +78,7 @@ const router = createBrowserRouter([
           { path: "/admin/orders", element: <OrdersPage /> },
           { path: "/admin/orders/:orderId", element: <OrderDetailPage /> },
           { path: "/admin/customers", element: <CustomersPage /> },
+          { path: "/admin/client-tiers", element: <ClientTiersPage /> },
           { path: "/admin/inquiries", element: <InquiriesPage /> },
           { path: "/admin/inventory", element: <InventoryPage /> },
           { path: "/admin/cms", element: <CmsPage /> },
@@ -98,6 +101,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           <ShopFilterLayoutProvider>
           <PreorderDisplayProvider>
           <CatalogProvider>
+          <ClientTiersProvider>
           <CustomersProvider>
           <InquiriesProvider>
             <InventoryProvider>
@@ -115,6 +119,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
             </InventoryProvider>
           </InquiriesProvider>
           </CustomersProvider>
+          </ClientTiersProvider>
           </CatalogProvider>
           </PreorderDisplayProvider>
           </ShopFilterLayoutProvider>

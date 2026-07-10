@@ -258,9 +258,10 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
           <input ref={inputRef} type="file" accept="image/*,application/pdf" hidden onChange={handleFileChange} />
           <Button
             size="small"
-            variant="outlined"
+            variant="contained"
+            color="primary"
             onClick={() => inputRef.current?.click()}
-            sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem" }}
+            sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4, textTransform: "uppercase" }}
           >
             {uploadButtonLabel()}
           </Button>

@@ -8,14 +8,15 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
+import { useTheme } from "@mui/material/styles";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { getSurfaces } from "../lib/surfaces.js";
 import { useColorMode } from "../lib/colorMode.jsx";
-import { useAuth, ADMIN_HINT } from "../auth/AuthProvider.jsx";
+import { useAuth } from "../auth/AuthProvider.jsx";
 import { ShieldIcon } from "../components/icons.jsx";
 import BrandLogo from "../components/BrandLogo.jsx";
+import PasswordField from "../components/PasswordField.jsx";
 
 export default function AdminLogin() {
   const theme = useTheme();
@@ -24,8 +25,8 @@ export default function AdminLogin() {
   const { mode } = useColorMode();
   const isDarkMode = mode === "dark";
   const surfaces = getSurfaces(theme, isDarkMode);
-  const { panelSx, surfaceBorderColor } = surfaces;
-  const { signInAdmin, isAdmin, authMode } = useAuth();
+  const { panelSx } = surfaces;
+  const { signInAdmin, isAdmin } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -54,7 +55,7 @@ export default function AdminLogin() {
       <Container maxWidth="sm">
         <Stack spacing={3} alignItems="center">
           <Stack spacing={1} alignItems="center" textAlign="center">
-            <BrandLogo sx={{ fontSize: 44, color: "primary.main", filter: theme.ha?.useImageLogo ? undefined : `drop-shadow(0 0 14px ${alpha(theme.palette.primary.main, 0.5)})` }} imageSx={{ height: 72 }} />
+            <BrandLogo sx={{ fontSize: 44, color: "primary.main" }} imageSx={{ height: 72 }} />
             <Typography variant="h3">Admin portal</Typography>
             <Stack direction="row" spacing={0.75} alignItems="center" sx={{ color: "text.secondary" }}>
               <ShieldIcon sx={{ fontSize: 18 }} />
@@ -69,17 +70,10 @@ export default function AdminLogin() {
               </Typography>
               {error ? <Alert severity="error">{error}</Alert> : null}
               <TextField label="Admin email" type="email" fullWidth value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="username" />
-              <TextField label="Password" type="password" fullWidth value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
+              <PasswordField value={password} onChange={(e) => setPassword(e.target.value)} required />
               <Button type="submit" variant="contained" color="primary" size="large" disabled={busy} sx={{ py: 1.3, fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase" }}>
                 {busy ? "Verifying…" : "▶ Sign in"}
               </Button>
-              <Box sx={{ p: 1.5, borderRadius: 1, border: "1px dashed", borderColor: surfaceBorderColor }}>
-                <Typography variant="caption" color="text.secondary" sx={{ fontFamily: MONO_FONT, display: "block" }}>
-                  {authMode === "firebase"
-                    ? "Firebase email/password only. Allowed admin: website.hobbyarena@gmail.com (see VITE_ADMIN_EMAILS). Set or reset the password in Firebase Console → Authentication."
-                    : `Demo admin → ${ADMIN_HINT.email} / ${ADMIN_HINT.password}`}
-                </Typography>
-              </Box>
               <Button variant="text" color="inherit" onClick={() => navigate("/")} sx={{ color: "text.secondary" }}>
                 ← Back to storefront
               </Button>

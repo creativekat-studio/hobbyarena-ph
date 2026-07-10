@@ -106,7 +106,7 @@ export default function CustomerNavbar({ surfaces, onOpenCart, onOpenSearch }) {
                 sx={{
                   fontSize: { xs: 40, md: 50 },
                   color: "primary.main",
-                  filter: useImageLogo ? undefined : `drop-shadow(0 0 12px ${alpha(theme.palette.primary.main, 0.5)})`,
+                  filter: undefined,
                 }}
               />
               {!useImageLogo ? (

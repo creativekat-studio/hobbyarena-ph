@@ -25,6 +25,7 @@ import {
   resolveOrderKindForItem,
   syncOrderRollup,
   validateAllocationForStatus,
+  findLatestAdminTrailAttachment,
   refundedAmountForOrder,
 } from "../data/orderWorkflow.js";
 import { preorderBalanceDue, preorderDueNow } from "./preorder.js";
@@ -155,7 +156,11 @@ function normalizeOrder(order) {
 }
 
 export function isUnseenOrder(order) {
-  return order.payment === "Pending Verification" && !order.notificationSeen;
+  if (order.notificationSeen === true) return false;
+  // New checkouts awaiting verification (including legacy without the flag)
+  if (migratePaymentStatus(order.payment) === "Pending Verification") return true;
+  // Customer-initiated updates explicitly re-flag the order
+  return order.notificationSeen === false;
 }
 
 function makeOrderId(orders) {
@@ -454,6 +459,8 @@ export function OrdersProvider({ children }) {
         depositPaid: item.depositPaid ?? 0,
       }));
 
+      const statusAttachment = findLatestAdminTrailAttachment(order, primaryItem.id);
+
       return {
         emailType,
         bodyOverride: getEmailBodyOverride(emailType),
@@ -470,6 +477,7 @@ export function OrdersProvider({ children }) {
           refundAmount: multi ? sumRefund : (primaryItem.refundAmount ?? order.refundAmount ?? 0),
           allocatedQty: multi ? sumAllocated : (primaryItem.allocatedQty ?? rollup.allocatedQty ?? order.allocatedQty),
           qty: multi ? sumQty : (primaryItem.quantity ?? order.qty),
+          depositPercent: order.depositPercent ?? 30,
           date: order.date,
           items: order.items,
           lineItems: serializedLineItems,
@@ -477,6 +485,7 @@ export function OrdersProvider({ children }) {
             id: primaryItem.id,
             name: primaryItem.name,
             quantity: primaryItem.quantity ?? 1,
+            price: primaryItem.price ?? 0,
             tag: primaryItem.tag,
             payment: primaryItem.payment,
             status: primaryItem.status,
@@ -486,6 +495,7 @@ export function OrdersProvider({ children }) {
             depositPaid: primaryItem.depositPaid ?? 0,
             lineTotal: primaryItem.lineTotal ?? 0,
           },
+          ...(statusAttachment ? { statusAttachment } : {}),
         },
       };
     };
@@ -593,6 +603,7 @@ export function OrdersProvider({ children }) {
           lineTotal,
           tag: item.tag,
           line: item.line,
+          image: item.image || null,
           payment: initialPayment,
           status: initialStatus,
           allocatedQty: 0,
@@ -1096,17 +1107,18 @@ export function OrdersProvider({ children }) {
         ],
       };
 
-      setOrders((prev) => prev.map((o) => (o.id === orderId ? updated : o)));
-
       if (firebaseEnabled) {
         try {
-          await upsertOrder(updated);
+          const saved = await patchCustomerOrderTrail(updated);
+          setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...saved } : o)));
+          return saved;
         } catch (error) {
           console.error("[orders] Failed to save refund details:", error);
           throw new Error(error?.message || "Could not submit refund details. Please try again.");
         }
       }
 
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? updated : o)));
       return updated;
     };
 

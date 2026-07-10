@@ -1,4 +1,4 @@
-import { formatPeso, getEmailLinks, getSupportEmail } from "./emailUtils.js";
+import { formatPeso, getEmailLinks, getSupportContactHtml, shouldShowPreorderReminder } from "./emailUtils.js";
 import {
   EMAIL_BRAND,
   bodyLead,
@@ -7,20 +7,26 @@ import {
   escapeHtml,
   formatEmailDate,
   invoiceTable,
+  messengerButton,
   metaLine,
+  preorderReminderBlock,
+  preorderReminderText,
   sectionHeading,
   statusList,
   totalsBlock,
   wrapSimpleEmail,
 } from "./emailTemplate.js";
 
-function supportEmailLink() {
-  const email = getSupportEmail();
-  return `<a href="mailto:${escapeHtml(email)}" style="color:${EMAIL_BRAND.colors.accent};text-decoration:none;font-weight:600">${escapeHtml(email)}</a>`;
-}
-
 const BALANCE_ACTION_EMAIL_TYPES = new Set(["balance_due_full", "balance_due_partial"]);
 const REFUND_ACTION_EMAIL_TYPES = new Set(["partial_refund_pending", "full_refund_pending"]);
+
+function depositPercentOf(order) {
+  return Math.max(0, Math.min(100, Number(order?.depositPercent) || 30));
+}
+
+function balancePercentOf(order) {
+  return Math.max(0, 100 - depositPercentOf(order));
+}
 
 function customerActionButtonsBlock(emailType) {
   const links = getEmailLinks();
@@ -30,7 +36,7 @@ function customerActionButtonsBlock(emailType) {
       caption: "Pay the balance and send your proof using either option below.",
       accountLabel: "Upload in my account",
       accountHref: links.accountUrl,
-      messengerLabel: "Send via Messenger",
+      messengerLabel: "Message Hobby Arena PH",
       messengerHref: links.messengerUrl,
     });
   }
@@ -40,12 +46,46 @@ function customerActionButtonsBlock(emailType) {
       caption: "Share your bank or e-wallet details using either option below.",
       accountLabel: "Submit refund details",
       accountHref: links.accountUrl,
-      messengerLabel: "Send via Messenger",
+      messengerLabel: "Message Hobby Arena PH",
       messengerHref: links.messengerUrl,
     });
   }
 
+  if (emailType === "ready_for_pickup" || emailType === "partial_refund_sent") {
+    return messengerButton({
+      caption: "Message us to schedule pickup during processing hours (Mon–Fri, 8:00 AM – 8:00 PM).",
+      label: "Message Hobby Arena PH",
+    });
+  }
+
   return "";
+}
+
+function statusAttachmentBlock(attachment) {
+  if (!attachment?.url) return "";
+  const c = EMAIL_BRAND.colors;
+  const label = escapeHtml(attachment.label || "Attachment");
+  const href = escapeHtml(attachment.url);
+  const isPdf = attachment.type === "pdf" || href.includes(".pdf") || href.includes("application/pdf");
+
+  if (isPdf) {
+    return `
+      <div style="margin:20px 0;padding:14px 16px;border-radius:8px;background:${c.page};border:1px solid ${c.border}">
+        <p style="margin:0 0 8px;font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:${c.muted}">Attachment</p>
+        <p style="margin:0;font-family:Inter,Arial,sans-serif;font-size:14px;line-height:1.5;color:${c.ink}">
+          <a href="${href}" style="color:${c.accent};font-weight:700;text-decoration:none">${label} (PDF)</a>
+        </p>
+      </div>`;
+  }
+
+  return `
+    <div style="margin:20px 0;padding:14px 16px;border-radius:8px;background:${c.page};border:1px solid ${c.border}">
+      <p style="margin:0 0 10px;font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:${c.muted}">Attachment</p>
+      <a href="${href}" style="display:block"><img src="${href}" alt="${label}" style="max-width:100%;height:auto;border-radius:6px;border:1px solid ${c.border}" /></a>
+      <p style="margin:10px 0 0;font-family:Inter,Arial,sans-serif;font-size:13px;line-height:1.5;color:${c.muted}">
+        <a href="${href}" style="color:${c.accent};font-weight:600;text-decoration:none">Open ${label}</a>
+      </p>
+    </div>`;
 }
 
 function orderMeta(order) {
@@ -242,13 +282,15 @@ function invoiceSummary(order) {
   const item = getUpdatedItem(order);
   const lineItems = normalizeLineItems(order);
   const rows = [];
+  const dp = depositPercentOf(order);
+  const bal = balancePercentOf(order);
 
   if (item) {
     if (item.depositPaid > 0) {
-      rows.push({ label: "Deposit paid (this item)", value: formatPeso(item.depositPaid) });
+      rows.push({ label: `Deposit paid (${dp}%)`, value: formatPeso(item.depositPaid) });
     }
     if (item.balanceDue > 0) {
-      rows.push({ label: "Balance due (this item)", value: formatPeso(item.balanceDue), strong: true });
+      rows.push({ label: `Balance due now (${bal}%)`, value: formatPeso(item.balanceDue), strong: true });
     }
     if (item.refundAmount > 0) {
       rows.push({ label: "Refund amount (this item)", value: formatPeso(item.refundAmount), strong: true });
@@ -258,18 +300,18 @@ function invoiceSummary(order) {
     const balanceTotal = lineItems.reduce((sum, line) => sum + line.balanceDue, 0);
     const refundTotal = lineItems.reduce((sum, line) => sum + line.refundAmount, 0);
     if (depositTotal > 0) {
-      rows.push({ label: "Deposit paid (selected items)", value: formatPeso(depositTotal) });
+      rows.push({ label: `Deposit paid (${dp}%)`, value: formatPeso(depositTotal) });
     }
     if (balanceTotal > 0) {
-      rows.push({ label: "Balance due (selected items)", value: formatPeso(balanceTotal), strong: true });
+      rows.push({ label: `Balance due now (${bal}%)`, value: formatPeso(balanceTotal), strong: true });
     }
     if (refundTotal > 0) {
       rows.push({ label: "Refund amount (selected items)", value: formatPeso(refundTotal), strong: true });
     }
   } else {
-    rows.push({ label: "Paid so far", value: formatPeso(order.total) });
+    rows.push({ label: `Paid now DP (${dp}%)`, value: formatPeso(order.total) });
     if (order.balanceDue > 0) {
-      rows.push({ label: "Balance due", value: formatPeso(order.balanceDue), strong: true });
+      rows.push({ label: `Balance Due (${bal}%)`, value: formatPeso(order.balanceDue), strong: true });
     }
     if (order.refundAmount > 0) {
       rows.push({ label: "Refund amount", value: formatPeso(order.refundAmount), strong: true });
@@ -344,11 +386,11 @@ const TEMPLATES = {
     subject: (order) => {
       const item = getUpdatedItem(order);
       return item
-        ? `Deposit received — ${itemLabel(item)} — ${order.id}`
-        : `Payment received — ${order.id}`;
+        ? `Payment verified — ${itemLabel(item)} — ${order.id}`
+        : `Payment verified — ${order.id}`;
     },
-    preheader: "We received your deposit. Awaiting stock allocation.",
-    title: "Payment received",
+    preheader: "We verified your deposit. Awaiting stock allocation.",
+    title: "Payment verified",
     lead: (order) => `Hello <strong>${escapeHtml(order.customer)}</strong>,`,
     body: (order) => {
       const item = getUpdatedItem(order);
@@ -357,7 +399,7 @@ const TEMPLATES = {
       }
       return `We received and verified your payment. Your order is now <strong>awaiting stock allocation</strong>. We'll email you once allocation is confirmed.`;
     },
-    footer: () => `Questions? Email us at ${getSupportEmail()}.`,
+    footer: () => "",
   },
   balance_due_full: {
     subject: (order) => {
@@ -374,7 +416,7 @@ const TEMPLATES = {
       const balance = formatPeso(item?.balanceDue ?? order.balanceDue);
       return `Great news — this item received <strong>100% allocation</strong>. Please pay the remaining balance of <strong>${balance}</strong>.`;
     },
-    footer: "Balance must be settled before release day.",
+    footer: () => "",
   },
   balance_due_partial: {
     subject: (order) => {
@@ -393,7 +435,7 @@ const TEMPLATES = {
       const balance = formatPeso(item?.balanceDue ?? order.balanceDue);
       return `Your allocation is <strong>${allocated} / ${qty}</strong> units. Please pay the remaining balance of <strong>${balance}</strong> for your fulfilled units.`;
     },
-    footer: "We'll confirm once your balance payment is verified.",
+    footer: () => "",
   },
   partial_refund_pending: {
     subject: (order) => {
@@ -412,7 +454,7 @@ const TEMPLATES = {
       const refund = formatPeso(item?.refundAmount ?? order.refundAmount);
       return `Only <strong>${allocated} / ${qty}</strong> units were allocated. A refund of <strong>${refund}</strong> is due on the unallocated units.`;
     },
-    footer: () => `Need help? Email us at ${getSupportEmail()}.`,
+    footer: () => getSupportContactHtml(),
   },
   full_refund_pending: {
     subject: (order) => {
@@ -429,7 +471,7 @@ const TEMPLATES = {
       const refund = formatPeso(item?.refundAmount ?? item?.depositPaid ?? (order.refundAmount || order.total));
       return `We're sorry — <strong>no allocation</strong> was available for this item. Your deposit of <strong>${refund}</strong> will be fully refunded.`;
     },
-    footer: () => `Need help? Email us at ${getSupportEmail()}.`,
+    footer: () => getSupportContactHtml(),
   },
   partial_refund_sent: {
     subject: (order) => {
@@ -446,7 +488,7 @@ const TEMPLATES = {
       const refund = formatPeso(item?.refundAmount ?? order.refundAmount);
       return `We have sent your refund of <strong>${refund}</strong>. Your allocated units are <strong>ready for pickup</strong> — please schedule pickup with our team.`;
     },
-    footer: () => `Contact us at ${getSupportEmail()} to arrange pickup.`,
+    footer: () => `Contact us via Hobby Arena PH or your account to arrange pickup.`,
   },
   ready_for_pickup: {
     subject: (order) => {
@@ -506,7 +548,7 @@ const TEMPLATES = {
     title: "We haven't received your payment",
     lead: (order) => `Hello <strong>${escapeHtml(order.customer)}</strong>,`,
     body: () => {
-      return `We have <strong>not received your payment</strong> for this order, so we can <strong>no longer hold the stock</strong> for you — it has been released and may be purchased by other customers. If you still want the item, please place a new order while stock lasts. If you've already paid, email ${supportEmailLink()} with your proof of payment and we'll sort it out.`;
+      return `We have <strong>not received your payment</strong> for this order, so we can <strong>no longer hold the stock</strong> for you — it has been released and may be purchased by other customers. If you still want the item, please place a new order while stock lasts. If you've already paid, upload proof via your account or Hobby Arena PH and we'll sort it out.`;
     },
     footer: "Stock is not reserved until payment is confirmed.",
   },
@@ -551,6 +593,7 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     ${showSummary ? invoiceSummary(order) : ""}
     ${showMilestones ? preorderMilestones(item, emailType) : ""}
     ${customerActionButtonsBlock(emailType)}
+    ${order.statusAttachment ? statusAttachmentBlock(order.statusAttachment) : ""}
   `;
 
   const plainBody = bodyOverride
@@ -572,7 +615,7 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
       "",
       "Upload in my account:",
       links.accountUrl,
-      "Send via Messenger:",
+      "Message Hobby Arena PH:",
       links.messengerUrl,
     );
   } else if (REFUND_ACTION_EMAIL_TYPES.has(emailType)) {
@@ -580,14 +623,29 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
       "",
       "Submit refund details:",
       links.accountUrl,
-      "Send via Messenger:",
+      "Message Hobby Arena PH:",
       links.messengerUrl,
     );
+  } else if (emailType === "ready_for_pickup" || emailType === "partial_refund_sent") {
+    text.push("", "Message Hobby Arena PH:", links.messengerUrl);
   }
 
-  text.push("", getSupportEmail());
+  if (order.statusAttachment?.url) {
+    text.push("", `Attachment: ${order.statusAttachment.url}`);
+  }
 
-  const footerNote = typeof template.footer === "function" ? template.footer(order) : template.footer;
+  const showReminder = shouldShowPreorderReminder(order, emailType);
+  const depositPercent = depositPercentOf(order);
+  if (showReminder) {
+    text.push("", preorderReminderText({ depositPercent }));
+  } else {
+    const templateFooter = typeof template.footer === "function" ? template.footer(order) : template.footer;
+    if (templateFooter) text.push("", String(templateFooter).replace(/<[^>]+>/g, ""));
+  }
+
+  const footerNote = showReminder
+    ? preorderReminderBlock({ depositPercent })
+    : (typeof template.footer === "function" ? template.footer(order) : template.footer);
 
   return {
     subject: template.subject(order),

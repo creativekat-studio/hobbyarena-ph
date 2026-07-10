@@ -117,10 +117,10 @@ export default function CustomerRefundDetails({ order, item, surfaceBorderColor 
         onChange={(_, value) => value && setMethod(value)}
         sx={{ mt: 1.25, mb: 1 }}
       >
-        <ToggleButton value="bank" sx={{ fontFamily: MONO_FONT, fontSize: "0.7rem", textTransform: "none", px: 1.5 }}>
+        <ToggleButton value="bank" sx={{ fontFamily: MONO_FONT, fontSize: "0.7rem", px: 1.5 }}>
           Bank details
         </ToggleButton>
-        <ToggleButton value="qr" sx={{ fontFamily: MONO_FONT, fontSize: "0.7rem", textTransform: "none", px: 1.5 }}>
+        <ToggleButton value="qr" sx={{ fontFamily: MONO_FONT, fontSize: "0.7rem", px: 1.5 }}>
           QR code
         </ToggleButton>
       </ToggleButtonGroup>
@@ -185,7 +185,7 @@ export default function CustomerRefundDetails({ order, item, surfaceBorderColor 
       <Button
         size="small"
         variant="contained"
-        disabled={busy}
+        disabled={busy || (method === "qr" && !qrFile)}
         onClick={handleSubmit}
         sx={{ mt: 1.25, fontFamily: MONO_FONT, fontSize: "0.72rem" }}
       >

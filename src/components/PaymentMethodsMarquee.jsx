@@ -3,64 +3,100 @@ import { alpha, useTheme } from "@mui/material/styles";
 import { keyframes } from "@mui/system";
 import { MONO_FONT } from "../theme.js";
 import { PAYMENT_METHODS } from "../data/checkoutSettings.js";
+import { marqueeDuration } from "../lib/marquee.js";
 
 const marqueeSlide = keyframes`
   0%   { transform: translateX(0); }
   100% { transform: translateX(-50%); }
 `;
 
-function PaymentBadge({ method, surfaceBorderColor }) {
-  const theme = useTheme();
-  const isBank = method.type === "bank";
+const TRACK_REPEATS = 6;
+const TRACK_BASE_SECONDS = 28;
+
+function PaymentBadge({ method, account, surfaceBorderColor }) {
+  const logo = account?.logo;
+  const isChinabank = method.id === "chinabank";
 
   return (
     <Box
+      aria-label={method.name}
       sx={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 1.25,
-        px: 2,
-        py: 1.25,
-        borderRadius: 1,
+        width: 168,
+        height: 88,
+        borderRadius: 1.5,
         border: "1px solid",
         borderColor: surfaceBorderColor,
-        bgcolor: alpha(theme.palette.background.paper, 0.6),
+        bgcolor: logo ? "transparent" : (theme) => alpha(method.accent, 0.14),
+        color: method.accent,
+        fontFamily: MONO_FONT,
+        fontWeight: 800,
+        fontSize: "0.85rem",
+        letterSpacing: 0.5,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
         flexShrink: 0,
+        p: logo ? (isChinabank ? 1.25 : 2.5) : 1,
       }}
     >
-      <Box
-        sx={{
-          width: 36,
-          height: 36,
-          borderRadius: 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          bgcolor: alpha(method.accent, 0.14),
-          color: method.accent,
-          fontFamily: MONO_FONT,
-          fontWeight: 800,
-          fontSize: "0.62rem",
-          letterSpacing: 0.5,
-          lineHeight: 1,
-          textAlign: "center",
-        }}
-      >
-        {method.name.slice(0, 4).toUpperCase()}
-      </Box>
-      <Stack spacing={0.25}>
-        <Typography sx={{ fontWeight: 800, fontSize: "0.92rem", lineHeight: 1.1 }}>{method.name}</Typography>
-        <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>
-          {isBank ? "Bank transfer" : "E-wallet"}
-        </Typography>
-      </Stack>
+      {logo ? (
+        <Box
+          component="img"
+          src={logo}
+          alt={method.name}
+          sx={{
+            width: "auto",
+            height: isChinabank ? 58 : 28,
+            maxWidth: isChinabank ? 148 : 108,
+            borderRadius: 0,
+            objectFit: "contain",
+            display: "block",
+          }}
+        />
+      ) : (
+        method.name.slice(0, 4).toUpperCase()
+      )}
     </Box>
   );
 }
 
-export default function PaymentMethodsMarquee({ panelSx, surfaceBorderColor }) {
+function PaymentMarqueeGroup({ methods, accountsById, surfaceBorderColor, ariaHidden = false }) {
+  const track = Array.from({ length: TRACK_REPEATS }, () => methods).flat();
+
+  return (
+    <Box
+      aria-hidden={ariaHidden || undefined}
+      sx={{
+        display: "flex",
+        flexShrink: 0,
+        gap: 2,
+        pr: 2,
+      }}
+    >
+      {track.map((method, index) => (
+        <PaymentBadge
+          key={`${method.id}-${index}`}
+          method={method}
+          account={accountsById.get(method.id)}
+          surfaceBorderColor={surfaceBorderColor}
+        />
+      ))}
+    </Box>
+  );
+}
+
+export default function PaymentMethodsMarquee({ panelSx, surfaceBorderColor, bankDetails }) {
   const theme = useTheme();
-  const loop = [...PAYMENT_METHODS, ...PAYMENT_METHODS];
+  const activeAccounts = (bankDetails?.accounts ?? []).filter((account) => account.active !== false);
+  const accountsById = new Map(activeAccounts.map((account) => [account.id, account]));
+  const availableIds = new Set(activeAccounts.map((account) => account.id));
+  const methods = Array.isArray(bankDetails?.accounts)
+    ? PAYMENT_METHODS.filter((method) => availableIds.has(method.id))
+    : PAYMENT_METHODS;
+  const duration = marqueeDuration(TRACK_BASE_SECONDS, TRACK_REPEATS);
+
+  if (!methods.length) return null;
 
   return (
     <Box id="payment-options" sx={{ ...panelSx, overflow: "hidden", py: { xs: 3, md: 4 } }}>
@@ -112,17 +148,15 @@ export default function PaymentMethodsMarquee({ panelSx, surfaceBorderColor }) {
       >
         <Box
           sx={{
-            display: "inline-flex",
-            gap: 2,
-            whiteSpace: "nowrap",
-            animation: `${marqueeSlide} 45s linear infinite`,
-            px: 2,
+            display: "flex",
+            width: "max-content",
+            animation: `${marqueeSlide} ${duration}s linear infinite`,
+            willChange: "transform",
             "&:hover": { animationPlayState: "paused" },
           }}
         >
-          {loop.map((method, index) => (
-            <PaymentBadge key={`${method.id}-${index}`} method={method} surfaceBorderColor={surfaceBorderColor} />
-          ))}
+          <PaymentMarqueeGroup methods={methods} accountsById={accountsById} surfaceBorderColor={surfaceBorderColor} />
+          <PaymentMarqueeGroup methods={methods} accountsById={accountsById} surfaceBorderColor={surfaceBorderColor} ariaHidden />
         </Box>
       </Box>
     </Box>

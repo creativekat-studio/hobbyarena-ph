@@ -11,8 +11,15 @@ export default function StorefrontFooter({ panelSx, surfaceBorderColor, heroTagl
   return (
     <Box sx={{ borderTop: "1px solid", borderColor: surfaceBorderColor, pt: 4, mt: 4 }}>
       <Box sx={{ ...(panelSx ? {} : {}), px: 0 }}>
-        <Stack direction={{ xs: "column", md: "row" }} spacing={3} useFlexGap>
-          <Box sx={{ flex: 1 }}>
+        <Box
+          sx={{
+            display: "grid",
+            gap: 3,
+            gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) auto minmax(0, 1fr)" },
+            alignItems: "start",
+          }}
+        >
+          <Box sx={{ minWidth: 0, maxWidth: { md: wider(420) } }}>
             <Typography variant="h6" sx={{ fontWeight: 800 }}>{content.contact.legalName}</Typography>
             <Typography color="text.secondary" sx={{ fontSize: "0.9rem", mt: 1, maxWidth: wider(360) }}>{content.contact.blurb}</Typography>
             <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
@@ -29,7 +36,7 @@ export default function StorefrontFooter({ panelSx, surfaceBorderColor, heroTagl
                 ))}
             </Stack>
           </Box>
-          <Box>
+          <Box sx={{ justifySelf: { md: "center" }, px: { md: 1 } }}>
             <Typography sx={{ fontWeight: 800, mb: 1.5 }}>Shop</Typography>
             <Stack spacing={1}>
               {[
@@ -41,7 +48,7 @@ export default function StorefrontFooter({ panelSx, surfaceBorderColor, heroTagl
               ))}
             </Stack>
           </Box>
-          <Box>
+          <Box sx={{ justifySelf: { md: "end" }, maxWidth: { md: wider(320) } }}>
             <Typography sx={{ fontWeight: 800, mb: 1.5 }}>Reach us</Typography>
             <Stack spacing={1}>
               {content.contact.address ? (
@@ -61,7 +68,7 @@ export default function StorefrontFooter({ panelSx, surfaceBorderColor, heroTagl
               <Typography sx={{ color: "text.secondary", fontSize: "0.88rem" }}>{content.contact.hours}</Typography>
             </Stack>
           </Box>
-        </Stack>
+        </Box>
         <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center", pt: 4, mt: 4, borderTop: "1px solid", borderColor: surfaceBorderColor }}>
           © {new Date().getFullYear()} {content.contact.legalName}{heroTagline ? ` · ${heroTagline}` : ""}
         </Typography>

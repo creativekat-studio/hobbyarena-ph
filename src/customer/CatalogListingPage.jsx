@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import {
   Box,
-  Chip,
   Container,
   Stack,
   Typography,
@@ -16,6 +15,7 @@ import {
   ShopFilterCommandBar,
   ShopFilterFranchiseTiles,
   ShopFilterBreadcrumb,
+  CategoryChip,
   getFilterLayoutMode,
   getTopFilterVariant,
   embedsCategoryTabs,
@@ -46,27 +46,6 @@ const PAGE_COPY = {
     Icon: BoxIcon,
   },
 };
-
-function CategoryChip({ label, selected, onClick, surfaceBorderColor }) {
-  return (
-    <Chip
-      label={label}
-      clickable
-      onClick={onClick}
-      variant={selected ? "filled" : "outlined"}
-      sx={{
-        fontFamily: MONO_FONT,
-        fontWeight: 700,
-        letterSpacing: 0.3,
-        fontSize: "0.82rem",
-        height: 36,
-        ...(selected
-          ? { bgcolor: "primary.main", color: "primary.contrastText", border: "1px solid", borderColor: "primary.main" }
-          : { bgcolor: "background.paper", borderColor: surfaceBorderColor, color: "text.primary" }),
-      }}
-    />
-  );
-}
 
 export default function CatalogListingPage({ mode }) {
   const { surfaces, isDarkMode } = useOutletContext();
@@ -195,7 +174,7 @@ export default function CatalogListingPage({ mode }) {
 
         {showCategoryTabs ? (
           <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ xs: "flex-start", sm: "center" }} justifyContent="space-between" spacing={{ xs: 1.5, sm: 2 }} useFlexGap>
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 1 }}>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 1, pt: 1.25, pb: 0.5 }}>
               {tabs.map((item) => (
                 <CategoryChip
                   key={item.value}
@@ -206,7 +185,7 @@ export default function CatalogListingPage({ mode }) {
                 />
               ))}
             </Stack>
-            <Typography sx={{ color: "text.secondary", fontFamily: MONO_FONT, fontSize: "0.78rem", flexShrink: 0 }}>
+            <Typography sx={{ color: "primary.main", fontFamily: MONO_FONT, fontSize: "0.78rem", flexShrink: 0 }}>
               {products.length} {products.length === 1 ? "item" : "items"}
             </Typography>
           </Stack>
@@ -250,7 +229,7 @@ export default function CatalogListingPage({ mode }) {
                 sx={{
                   display: "grid",
                   gridTemplateColumns: {
-                    xs: "repeat(2, minmax(0, 1fr))",
+                    xs: "repeat(1, minmax(0, 1fr))",
                     md: "repeat(3, minmax(0, 1fr))",
                     lg: "repeat(4, minmax(0, 1fr))",
                   },
@@ -262,7 +241,7 @@ export default function CatalogListingPage({ mode }) {
                 ))}
               </Box>
             ) : (
-              <Box sx={{ ...panelSx, p: 5, textAlign: "center" }}>
+              <Box sx={{ py: 6, textAlign: "center" }}>
                 <Typography variant="h6" sx={{ fontWeight: 700 }}>No items match these filters.</Typography>
                 <Typography color="text.secondary" sx={{ mt: 1 }}>Try another product line or tab.</Typography>
               </Box>

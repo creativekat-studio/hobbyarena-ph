@@ -34,11 +34,7 @@ function TestimonialCard({ item, panelSx, isDarkMode, surfaceBorderColor }) {
         transition: "transform 320ms cubic-bezier(0.34, 1.4, 0.64, 1), border-color 280ms ease, box-shadow 320ms ease",
         transform: hovered ? "translateY(-10px) scale(1.02)" : "none",
         borderColor: hovered ? alpha(hoverAccent, 0.55) : surfaceBorderColor,
-        boxShadow: hovered
-          ? isDarkMode
-            ? `0 28px 60px rgba(0,0,0,0.5), 0 0 28px ${alpha(hoverAccent, 0.22)}`
-            : `0 24px 48px ${alpha(hoverAccent, 0.16)}`
-          : panelSx.boxShadow,
+        boxShadow: "none",
         "&::before": {
           content: '""',
           position: "absolute",
@@ -115,7 +111,7 @@ function TestimonialCard({ item, panelSx, isDarkMode, surfaceBorderColor }) {
             ...avatarStyles(theme),
             transition: "transform 320ms cubic-bezier(0.34, 1.4, 0.64, 1)",
             transform: hovered ? "scale(1.1) rotate(-4deg)" : "none",
-            boxShadow: hovered ? `0 4px 16px ${alpha(theme.palette.secondary.main, 0.35)}` : "none",
+            boxShadow: "none",
           }}
         >
           {item.name.charAt(0)}

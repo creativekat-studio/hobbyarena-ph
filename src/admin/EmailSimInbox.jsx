@@ -107,10 +107,10 @@ export default function EmailSimInbox({ panelSx, surfaceBorderColor }) {
       <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
           <Typography sx={{ fontWeight: 800, flex: 1 }}>Simulated inbox ({status.count})</Typography>
-          <Button size="small" onClick={refresh} disabled={loading} sx={{ textTransform: "none" }}>
+          <Button size="small" onClick={refresh} disabled={loading}>
             Refresh
           </Button>
-          <Button size="small" color="inherit" onClick={handleClear} disabled={!entries.length} sx={{ textTransform: "none" }}>
+          <Button size="small" color="inherit" onClick={handleClear} disabled={!entries.length}>
             Clear all
           </Button>
         </Stack>
@@ -131,7 +131,8 @@ export default function EmailSimInbox({ panelSx, surfaceBorderColor }) {
               display: "grid",
               gap: 2,
               gridTemplateColumns: { xs: "1fr", md: "minmax(0, 280px) minmax(0, 1fr)" },
-              alignItems: "start",
+              alignItems: "stretch",
+              minHeight: "calc(100vh - 340px)",
             }}
           >
             <Stack spacing={0.75}>
@@ -172,6 +173,7 @@ export default function EmailSimInbox({ panelSx, surfaceBorderColor }) {
 
             <Box
               sx={{
+                height: "100%",
                 minHeight: 360,
                 borderRadius: 1,
                 border: "1px dashed",

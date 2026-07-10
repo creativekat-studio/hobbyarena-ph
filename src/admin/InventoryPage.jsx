@@ -27,6 +27,7 @@ import { MONO_FONT, getStatAccents } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import InventoryProductThumb from "../components/InventoryProductThumb.jsx";
+import { CategoryChip } from "../components/ShopFilters.jsx";
 import { BoxIcon, EditIcon, InventoryIcon, SearchIcon, ShieldIcon, SparkleIcon, ViewGridIcon, ViewTableIcon } from "../components/icons.jsx";
 import { useInventory } from "../lib/inventoryStore.jsx";
 import AddProductDialog from "./AddProductDialog.jsx";
@@ -96,7 +97,6 @@ function PublishControl({ row, togglePublished, align = "center" }) {
 
 function InventoryTableView({
   rows,
-  panelSx,
   togglePublished,
   isDarkMode,
   selectedIds,
@@ -108,32 +108,32 @@ function InventoryTableView({
   const someSelected = rows.some((row) => selectedIds.has(row.id));
 
   return (
-    <Box sx={{ ...panelSx, overflow: "hidden" }}>
-      <TableContainer>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell padding="checkbox">
-                <Checkbox
-                  indeterminate={someSelected && !allSelected}
-                  checked={allSelected}
-                  onChange={onToggleSelectAll}
-                  inputProps={{ "aria-label": "Select all products" }}
-                />
-              </TableCell>
-              <TableCell sx={{ fontWeight: 800, width: 56 }} />
-              <TableCell sx={{ fontWeight: 800 }}>SKU</TableCell>
-              <TableCell sx={{ fontWeight: 800 }}>Product</TableCell>
-              <TableCell sx={{ fontWeight: 800, display: { xs: "none", md: "table-cell" } }}>Type</TableCell>
-              <TableCell sx={{ fontWeight: 800, display: { xs: "none", sm: "table-cell" } }} align="right">Price</TableCell>
-              <TableCell sx={{ fontWeight: 800, display: { xs: "none", lg: "table-cell" } }} align="center">Deposit</TableCell>
-              <TableCell sx={{ fontWeight: 800 }} align="right">Stock</TableCell>
-              <TableCell sx={{ fontWeight: 800 }} align="center">Storefront</TableCell>
-              <TableCell sx={{ fontWeight: 800 }} align="right">Status</TableCell>
-              <TableCell sx={{ fontWeight: 800, width: 52 }} />
-            </TableRow>
-          </TableHead>
-          <TableBody>
+    /* Renders directly inside the panel Box from InventoryPage; scrolls internally with a sticky header row. */
+    <TableContainer sx={{ flex: 1, minHeight: 0 }}>
+      <Table stickyHeader>
+        <TableHead>
+          <TableRow>
+            <TableCell padding="checkbox">
+              <Checkbox
+                indeterminate={someSelected && !allSelected}
+                checked={allSelected}
+                onChange={onToggleSelectAll}
+                inputProps={{ "aria-label": "Select all products" }}
+              />
+            </TableCell>
+            <TableCell sx={{ fontWeight: 800, width: 56 }} />
+            <TableCell sx={{ fontWeight: 800 }}>SKU</TableCell>
+            <TableCell sx={{ fontWeight: 800 }}>Product</TableCell>
+            <TableCell sx={{ fontWeight: 800, display: { xs: "none", md: "table-cell" } }}>Type</TableCell>
+            <TableCell sx={{ fontWeight: 800, display: { xs: "none", sm: "table-cell" } }} align="right">Price</TableCell>
+            <TableCell sx={{ fontWeight: 800, display: { xs: "none", lg: "table-cell" } }} align="center">Deposit</TableCell>
+            <TableCell sx={{ fontWeight: 800 }} align="right">Stock</TableCell>
+            <TableCell sx={{ fontWeight: 800 }} align="center">Storefront</TableCell>
+            <TableCell sx={{ fontWeight: 800 }} align="right">Status</TableCell>
+            <TableCell sx={{ fontWeight: 800, width: 52 }} />
+          </TableRow>
+        </TableHead>
+        <TableBody>
             {rows.map((row) => {
               const status = stockStatus(row);
               const isSelected = selectedIds.has(row.id);
@@ -198,7 +198,6 @@ function InventoryTableView({
           </TableBody>
         </Table>
       </TableContainer>
-    </Box>
   );
 }
 
@@ -447,7 +446,12 @@ export default function InventoryPage() {
   const allVisibleSelected = rows.length > 0 && rows.every((row) => selectedIds.has(row.id));
 
   return (
-    <Stack spacing={ADMIN_PAGE_SPACING}>
+    /*
+     * flex: 1 + minHeight: 0 makes this page fill the scrollable content pane in AdminLayout.
+     * The chrome (stats + filters) is flexShrink: 0 so it never scrolls away.
+     * The table/card view takes flex: 1 and scrolls internally.
+     */
+    <Box sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, gap: (t) => t.spacing(ADMIN_PAGE_SPACING) }}>
       <AdminPageHeader
         eyebrow="Inventory"
         title="Products & stock"
@@ -475,6 +479,8 @@ export default function InventoryPage() {
         )}
       />
 
+      {/* ── Sticky upper chrome: stat cards + filter bar ── */}
+      <Stack spacing={ADMIN_PAGE_SPACING} sx={{ flexShrink: 0 }}>
       <Grid container spacing={2}>
         <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={InventoryIcon} label="Total SKUs" value={stats.skus} accent={accents[0]} /></Grid>
         <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={SparkleIcon} label="Published on shop" value={stats.published} accent={accents[1]} /></Grid>
@@ -487,7 +493,7 @@ export default function InventoryPage() {
           <Stack direction={{ xs: "column", lg: "row" }} spacing={2} alignItems={{ xs: "stretch", lg: "center" }} justifyContent="space-between">
             <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1, flex: 1, alignItems: "center" }}>
               {FILTERS.map((item) => (
-                <Chip key={item.id} label={item.label} onClick={() => setFilter(item.id)} color={filter === item.id ? "primary" : "default"} variant={filter === item.id ? "filled" : "outlined"} sx={{ fontWeight: 700 }} />
+                <CategoryChip key={item.id} label={item.label} selected={filter === item.id} onClick={() => setFilter(item.id)} />
               ))}
             </Stack>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: "wrap", gap: 1 }}>
@@ -544,28 +550,33 @@ export default function InventoryPage() {
           </Stack>
         </Stack>
       </Box>
+      </Stack>
 
+      {/* ── Scrolling results region ── */}
       {view === "table" ? (
-        <InventoryTableView
-          rows={rows}
-          panelSx={panelSx}
-          togglePublished={togglePublished}
-          isDarkMode={isDarkMode}
-          selectedIds={selectedIds}
-          onToggleSelect={toggleSelect}
-          onToggleSelectAll={toggleSelectAllVisible}
-          onEdit={openEditForm}
-        />
+        <Box sx={{ flex: 1, minHeight: 0, ...panelSx, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <InventoryTableView
+            rows={rows}
+            togglePublished={togglePublished}
+            isDarkMode={isDarkMode}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
+            onToggleSelectAll={toggleSelectAllVisible}
+            onEdit={openEditForm}
+          />
+        </Box>
       ) : (
-        <InventoryCardView
-          rows={rows}
-          panelSx={panelSx}
-          togglePublished={togglePublished}
-          isDarkMode={isDarkMode}
-          selectedIds={selectedIds}
-          onToggleSelect={toggleSelect}
-          onEdit={openEditForm}
-        />
+        <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", pb: 0.5 }}>
+          <InventoryCardView
+            rows={rows}
+            panelSx={panelSx}
+            togglePublished={togglePublished}
+            isDarkMode={isDarkMode}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
+            onEdit={openEditForm}
+          />
+        </Box>
       )}
 
       <AddProductDialog
@@ -578,6 +589,6 @@ export default function InventoryPage() {
         onUpdate={updateProduct}
         surfaceBorderColor={surfaceBorderColor}
       />
-    </Stack>
+    </Box>
   );
 }

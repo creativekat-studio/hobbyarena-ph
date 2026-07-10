@@ -5,7 +5,6 @@ import {
   Box,
   Button,
   Chip,
-  Container,
   Dialog,
   DialogContent,
   DialogTitle,
@@ -77,20 +76,8 @@ export default function AdminLayout() {
 
   const drawerContent = (
     <Box sx={{ height: "100%", display: "flex", flexDirection: "column", p: 2 }}>
-      <Stack direction="row" spacing={1.25} alignItems="center" sx={{ px: 1, py: 1.5, mb: 1 }}>
-        <BrandLogo sx={{ fontSize: 32, color: "primary.main" }} imageSx={{ height: 40 }} />
-        {!theme.ha?.useImageLogo ? (
-          <Box>
-            <Typography sx={{ fontWeight: 800, lineHeight: 1, fontFamily: theme.typography.h5.fontFamily }}>Hobby Arena</Typography>
-            <Typography variant="caption" sx={{ color: "text.secondary", fontFamily: MONO_FONT, letterSpacing: 1, fontSize: "0.58rem" }}>
-              ADMIN PORTAL
-            </Typography>
-          </Box>
-        ) : (
-          <Typography variant="caption" sx={{ color: "text.secondary", fontFamily: MONO_FONT, letterSpacing: 1, fontSize: "0.58rem" }}>
-            ADMIN PORTAL
-          </Typography>
-        )}
+      <Stack alignItems="center" justifyContent="center" sx={{ px: 1, py: 2.5, mb: 1.5 }}>
+        <BrandLogo sx={{ fontSize: 62, color: "primary.main" }} imageSx={{ height: 83 }} />
       </Stack>
 
       <List sx={{ flexGrow: 1 }}>
@@ -147,7 +134,7 @@ export default function AdminLayout() {
   );
 
   return (
-    <Box sx={{ minHeight: "100dvh", bgcolor: "background.default", color: "text.primary", backgroundImage: surfaces.pageBackground, backgroundAttachment: { xs: "scroll", md: "fixed" } }}>
+    <Box sx={{ height: "100dvh", display: "flex", overflow: "hidden", bgcolor: "background.default", color: "text.primary", backgroundImage: surfaces.pageBackground, backgroundAttachment: { xs: "scroll", md: "fixed" } }}>
       <Drawer
         variant="permanent"
         sx={{
@@ -169,9 +156,12 @@ export default function AdminLayout() {
         {drawerContent}
       </Drawer>
 
-      <Box sx={{ ml: { md: `${DRAWER_WIDTH}px` } }}>
+      {/* Right pane: flex column filling remaining viewport height.
+          The permanent Drawer already reserves DRAWER_WIDTH in the flex row, so no left margin here. */}
+      <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <AdminPageHeaderProvider>
-          <AppBar position="sticky" color="transparent" elevation={0} sx={{ bgcolor: navbarBackground, backdropFilter: "blur(20px)", borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
+          {/* Top bar — static inside the fixed-height pane, no longer needs sticky */}
+          <AppBar position="static" color="transparent" elevation={0} sx={{ flexShrink: 0, bgcolor: navbarBackground, backdropFilter: "blur(20px)", borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
             <Toolbar disableGutters sx={{ px: { xs: 1.5, md: 2.5 }, minHeight: { xs: 64, md: 76 } }}>
               <AdminPageHeaderToolbar
                 surfaceBorderColor={surfaceBorderColor}
@@ -197,10 +187,25 @@ export default function AdminLayout() {
             </Toolbar>
           </AppBar>
 
-          <Container maxWidth={false} disableGutters sx={{ py: { xs: 1.25, md: 1.5 }, px: { xs: 1.5, md: 2.5 } }}>
+          {/*
+            Scrollable content area. overflow: auto so non-grid pages scroll naturally.
+            display: flex + flex-direction: column so grid pages can use flex: 1
+            on their root element and have the grid section fill remaining height.
+          */}
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              overflow: "auto",
+              display: "flex",
+              flexDirection: "column",
+              py: { xs: 1.25, md: 1.5 },
+              px: { xs: 1.5, md: 2.5 },
+            }}
+          >
             <AdminPageHeaderMobileMeta />
             <Outlet context={{ surfaces, isDarkMode }} />
-          </Container>
+          </Box>
         </AdminPageHeaderProvider>
       </Box>
 

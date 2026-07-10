@@ -1,4 +1,4 @@
-import { formatPeso, getSupportEmail } from "./emailUtils.js";
+import { formatPeso, getSupportContactHtml, shouldShowPreorderReminder } from "./emailUtils.js";
 import {
   EMAIL_BRAND,
   bodyLead,
@@ -8,6 +8,8 @@ import {
   formatEmailDate,
   invoiceTable,
   metaLine,
+  preorderReminderBlock,
+  preorderReminderText,
   sectionHeading,
   statusList,
   totalsBlock,
@@ -17,6 +19,14 @@ import {
 function orderKind(order) {
   if (order.type === "Pre-order") return "preorder";
   return "purchase";
+}
+
+function depositPercentOf(order) {
+  return Math.max(0, Math.min(100, Number(order?.depositPercent) || 30));
+}
+
+function balancePercentOf(order) {
+  return Math.max(0, 100 - depositPercentOf(order));
 }
 
 function normalizeLineItems(order) {
@@ -56,6 +66,8 @@ export function buildOrderAcknowledgementEmail(order) {
   const subject = isPreorder
     ? `Pre-order confirmation — ${order.id}`
     : `Order confirmation — ${order.id}`;
+  const dp = depositPercentOf(order);
+  const bal = balancePercentOf(order);
 
   const totalRows = [
     { label: "Subtotal", value: formatPeso(order.subtotal || order.total) },
@@ -63,14 +75,16 @@ export function buildOrderAcknowledgementEmail(order) {
   ];
 
   if (isPreorder) {
-    totalRows.push({ label: "Paid now", value: formatPeso(order.total) });
+    totalRows.push({ label: `Paid now DP (${dp}%)`, value: formatPeso(order.total) });
     if (order.balanceDue > 0) {
-      totalRows.push({ label: "Balance due", value: formatPeso(order.balanceDue) });
+      totalRows.push({ label: `Balance Due (${bal}%)`, value: formatPeso(order.balanceDue) });
     }
     totalRows.push({ label: "Order total", value: formatPeso((order.subtotal || order.total) + (order.balanceDue || 0)), strong: true });
   } else {
     totalRows.push({ label: "Total", value: formatPeso(order.total), strong: true });
   }
+
+  const showReminder = shouldShowPreorderReminder(order);
 
   const text = [
     `Hello ${order.customer},`,
@@ -82,11 +96,14 @@ export function buildOrderAcknowledgementEmail(order) {
     `Date: ${orderDate}`,
     `Payment: ${order.payment || "Pending Verification"}`,
     "",
-    ...lineItems.map((item) => `${item.quantity}× ${item.name}`),
+    ...lineItems.map((item) => {
+      const unit = item.price > 0 ? ` @ ${formatPeso(item.price)}` : "";
+      return `${item.quantity}× ${item.name}${unit}`;
+    }),
     "",
     ...totalRows.map((row) => `${row.label}: ${row.value}`),
     "",
-    `Questions? Email us at ${getSupportEmail()}.`,
+    showReminder ? preorderReminderText({ depositPercent: dp }) : "Questions? Message us at Hobby Arena PH.",
     "",
     `— ${EMAIL_BRAND.name}`,
   ].join("\n");
@@ -123,6 +140,7 @@ export function buildOrderAcknowledgementEmail(order) {
   const html = wrapSimpleEmail({
     preheader: `${order.id} — ${formatPeso(order.total)} received, pending verification`,
     bodyHtml,
+    footerNote: showReminder ? preorderReminderBlock({ depositPercent: dp }) : getSupportContactHtml(),
   });
 
   return { subject, text, html, kind };

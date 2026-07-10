@@ -84,7 +84,7 @@ export default function CheckoutConfirmation({ order, panelSx, surfaceBorderColo
           width: "100%",
           border: "1px solid",
           borderColor: alpha(gold, 0.45),
-          boxShadow: `0 24px 64px ${alpha("#000", 0.28)}, inset 0 1px 0 ${alpha(gold, 0.12)}`,
+          boxShadow: `inset 0 1px 0 ${alpha(gold, 0.12)}`,
         }}
       >
         <Box

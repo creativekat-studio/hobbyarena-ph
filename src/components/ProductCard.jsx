@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { Box, Button, Chip, IconButton, Stack, Tooltip, Typography } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
+import { keyframes } from "@mui/system";
 import ProductRating from "./ProductRating.jsx";
 import PreorderCountdown from "./PreorderCountdown.jsx";
 import PreorderPricing from "./PreorderPricing.jsx";
 import QtyStepper from "./QtyStepper.jsx";
-import { MONO_FONT } from "../theme.js";
+import { MONO_FONT, getBrand } from "../theme.js";
 import { useColorMode } from "../lib/colorMode.jsx";
 import { getSurfaces } from "../lib/surfaces.js";
 import { useAuth } from "../auth/AuthProvider.jsx";
@@ -18,6 +19,11 @@ import { CardIcon, HeartIcon, PokeballIcon } from "./icons.jsx";
 import { OFF_WHITE } from "../lib/colors.js";
 import { productMediaSurface } from "../lib/surfaces.js";
 import { getCountdownParts } from "../lib/preorder.js";
+
+const stockDot = keyframes`
+  0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55); }
+  50% { opacity: 0.85; transform: scale(1.08); box-shadow: 0 0 0 8px rgba(52, 211, 153, 0); }
+`;
 
 export const PESO = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -36,6 +42,7 @@ export function resolveProductAccent(product, theme) {
 
 export default function ProductCard({ product, panelSx, isDarkMode }) {
   const theme = useTheme();
+  const brand = getBrand(theme);
   const { mode } = useColorMode();
   const { surfaceBorderColor } = getSurfaces(theme, mode === "dark");
   const { isCustomer } = useAuth();
@@ -69,6 +76,7 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
   useEffect(() => () => clearTimeout(resetTimer.current), []);
 
   function handleWishlist(event) {
+    event.preventDefault();
     event.stopPropagation();
     if (!canWishlist) return;
     toggle(product);
@@ -112,24 +120,55 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
 
   return (
     <Box sx={{ ...panelSx, height: "100%", display: "flex", flexDirection: "column", overflow: "hidden", transition: "transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease", "&:hover": { transform: { md: "translateY(-6px)" }, borderColor: alpha(hoverAccent, 0.55) } }}>
-      <Box component={RouterLink} to={`/shop/${product.id}`} sx={{ ...productMediaSurface(isDarkMode), aspectRatio: "4 / 3", display: "block", textDecoration: "none", color: "inherit" }}>
-        {product.image ? (
-          <Box component="img" src={product.image} alt={product.name} loading="lazy" sx={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: 1 }} />
-        ) : (
-          <Glyph sx={{ fontSize: 66, color: OFF_WHITE.glyph, position: "relative", zIndex: 1 }} />
-        )}
+      <Box sx={{ position: "relative", ...productMediaSurface(isDarkMode), aspectRatio: "4 / 3" }}>
+        <Box
+          component={RouterLink}
+          to={`/shop/${product.id}`}
+          sx={{
+            position: "absolute",
+            inset: 0,
+            display: "block",
+            textDecoration: "none",
+            color: "inherit",
+          }}
+        >
+          {product.image ? (
+            <Box component="img" src={product.image} alt={product.name} loading="lazy" sx={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: 1 }} />
+          ) : (
+            <Box sx={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1 }}>
+              <Glyph sx={{ fontSize: 66, color: OFF_WHITE.glyph }} />
+            </Box>
+          )}
+          <Chip label={product.tag} size="small" sx={{ position: "absolute", top: 10, left: 10, bgcolor: "rgba(0,0,0,0.5)", color: OFF_WHITE.textBright, fontFamily: MONO_FONT, fontSize: "0.6rem", letterSpacing: 1 }} />
+          {overlayLabel ? (
+            <Box sx={{ position: "absolute", inset: 0, bgcolor: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2 }}>
+              <Typography sx={{ color: OFF_WHITE.textBright, fontFamily: MONO_FONT, fontWeight: 700, letterSpacing: 1 }}>{overlayLabel.toUpperCase()}</Typography>
+            </Box>
+          ) : null}
+        </Box>
         {isCustomer && canWishlist ? (
           <Tooltip title={wishlisted ? "Remove from wishlist" : "Add to wishlist"}>
-            <IconButton size="small" onClick={handleWishlist} sx={{ position: "absolute", top: 8, right: 8, zIndex: 3, bgcolor: "rgba(0,0,0,0.45)", color: wishlisted ? theme.palette.error.main : OFF_WHITE.textBright }}>
-              <HeartIcon sx={{ fontSize: 18, fill: wishlisted ? "currentColor" : "none" }} />
+            <IconButton
+              size="small"
+              onClick={handleWishlist}
+              sx={{
+                position: "absolute",
+                top: 8,
+                right: 8,
+                zIndex: 3,
+                width: 34,
+                height: 34,
+                borderRadius: "8px !important",
+                border: "1px solid",
+                borderColor: wishlisted ? theme.palette.error.main : "transparent",
+                bgcolor: "rgba(0,0,0,0.45)",
+                color: wishlisted ? theme.palette.error.main : OFF_WHITE.textBright,
+                "&:hover": { bgcolor: "rgba(0,0,0,0.6)" },
+              }}
+            >
+              <HeartIcon solid={wishlisted} sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
-        ) : null}
-        <Chip label={product.tag} size="small" sx={{ position: "absolute", top: 10, left: 10, bgcolor: "rgba(0,0,0,0.5)", color: OFF_WHITE.textBright, fontFamily: MONO_FONT, fontSize: "0.6rem", letterSpacing: 1 }} />
-        {overlayLabel ? (
-          <Box sx={{ position: "absolute", inset: 0, bgcolor: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2 }}>
-            <Typography sx={{ color: OFF_WHITE.textBright, fontFamily: MONO_FONT, fontWeight: 700, letterSpacing: 1 }}>{overlayLabel.toUpperCase()}</Typography>
-          </Box>
         ) : null}
       </Box>
 
@@ -137,13 +176,20 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
         <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", color: accent, letterSpacing: 1, fontWeight: 700 }}>{product.line?.toUpperCase()}</Typography>
         <Typography component={RouterLink} to={`/shop/${product.id}`} sx={{ fontWeight: 700, lineHeight: 1.25, flexGrow: 1, fontSize: "0.95rem", color: "inherit", textDecoration: "none", "&:hover": { color: "primary.main" } }}>{product.name}</Typography>
         <ProductRating product={product} />
-        {isPreorder && product.preorderEndsAt ? <PreorderCountdown endsAt={product.preorderEndsAt} compact /> : null}
+        {isPreorder && product.preorderEndsAt ? <PreorderCountdown endsAt={product.preorderEndsAt} compact wrapLabel={false} /> : null}
         {isPreorder ? (
           <PreorderPricing product={product} compact />
         ) : (
-          <Stack direction="row" alignItems="baseline" justifyContent="space-between">
+          <Stack direction="row" alignItems="center" justifyContent="space-between">
             <Typography sx={{ fontWeight: 800, fontSize: "1.15rem", color: "primary.main" }}>{PESO.format(product.price)}</Typography>
-            <Typography sx={{ fontSize: "0.7rem", color: soldOut ? "error.main" : "success.main", fontWeight: 700, fontFamily: MONO_FONT }}>{soldOut ? "Out of Stock" : `${product.stock} left`}</Typography>
+            {soldOut ? (
+              <Typography sx={{ fontSize: "0.7rem", color: "error.main", fontWeight: 700, fontFamily: MONO_FONT }}>Out of Stock</Typography>
+            ) : (
+              <Stack direction="row" alignItems="center" spacing={0.75}>
+                <Box sx={{ width: 7, height: 7, borderRadius: "50%", bgcolor: brand.liveDot ?? "success.main", flexShrink: 0, animation: `${stockDot} 1.6s ease-in-out infinite` }} />
+                <Typography sx={{ fontSize: "0.7rem", color: "success.main", fontWeight: 700, fontFamily: MONO_FONT, lineHeight: 1 }}>In Stock</Typography>
+              </Stack>
+            )}
           </Stack>
         )}
         <Stack direction="row" spacing={1} alignItems="center">

@@ -22,6 +22,7 @@ function readPayload(body) {
       refundAmount: Number(order.refundAmount) || 0,
       allocatedQty: Number(order.allocatedQty) || 0,
       qty: Number(order.qty) || 1,
+      depositPercent: Number(order.depositPercent) || 30,
       date: order.date ? String(order.date) : "",
       items: order.items ? String(order.items) : "",
       lineItems: Array.isArray(order.lineItems) ? order.lineItems : [],
@@ -30,6 +31,7 @@ function readPayload(body) {
           id: order.updatedLineItem.id ? String(order.updatedLineItem.id) : "",
           name: order.updatedLineItem.name ? String(order.updatedLineItem.name) : "",
           quantity: Number(order.updatedLineItem.quantity) || 1,
+          price: Number(order.updatedLineItem.price) || 0,
           tag: order.updatedLineItem.tag ? String(order.updatedLineItem.tag) : "",
           payment: order.updatedLineItem.payment ? String(order.updatedLineItem.payment) : "",
           status: order.updatedLineItem.status ? String(order.updatedLineItem.status) : "",
@@ -38,6 +40,13 @@ function readPayload(body) {
           allocatedQty: Number(order.updatedLineItem.allocatedQty) || 0,
           depositPaid: Number(order.updatedLineItem.depositPaid) || 0,
           lineTotal: Number(order.updatedLineItem.lineTotal) || 0,
+        }
+        : null,
+      statusAttachment: order.statusAttachment && typeof order.statusAttachment === "object" && order.statusAttachment.url
+        ? {
+          label: order.statusAttachment.label ? String(order.statusAttachment.label) : "Attachment",
+          url: String(order.statusAttachment.url),
+          type: order.statusAttachment.type ? String(order.statusAttachment.type) : "image",
         }
         : null,
     },

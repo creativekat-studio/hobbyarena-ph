@@ -28,7 +28,7 @@ function BannerSlide({ src, alt }) {
         borderRadius: 1.5,
         flexShrink: 0,
         display: "block",
-        boxShadow: "0 12px 32px rgba(0,0,0,0.28)",
+        boxShadow: "none",
       }}
     />
   );

@@ -82,7 +82,7 @@ export function heroHeadlineSx(theme) {
       backgroundClip: "text",
       color: "transparent",
       textShadow: "none",
-      filter: `drop-shadow(0 2px 12px ${alpha("#F5C518", 0.25)})`,
+      filter: "none",
     };
   }
 

@@ -15,6 +15,7 @@ import { useLocation, useOutletContext } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
+import { CategoryChip } from "../components/ShopFilters.jsx";
 import { MailIcon, SearchIcon, SparkleIcon } from "../components/icons.jsx";
 import { INQUIRY_STATUS, useInquiries } from "../lib/inquiriesStore.jsx";
 
@@ -260,11 +261,13 @@ export default function InquiriesPage() {
 
   useEffect(() => {
     const openInquiryId = location.state?.openInquiryId;
-    if (openInquiryId) {
-      setSelectedId(openInquiryId);
+    if (!openInquiryId) return;
+    setSelectedId(openInquiryId);
+    const inquiry = inquiries.find((q) => q.id === openInquiryId);
+    if (inquiry?.status === INQUIRY_STATUS.NEW) {
       setStatus(openInquiryId, INQUIRY_STATUS.READ);
     }
-  }, [location.state?.openInquiryId, setStatus]);
+  }, [location.state?.openInquiryId, setStatus, inquiries]);
 
   const rows = useMemo(() => {
     return inquiries.filter((q) => {
@@ -305,7 +308,14 @@ export default function InquiriesPage() {
   }
 
   return (
-    <Stack spacing={ADMIN_PAGE_SPACING}>
+    /*
+     * flex: 1 + minHeight: 0 makes this page fill the scrollable content pane in AdminLayout.
+     * The chrome (header + filters) is flexShrink: 0 so it never scrolls away.
+     * The inbox/preview split takes flex: 1 and scrolls internally.
+     */
+    <Box sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, gap: (t) => t.spacing(ADMIN_PAGE_SPACING) }}>
+      {/* ── Sticky upper chrome: header + filter bar ── */}
+      <Stack spacing={ADMIN_PAGE_SPACING} sx={{ flexShrink: 0 }}>
       <AdminPageHeader
         eyebrow="Messages"
         title={(
@@ -321,14 +331,7 @@ export default function InquiriesPage() {
         <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems={{ xs: "stretch", md: "center" }} justifyContent="space-between">
           <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
             {FILTERS.map((item) => (
-              <Chip
-                key={item.id}
-                label={item.label}
-                onClick={() => setFilter(item.id)}
-                color={filter === item.id ? "primary" : "default"}
-                variant={filter === item.id ? "filled" : "outlined"}
-                sx={{ fontWeight: 700 }}
-              />
+              <CategoryChip key={item.id} label={item.label} selected={filter === item.id} onClick={() => setFilter(item.id)} />
             ))}
           </Stack>
           <TextField
@@ -347,14 +350,17 @@ export default function InquiriesPage() {
           />
         </Stack>
       </Box>
+      </Stack>
 
+      {/* ── Scrolling results region: inbox + preview split ── */}
       <Box
         sx={{
           ...panelSx,
+          flex: 1,
+          minHeight: { xs: 480, md: 0 },
           overflow: "hidden",
           display: "flex",
           flexDirection: { xs: "column", md: "row" },
-          minHeight: { md: 560 },
         }}
       >
         <Box
@@ -366,7 +372,7 @@ export default function InquiriesPage() {
             borderColor: surfaceBorderColor,
             display: "flex",
             flexDirection: "column",
-            maxHeight: { xs: 360, md: "70vh" },
+            maxHeight: { xs: 360, md: "100%" },
           }}
         >
           <Box sx={{ px: 2, py: 1.5, borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
@@ -411,6 +417,6 @@ export default function InquiriesPage() {
           )}
         </Box>
       </Box>
-    </Stack>
+    </Box>
   );
 }

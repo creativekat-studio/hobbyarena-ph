@@ -97,6 +97,11 @@ export default function CartDrawer({ open, onClose, surfaceBorderColor, isDarkMo
     navigate("/checkout");
   }
 
+  function continueShopping() {
+    onClose();
+    navigate("/products");
+  }
+
   return (
     <Drawer
       anchor="right"
@@ -128,7 +133,7 @@ export default function CartDrawer({ open, onClose, surfaceBorderColor, isDarkMo
           {items.length === 0 ? (
             <Stack spacing={2} alignItems="center" justifyContent="center" sx={{ py: 8, textAlign: "center", color: "text.secondary" }}>
               <Typography>Your cart is empty.</Typography>
-              <Button variant="outlined" onClick={onClose}>Continue shopping</Button>
+              <Button variant="outlined" onClick={continueShopping}>Continue shopping</Button>
             </Stack>
           ) : (
             <Stack spacing={2.5} divider={<Divider flexItem />}>
