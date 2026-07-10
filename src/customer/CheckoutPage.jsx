@@ -319,7 +319,7 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
         >
           <Box sx={{ textAlign: "left" }}>
             <Typography sx={{ fontWeight: 800 }}>Continue as guest</Typography>
-            <Typography variant="body2" color={mode === "guest" ? "inherit" : "text.secondary"} sx={{ opacity: 0.9 }}>
+            <Typography variant="body2" color={mode === "guest" ? "inherit" : "text.secondary"} sx={{ opacity: 0.9, textTransform: "none" }}>
               No account needed — enter your details on the next step.
             </Typography>
           </Box>
@@ -334,7 +334,7 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
         >
           <Box sx={{ textAlign: "left" }}>
             <Typography sx={{ fontWeight: 800 }}>Create an account</Typography>
-            <Typography variant="body2" color={mode === "signup" ? "inherit" : "text.secondary"}>
+            <Typography variant="body2" color={mode === "signup" ? "inherit" : "text.secondary"} sx={{ textTransform: "none" }}>
               Track orders and checkout faster next time.
             </Typography>
           </Box>
@@ -349,7 +349,7 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
         >
           <Box sx={{ textAlign: "left" }}>
             <Typography sx={{ fontWeight: 800 }}>Sign in</Typography>
-            <Typography variant="body2" color={mode === "signin" ? "inherit" : "text.secondary"}>
+            <Typography variant="body2" color={mode === "signin" ? "inherit" : "text.secondary"} sx={{ textTransform: "none" }}>
               Already have an account? Sign in to continue.
             </Typography>
           </Box>

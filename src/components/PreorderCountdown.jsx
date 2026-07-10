@@ -214,8 +214,8 @@ export default function PreorderCountdown({
 }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
-  // Mobile product cards: one-line label. Desktop: allow wrapped label.
-  const effectiveWrapLabel = isMobile ? false : wrapLabel;
+  // Mobile product cards and wide featured panels: one-line label. Other desktop cards: allow wrapped label.
+  const effectiveWrapLabel = isMobile || featured ? false : wrapLabel;
   const { countdownVariant } = usePreorderDisplay();
   const variant = variantProp ?? countdownVariant;
   const dark = tone === "dark";
