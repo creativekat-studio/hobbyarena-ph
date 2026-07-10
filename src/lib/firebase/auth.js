@@ -2,6 +2,7 @@ import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
   onAuthStateChanged,
+  signInAnonymously,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
@@ -103,7 +104,9 @@ export function subscribeToAuthChanges(onCustomer, onAdmin, onReady) {
   }
 
   return onAuthStateChanged(auth, async (firebaseUser) => {
-    if (!firebaseUser) {
+    // Anonymous sessions exist only so guest checkout can write proof to Storage.
+    // They must not surface as a signed-in customer in the UI.
+    if (!firebaseUser || firebaseUser.isAnonymous) {
       onCustomer(null);
       onAdmin(null);
       onReady?.();
@@ -172,4 +175,18 @@ export async function firebaseSignOut() {
   const auth = getFirebaseAuth();
   if (!auth) return;
   await signOut(auth);
+}
+
+/**
+ * Ensure there is a Firebase auth session so guest checkout can write proof of
+ * payment to Storage (the order-proofs rule requires request.auth != null).
+ * If someone is already signed in (member/guest), reuse that session.
+ * Returns the current uid, or null when Auth is unavailable.
+ */
+export async function ensureAnonymousAuth() {
+  const auth = getFirebaseAuth();
+  if (!auth) return null;
+  if (auth.currentUser) return auth.currentUser.uid;
+  const credential = await signInAnonymously(auth);
+  return credential.user?.uid || null;
 }

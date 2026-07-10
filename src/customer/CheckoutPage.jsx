@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
-  Avatar,
   Box,
   Button,
   Checkbox,
@@ -642,25 +641,7 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
             onClick={() => setSelectedBankId(bank.id)}
             color={selectedBank?.id === bank.id ? "primary" : "default"}
             variant={selectedBank?.id === bank.id ? "filled" : "outlined"}
-            avatar={
-              bank.logo ? (
-                <Avatar
-                  src={bank.logo}
-                  alt=""
-                  variant="rounded"
-                  sx={{ bgcolor: "transparent", p: 0.25 }}
-                />
-              ) : undefined
-            }
-            sx={{
-              fontWeight: 700,
-              "& .MuiChip-avatar": {
-                width: 24,
-                height: 24,
-                ml: 0.5,
-                "& img": { objectFit: "contain" },
-              },
-            }}
+            sx={{ fontWeight: 700 }}
           />
         ))}
       </Stack>
@@ -685,13 +666,21 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
                 <Box
                   component="img"
                   src={selectedBank.logo}
-                  alt=""
-                  sx={{ width: 28, height: 28, objectFit: "contain", borderRadius: 0.5, bgcolor: "transparent", p: 0.35 }}
+                  alt={selectedBank.label}
+                  sx={{
+                    height: selectedBank.id === "chinabank" ? 52 : 32,
+                    width: "auto",
+                    maxWidth: selectedBank.id === "chinabank" ? 200 : 140,
+                    objectFit: "contain",
+                    objectPosition: "left center",
+                    display: "block",
+                  }}
                 />
-              ) : null}
-              <Typography sx={{ fontWeight: 800, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 1, color: "primary.main" }}>
-                {selectedBank.label.toUpperCase()}
-              </Typography>
+              ) : (
+                <Typography sx={{ fontWeight: 800, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 1, color: "primary.main" }}>
+                  {selectedBank.label.toUpperCase()}
+                </Typography>
+              )}
             </Stack>
             <Typography sx={{ fontWeight: 700, mt: 0.75, fontSize: "1rem" }}>{selectedBank.accountName}</Typography>
             <Typography sx={{ fontFamily: MONO_FONT, fontSize: "1.15rem", fontWeight: 800, mt: 0.5, letterSpacing: 0.3 }}>

@@ -11,7 +11,7 @@ import {
 import { COLLECTIONS } from "../../../data/firestoreSchema.js";
 import { getFirestoreDb } from "../app.js";
 import { sanitizeForFirestore } from "../sanitize.js";
-import { stripOrderProofPayload, uploadOrderProofAttachments } from "../../orderProofStorage.js";
+import { checkoutProofPersisted, stripOrderProofPayload, uploadOrderProofAttachments } from "../../orderProofStorage.js";
 import { sortOrdersByOrderNo } from "../../orderIds.js";
 
 const SAVE_TIMEOUT_MS = 25_000;
@@ -224,6 +224,13 @@ export async function createOrder(order, { maxAttempts = 30 } = {}) {
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     current = await uploadOrderProofAttachments(current);
+    // Don't silently save an order whose proof only lives in the customer's
+    // browser — surface the failure so checkout can retry.
+    if (order.hasProof && !checkoutProofPersisted(current)) {
+      throw new Error(
+        "Could not upload your proof of payment. Please check your connection and try again with a smaller image or PDF.",
+      );
+    }
     const payload = prepareOrderDoc(current);
     const ref = orderRef(db, current.id);
 

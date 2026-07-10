@@ -3,7 +3,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { getDataSource } from "./firebase/config.js";
 import { getFirebaseAuth } from "./firebase/app.js";
 import { subscribeAllOrders, subscribeCustomerOrders, createOrder, upsertOrder, patchCustomerOrderTrail } from "./firebase/repositories/orders.js";
-import { isAdminAccount } from "./firebase/auth.js";
+import { ensureAnonymousAuth, isAdminAccount } from "./firebase/auth.js";
 import { shouldExposeAdminSession } from "../auth/authSurface.js";
 import {
   balanceAfterAllocation,
@@ -663,6 +663,15 @@ export function OrdersProvider({ children }) {
       if (firebaseEnabled) {
         placingOrderRef.current = true;
         try {
+          // Guests have no session; sign in anonymously so proof of payment can
+          // be written to Storage (order-proofs rule requires an authenticated user).
+          if (proofUrl && !payload.manual) {
+            try {
+              await ensureAnonymousAuth();
+            } catch (authError) {
+              console.error("[orders] Anonymous sign-in for proof upload failed:", authError);
+            }
+          }
           const saved = await createOrder(created);
           if (saved.id !== created.id) {
             setOrders((current) => current.map((o) => (o.id === created.id ? saved : o)));

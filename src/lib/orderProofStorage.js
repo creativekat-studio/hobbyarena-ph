@@ -363,6 +363,20 @@ export async function uploadOrderProofAttachments(order) {
   return { ...order, trail, hasProof: Boolean(order.hasProof || trail.some((e) => e.attachment?.storageUrl)) };
 }
 
+/**
+ * True when a checkout/deposit proof entry exists on the order and has a
+ * resolvable Storage URL (i.e. it persisted so any admin can view it).
+ * Returns true when there is no deposit proof entry to persist.
+ */
+export function checkoutProofPersisted(order) {
+  const trail = Array.isArray(order?.trail) ? order.trail : [];
+  const entry = trail.find(
+    (e) => e?.attachment && (e.attachment.kind === "deposit" || isDepositProofTrailEntry(e)),
+  );
+  if (!entry) return true;
+  return isHttpUrl(entry.attachment.storageUrl);
+}
+
 /** Firestore has proof metadata but no Storage URL yet. */
 export function orderNeedsProofBackfill(order) {
   if (!order?.id) return false;
