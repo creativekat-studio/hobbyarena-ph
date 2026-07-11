@@ -161,13 +161,18 @@ export function preorderReminderBlock({
   depositPercent = 30,
   title,
   lines,
+  placeholders = {},
 } = {}) {
   const c = EMAIL_BRAND.colors;
   const dp = Math.max(0, Math.min(100, Number(depositPercent) || 30));
   const balance = Math.max(0, 100 - dp);
   const links = getEmailLinks();
   const heading = String(title || "Pre-Order Reminder").trim() || "Pre-Order Reminder";
-  const paragraphs = resolveReminderLines(lines, dp, balance);
+  const paragraphs = resolveReminderLines(lines, {
+    depositPercent: String(dp),
+    balancePercent: String(balance),
+    ...placeholders,
+  });
 
   return `
     <div style="margin:0 0 8px;padding:16px 18px;border-radius:8px;background:${c.page};border:1px solid ${c.border}">
@@ -190,12 +195,17 @@ export function preorderReminderText({
   depositPercent = 30,
   title,
   lines,
+  placeholders = {},
 } = {}) {
   const dp = Math.max(0, Math.min(100, Number(depositPercent) || 30));
   const balance = Math.max(0, 100 - dp);
   const links = getEmailLinks();
   const heading = String(title || "Pre-Order Reminder").trim() || "Pre-Order Reminder";
-  const paragraphs = resolveReminderLines(lines, dp, balance);
+  const paragraphs = resolveReminderLines(lines, {
+    depositPercent: String(dp),
+    balancePercent: String(balance),
+    ...placeholders,
+  });
   return [
     heading,
     "",
@@ -205,7 +215,10 @@ export function preorderReminderText({
   ].join("\n");
 }
 
-function resolveReminderLines(lines, depositPercent, balancePercent) {
+function resolveReminderLines(lines, placeholders = {}) {
+  const depositPercent = placeholders.depositPercent ?? "30";
+  const balancePercent = placeholders.balancePercent
+    ?? String(Math.max(0, 100 - (Number(depositPercent) || 30)));
   const defaults = [
     `${depositPercent}% down payment is non-refundable (unless it is due to country allocation cuts)`,
     `The remaining ${balancePercent}% balance must be fully settled before the Product Release Day to ensure smooth processing and timely turnover of your order.`,
@@ -214,9 +227,9 @@ function resolveReminderLines(lines, depositPercent, balancePercent) {
   const source = Array.isArray(lines) && lines.length
     ? lines.map((line) => String(line ?? "").trim()).filter(Boolean)
     : defaults;
-  return source.map((line) => line
-    .replace(/\{\{\s*depositPercent\s*\}\}/g, String(depositPercent))
-    .replace(/\{\{\s*balancePercent\s*\}\}/g, String(balancePercent)));
+  return source.map((line) => line.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => (
+    placeholders[key] != null ? String(placeholders[key]) : ""
+  )));
 }
 
 /**
@@ -352,7 +365,7 @@ export function invoiceTable(lineItems, { highlightId = null } = {}) {
       const rowBg = highlighted ? `background:${c.page};` : "";
       return `
         <tr>
-          <td style="padding:12px 0;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;line-height:1.45;color:${c.text};vertical-align:top;${rowBg}${highlighted ? `font-weight:600;` : ""}">
+          <td style="padding:12px 12px 12px 16px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;line-height:1.45;color:${c.text};vertical-align:top;${rowBg}${highlighted ? `font-weight:600;` : ""}">
             ${escapeHtml(item.name)}${tag}${statusMeta}
           </td>
           <td align="right" style="padding:12px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;color:${c.muted};vertical-align:top;width:88px;white-space:nowrap;${rowBg}">
@@ -361,7 +374,7 @@ export function invoiceTable(lineItems, { highlightId = null } = {}) {
           <td align="center" style="padding:12px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;color:${c.muted};vertical-align:top;width:40px;${rowBg}">
             ${qty}
           </td>
-          <td align="right" style="padding:12px 0;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;color:${c.text};vertical-align:top;width:96px;white-space:nowrap;${rowBg}">
+          <td align="right" style="padding:12px 16px 12px 12px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;color:${c.text};vertical-align:top;width:96px;white-space:nowrap;${rowBg}">
             ${totalLabel}
           </td>
         </tr>
@@ -372,10 +385,10 @@ export function invoiceTable(lineItems, { highlightId = null } = {}) {
   return `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px">
       <tr>
-        <td style="padding:0 0 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted}">Item</td>
+        <td style="padding:0 12px 8px 16px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted}">Item</td>
         <td align="right" style="padding:0 8px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted};width:88px">Unit Price</td>
         <td align="center" style="padding:0 8px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted};width:40px">Qty</td>
-        <td align="right" style="padding:0 0 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted};width:96px">Total</td>
+        <td align="right" style="padding:0 16px 8px 12px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted};width:96px">Total</td>
       </tr>
       ${rows}
     </table>

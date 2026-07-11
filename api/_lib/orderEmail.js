@@ -90,6 +90,17 @@ export function buildOrderAcknowledgementEmail(order, options = {}) {
     depositPercent: dp,
     title: assignedFooter?.title,
     lines: assignedFooter?.lines,
+    placeholders: {
+      customer: order.customer || "",
+      item: lineItems.map((item) => `${item.quantity}× ${item.name}`).join(", ") || "your order",
+      order: order.id || "",
+      balance: formatPeso(order.balanceDue),
+      refund: formatPeso(order.refundAmount),
+      allocated: String(order.allocatedQty ?? 0),
+      qty: String(order.qty ?? lineItems.reduce((sum, item) => sum + (item.quantity || 0), 0) || 1),
+      depositPercent: String(dp),
+      balancePercent: String(bal),
+    },
   };
 
   const text = [

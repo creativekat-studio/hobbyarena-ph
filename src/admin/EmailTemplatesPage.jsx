@@ -5,12 +5,22 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   InputLabel,
   MenuItem,
   Select,
   Stack,
   Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   Tabs,
   TextField,
   Tooltip,
@@ -27,7 +37,6 @@ import {
   DEFAULT_EMAIL_BODIES,
   EMAIL_PLACEHOLDERS,
   EMAIL_TYPES,
-  ORDER_ACK_FOOTER_KEY,
   PREORDER_REMINDER_PLACEHOLDERS,
   addEmailFooter,
   clearEmailBodyOverride,
@@ -344,196 +353,304 @@ function EmailEditor({
   );
 }
 
-function FooterTemplateEditor({ draft, onDraftChange, surfaceBorderColor }) {
-  const theme = useTheme();
-  const [saved, setSaved] = useState(false);
-  const [activeFooterId, setActiveFooterId] = useState(draft.footers[0]?.id || "");
-  const activeFooter = draft.footers.find((footer) => footer.id === activeFooterId) || draft.footers[0] || null;
+function blankFooterDraft(index = 1) {
+  return {
+    id: "",
+    name: `Footer ${index}`,
+    title: "Email footer",
+    lines: ["Add your footer message here.", "", "", "", "", ""],
+  };
+}
+
+const MAX_FOOTER_LINES = 10;
+
+function padFooterLines(lines, minRows = 6) {
+  const next = Array.isArray(lines) ? lines.map((line) => String(line ?? "")) : [];
+  while (next.length < minRows) next.push("");
+  return next.slice(0, MAX_FOOTER_LINES);
+}
+
+function FooterEditModal({
+  open,
+  mode,
+  footer,
+  canDelete,
+  surfaceBorderColor,
+  onClose,
+  onSave,
+  onDelete,
+}) {
+  const [form, setForm] = useState(() => blankFooterDraft());
 
   useEffect(() => {
-    if (!draft.footers.some((footer) => footer.id === activeFooterId)) {
-      setActiveFooterId(draft.footers[0]?.id || "");
-    }
-  }, [draft.footers, activeFooterId]);
-
-  function updateActive(partial) {
-    if (!activeFooter) return;
-    const footers = draft.footers.map((footer) => (
-      footer.id === activeFooter.id ? { ...footer, ...partial } : footer
-    ));
-    onDraftChange({ ...draft, footers });
-    setSaved(false);
-  }
-
-  function handleSave() {
-    const next = setPreorderReminderConfig(draft);
-    onDraftChange(next);
-    setSaved(true);
-  }
-
-  function handleAdd() {
-    const next = addEmailFooter({
-      name: `Footer ${draft.footers.length + 1}`,
-      title: "Email footer",
-      lines: ["Add your footer message here."],
+    if (!open || !footer) return;
+    setForm({
+      id: footer.id || "",
+      name: footer.name || "",
+      title: footer.title || "",
+      lines: padFooterLines(footer.lines),
     });
-    onDraftChange(next);
-    setActiveFooterId(next.footers[next.footers.length - 1]?.id || "");
-    setSaved(false);
-  }
+  }, [open, footer]);
 
-  function handleDelete() {
-    if (!activeFooter || draft.footers.length <= 1) return;
-    const next = removeEmailFooter(activeFooter.id);
-    onDraftChange(next);
-    setActiveFooterId(next.footers[0]?.id || "");
-    setSaved(false);
-  }
-
-  function handleAckAssignment(footerId) {
-    const next = setEmailFooterAssignment(ORDER_ACK_FOOTER_KEY, footerId);
-    onDraftChange(next);
-    setSaved(false);
+  function update(partial) {
+    setForm((prev) => ({ ...prev, ...partial }));
   }
 
   function insertPlaceholder(token) {
-    if (!activeFooter) return;
-    const lines = [...(activeFooter.lines || [])];
-    const last = lines.length - 1;
-    if (last < 0) {
-      updateActive({ lines: [token] });
-      return;
-    }
-    const current = lines[last] || "";
-    lines[last] = `${current}${current && !current.endsWith(" ") ? " " : ""}${token}`;
-    updateActive({ lines });
+    setForm((prev) => {
+      const lines = [...prev.lines];
+      const last = Math.max(0, lines.length - 1);
+      const current = lines[last] || "";
+      lines[last] = `${current}${current && !current.endsWith(" ") ? " " : ""}${token}`;
+      return { ...prev, lines };
+    });
   }
 
-  if (!activeFooter) {
-    return (
-      <Stack spacing={1.5}>
-        <Typography color="text.secondary">No footers yet.</Typography>
-        <Button variant="contained" onClick={handleAdd}>Add footer</Button>
-      </Stack>
-    );
+  function addLine() {
+    setForm((prev) => {
+      if (prev.lines.length >= MAX_FOOTER_LINES) return prev;
+      return { ...prev, lines: [...prev.lines, ""] };
+    });
+  }
+
+  function removeLine(index) {
+    setForm((prev) => {
+      if (prev.lines.length <= 1) return prev;
+      return { ...prev, lines: prev.lines.filter((_, i) => i !== index) };
+    });
+  }
+
+  function handleSave() {
+    onSave({
+      ...form,
+      name: form.name.trim() || "Footer",
+      title: form.title.trim() || form.name.trim() || "Footer",
+      lines: form.lines.map((line) => String(line ?? "").trim()).filter(Boolean),
+    });
+  }
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ fontWeight: 800 }}>
+        {mode === "create" ? "Add footer" : "Edit footer"}
+      </DialogTitle>
+      <DialogContent dividers>
+        <Stack spacing={1.5} sx={{ pt: 0.5 }}>
+          <TextField
+            label="Footer name / type"
+            fullWidth
+            value={form.name}
+            onChange={(e) => update({ name: e.target.value })}
+            helperText="Shown in the template footer dropdown."
+          />
+          <TextField
+            label="Footer title"
+            fullWidth
+            value={form.title}
+            onChange={(e) => update({ title: e.target.value })}
+          />
+          {form.lines.map((line, index) => (
+            <Stack key={`modal-line-${index}`} direction="row" spacing={1} alignItems="flex-start">
+              <TextField
+                label={`Message line ${index + 1}`}
+                fullWidth
+                multiline
+                minRows={2}
+                value={line}
+                onChange={(e) => {
+                  const lines = [...form.lines];
+                  lines[index] = e.target.value;
+                  update({ lines });
+                }}
+              />
+              <Button
+                color="inherit"
+                disabled={form.lines.length <= 1}
+                onClick={() => removeLine(index)}
+                sx={{ mt: 1, minWidth: 0, px: 1, fontFamily: MONO_FONT, fontSize: "0.68rem" }}
+              >
+                Remove
+              </Button>
+            </Stack>
+          ))}
+          <Button
+            variant="outlined"
+            disabled={form.lines.length >= MAX_FOOTER_LINES}
+            onClick={addLine}
+            sx={{ alignSelf: "flex-start", borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem" }}
+          >
+            Add message line
+          </Button>
+          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+            {PREORDER_REMINDER_PLACEHOLDERS.map((placeholder) => (
+              <Chip
+                key={placeholder.token}
+                label={placeholder.token}
+                size="small"
+                variant="outlined"
+                onClick={() => insertPlaceholder(placeholder.token)}
+                title={placeholder.description}
+                sx={{ fontFamily: MONO_FONT, fontSize: "0.66rem", borderColor: surfaceBorderColor, cursor: "pointer" }}
+              />
+            ))}
+          </Stack>
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, py: 2, justifyContent: "space-between" }}>
+        {mode === "edit" ? (
+          <Button
+            color="inherit"
+            disabled={!canDelete}
+            onClick={onDelete}
+            sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem" }}
+          >
+            Delete
+          </Button>
+        ) : <Box />}
+        <Stack direction="row" spacing={1}>
+          <Button onClick={onClose} color="inherit" sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem" }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleSave}
+            sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
+          >
+            Save
+          </Button>
+        </Stack>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function FooterTemplateEditor({ draft, onDraftChange, surfaceBorderColor }) {
+  const [modal, setModal] = useState(null);
+
+  function assignedCount(footerId) {
+    return Object.values(draft.assignmentByType || {}).filter((id) => id === footerId).length;
+  }
+
+  function openCreate() {
+    setModal({ mode: "create", footer: blankFooterDraft(draft.footers.length + 1) });
+  }
+
+  function openEdit(footer) {
+    setModal({
+      mode: "edit",
+      footer: {
+        ...footer,
+        lines: padFooterLines(footer.lines),
+      },
+    });
+  }
+
+  function closeModal() {
+    setModal(null);
+  }
+
+  function handleSave(form) {
+    if (modal?.mode === "create") {
+      const next = addEmailFooter({
+        name: form.name,
+        title: form.title,
+        lines: form.lines.length ? form.lines : ["Add your footer message here."],
+      });
+      onDraftChange(next);
+    } else if (modal?.mode === "edit" && form.id) {
+      const footers = draft.footers.map((footer) => (
+        footer.id === form.id
+          ? { ...footer, name: form.name, title: form.title, lines: form.lines.length ? form.lines : footer.lines }
+          : footer
+      ));
+      onDraftChange(setPreorderReminderConfig({ ...draft, footers }));
+    }
+    closeModal();
+  }
+
+  function handleDelete() {
+    if (!modal?.footer?.id || draft.footers.length <= 1) return;
+    onDraftChange(removeEmailFooter(modal.footer.id));
+    closeModal();
   }
 
   return (
     <Stack spacing={2}>
-      <Box>
-        <Typography sx={{ fontWeight: 800, fontSize: "0.9rem" }}>Footer templates</Typography>
-        <Typography sx={{ color: "text.secondary", fontSize: "0.8rem", mt: 0.25 }}>
-          Create multiple footers, then assign one to each email template (or leave blank for none).
-        </Typography>
-      </Box>
-
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
-        <FormControl size="small" sx={{ minWidth: 220, flex: 1 }}>
-          <InputLabel id="active-footer-label">Editing</InputLabel>
-          <Select
-            labelId="active-footer-label"
-            label="Editing"
-            value={activeFooter.id}
-            onChange={(e) => setActiveFooterId(e.target.value)}
-          >
-            {draft.footers.map((footer) => (
-              <MenuItem key={footer.id} value={footer.id}>{footer.name}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        <Button
-          variant="outlined"
-          onClick={handleAdd}
-          sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem" }}
-        >
-          Add footer
-        </Button>
-        <Button
-          variant="text"
-          color="inherit"
-          disabled={draft.footers.length <= 1}
-          onClick={handleDelete}
-          sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem" }}
-        >
-          Delete
-        </Button>
-      </Stack>
-
-      <TextField
-        label="Footer name / type"
-        fullWidth
-        value={activeFooter.name}
-        onChange={(e) => updateActive({ name: e.target.value })}
-        helperText="Shown in the template footer dropdown."
-      />
-      <TextField
-        label="Footer title"
-        fullWidth
-        value={activeFooter.title}
-        onChange={(e) => updateActive({ title: e.target.value })}
-      />
-
-      {(activeFooter.lines || []).map((line, index) => (
-        <TextField
-          key={`${activeFooter.id}-line-${index}`}
-          label={`Message line ${index + 1}`}
-          fullWidth
-          multiline
-          minRows={2}
-          value={line}
-          onChange={(e) => {
-            const lines = [...activeFooter.lines];
-            lines[index] = e.target.value;
-            updateActive({ lines });
-          }}
-        />
-      ))}
-
-      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-        {PREORDER_REMINDER_PLACEHOLDERS.map((placeholder) => (
-          <Chip
-            key={placeholder.token}
-            label={placeholder.token}
-            size="small"
-            variant="outlined"
-            onClick={() => insertPlaceholder(placeholder.token)}
-            title={placeholder.description}
-            sx={{ fontFamily: MONO_FONT, fontSize: "0.66rem", borderColor: surfaceBorderColor, cursor: "pointer" }}
-          />
-        ))}
-      </Stack>
-
-      <FormControl size="small" fullWidth>
-        <InputLabel id="ack-footer-label">Order confirmation footer</InputLabel>
-        <Select
-          labelId="ack-footer-label"
-          label="Order confirmation footer"
-          value={draft.assignmentByType?.[ORDER_ACK_FOOTER_KEY] || ""}
-          onChange={(e) => handleAckAssignment(e.target.value)}
-        >
-          <MenuItem value=""><em>No footer</em></MenuItem>
-          {draft.footers.map((footer) => (
-            <MenuItem key={footer.id} value={footer.id}>{footer.name}</MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "flex-start" }} justifyContent="space-between">
+        <Box>
+          <Typography sx={{ fontWeight: 800, fontSize: "0.9rem" }}>Footer templates</Typography>
+          <Typography sx={{ color: "text.secondary", fontSize: "0.8rem", mt: 0.25 }}>
+            Click a footer to edit it. Assign one on each email template, or leave blank for none.
+          </Typography>
+        </Box>
         <Button
           variant="contained"
           color="primary"
-          onClick={handleSave}
-          sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
+          onClick={openCreate}
+          sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem", flexShrink: 0 }}
         >
-          Save footer
+          Add footer
         </Button>
       </Stack>
 
-      {saved ? (
-        <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, color: theme.palette.success.main }}>
-          Saved — available in template footer dropdowns.
-        </Typography>
-      ) : null}
+      <TableContainer sx={{ border: "1px solid", borderColor: surfaceBorderColor, borderRadius: 1 }}>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ fontWeight: 800 }}>Name / type</TableCell>
+              <TableCell sx={{ fontWeight: 800 }}>Title</TableCell>
+              <TableCell sx={{ fontWeight: 800 }}>Preview</TableCell>
+              <TableCell sx={{ fontWeight: 800, width: 88 }} align="center">Used</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {draft.footers.map((footer) => (
+              <TableRow
+                key={footer.id}
+                hover
+                sx={{ cursor: "pointer" }}
+                onClick={() => openEdit(footer)}
+              >
+                <TableCell sx={{ fontWeight: 700 }}>{footer.name}</TableCell>
+                <TableCell>{footer.title}</TableCell>
+                <TableCell sx={{ color: "text.secondary", maxWidth: 360 }}>
+                  <Typography noWrap sx={{ fontSize: "0.8rem" }}>
+                    {(footer.lines || [])[0] || "—"}
+                  </Typography>
+                </TableCell>
+                <TableCell align="center">
+                  <Chip
+                    size="small"
+                    label={assignedCount(footer.id)}
+                    sx={{ height: 22, fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 700 }}
+                  />
+                </TableCell>
+              </TableRow>
+            ))}
+            {!draft.footers.length ? (
+              <TableRow>
+                <TableCell colSpan={4}>
+                  <Typography color="text.secondary" sx={{ py: 2, textAlign: "center" }}>
+                    No footers yet. Click Add footer to create one.
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            ) : null}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      <FooterEditModal
+        open={Boolean(modal)}
+        mode={modal?.mode || "edit"}
+        footer={modal?.footer || null}
+        canDelete={draft.footers.length > 1}
+        surfaceBorderColor={surfaceBorderColor}
+        onClose={closeModal}
+        onSave={handleSave}
+        onDelete={handleDelete}
+      />
     </Stack>
   );
 }

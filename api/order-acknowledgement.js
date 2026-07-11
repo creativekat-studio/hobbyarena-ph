@@ -28,7 +28,7 @@ function readOrder(body) {
           name: footer?.name ? String(footer.name).trim().slice(0, 120) : `Footer ${index + 1}`,
           title: footer?.title ? String(footer.title).trim().slice(0, 120) : undefined,
           lines: Array.isArray(footer?.lines)
-            ? footer.lines.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, 6)
+            ? footer.lines.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, 10)
             : [],
         })),
         assignmentByType: reminder.assignmentByType && typeof reminder.assignmentByType === "object"
@@ -42,7 +42,7 @@ function readOrder(body) {
         enabled: reminder.enabled !== false,
         title: reminder.title ? String(reminder.title).trim().slice(0, 120) : undefined,
         lines: Array.isArray(reminder.lines)
-          ? reminder.lines.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, 6)
+          ? reminder.lines.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, 10)
           : undefined,
         ...(reminder.enabledByType && typeof reminder.enabledByType === "object"
           ? {

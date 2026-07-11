@@ -641,6 +641,11 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     depositPercent,
     title: assignedFooter?.title,
     lines: assignedFooter?.lines,
+    placeholders: {
+      ...buildPlaceholderMap(order),
+      depositPercent: String(depositPercent),
+      balancePercent: String(balancePercentOf(order)),
+    },
   };
   if (showReminder) {
     text.push("", preorderReminderText(reminderOpts));

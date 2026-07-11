@@ -8,7 +8,7 @@ function readReminderConfig(raw) {
   if (Array.isArray(raw.footers)) {
     const footers = raw.footers.slice(0, 20).map((footer, index) => {
       const lines = Array.isArray(footer?.lines)
-        ? footer.lines.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, 6)
+        ? footer.lines.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, 10)
         : [];
       return {
         id: footer?.id ? String(footer.id).trim().slice(0, 80) : `ft-${index}`,
@@ -27,7 +27,7 @@ function readReminderConfig(raw) {
   }
 
   const lines = Array.isArray(raw.lines)
-    ? raw.lines.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, 6)
+    ? raw.lines.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, 10)
     : null;
   const enabledByType = raw.enabledByType && typeof raw.enabledByType === "object"
     ? Object.fromEntries(

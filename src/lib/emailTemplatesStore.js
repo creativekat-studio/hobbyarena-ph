@@ -28,6 +28,13 @@ export const EMAIL_PLACEHOLDERS = [
 export const PREORDER_REMINDER_PLACEHOLDERS = [
   { token: "{{depositPercent}}", description: "Deposit % (e.g. 30)" },
   { token: "{{balancePercent}}", description: "Balance % (e.g. 70)" },
+  { token: "{{customer}}", description: "Customer name" },
+  { token: "{{item}}", description: "Item name (with qty)" },
+  { token: "{{order}}", description: "Order number" },
+  { token: "{{balance}}", description: "Balance due amount" },
+  { token: "{{refund}}", description: "Refund amount" },
+  { token: "{{allocated}}", description: "Allocated qty" },
+  { token: "{{qty}}", description: "Ordered qty" },
 ];
 
 export const DEFAULT_FOOTER_ID = "ft-preorder-reminder";
@@ -166,7 +173,7 @@ function newFooterId() {
 function normalizeFooterItem(raw, fallbackIndex = 0) {
   const base = DEFAULT_EMAIL_FOOTER;
   const lines = Array.isArray(raw?.lines)
-    ? raw.lines.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, 6)
+    ? raw.lines.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, 10)
     : [...base.lines];
   const name = String(raw?.name ?? raw?.title ?? `Footer ${fallbackIndex + 1}`).trim() || `Footer ${fallbackIndex + 1}`;
   const title = String(raw?.title ?? name).trim() || name;
