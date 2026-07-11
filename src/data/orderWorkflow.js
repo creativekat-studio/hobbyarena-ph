@@ -653,6 +653,42 @@ export function itemNeedsBalanceProof(item) {
   return payment !== "Fully Paid";
 }
 
+// Payment/status values where nothing is owed anymore — used to suppress a
+// stale `balanceDue` number that was never zeroed after the order settled.
+const BALANCE_SETTLED_PAYMENTS = new Set(["Fully Paid", "Refunded", "Partially Refunded"]);
+const BALANCE_SETTLED_STATUSES = new Set(["Fulfilled", "Refunded"]);
+
+/**
+ * Display-only: the balance a customer still genuinely owes on a line item.
+ * Returns 0 once the item is fully paid, refunded, or fulfilled, even if the
+ * stored `balanceDue` field still holds a non-zero legacy value.
+ */
+export function itemOutstandingBalance(item) {
+  const due = item?.balanceDue ?? 0;
+  if (due <= 0) return 0;
+  if (BALANCE_SETTLED_PAYMENTS.has(migratePaymentStatus(item?.payment))) return 0;
+  if (BALANCE_SETTLED_STATUSES.has(migrateOrderStatus(item?.status))) return 0;
+  return due;
+}
+
+/** Display-only: total outstanding balance across an order's line items. */
+export function orderOutstandingBalance(order) {
+  const items = order?.lineItems;
+  if (Array.isArray(items) && items.length) {
+    return items.reduce((sum, item) => sum + itemOutstandingBalance(item), 0);
+  }
+  return itemOutstandingBalance(order);
+}
+
+/** True when the order has a balance the customer can act on / pay right now. */
+export function orderNeedsBalancePayment(order) {
+  const items = order?.lineItems;
+  if (Array.isArray(items) && items.length) {
+    return items.some((item) => itemNeedsBalanceProof(item));
+  }
+  return itemNeedsBalanceProof(order);
+}
+
 /** Line item with a pending refund — customer can provide QR / bank details. */
 export function itemNeedsRefundDetails(item) {
   const status = migrateOrderStatus(item.status);

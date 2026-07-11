@@ -4,11 +4,14 @@ import {
   Button,
   Chip,
   CircularProgress,
+  FormControl,
   Grid,
   IconButton,
   InputAdornment,
+  InputLabel,
   Link,
   MenuItem,
+  OutlinedInput,
   Popover,
   Stack,
   Switch as MuiSwitch,
@@ -21,12 +24,13 @@ import { alpha, useTheme } from "@mui/material/styles";
 import { useOutletContext } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
-import { FacebookIcon, InstagramIcon, TiktokIcon, SparkleIcon, BoxIcon, EditIcon } from "../components/icons.jsx";
+import { FacebookIcon, InstagramIcon, TiktokIcon, SparkleIcon, BoxIcon, EditIcon, TrashIcon } from "../components/icons.jsx";
 import { OFF_WHITE } from "../lib/colors.js";
 import { useCms } from "../lib/cmsContent.jsx";
 import { useFirebaseData } from "../lib/firebase/config.js";
 import { uploadCmsAsset } from "../lib/firebase/repositories/uploads.js";
 import { compressProductImageFile } from "../lib/imageCompression.js";
+import { UPLOAD_SIZE_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLimits.js";
 import { PREVIEW_STOREFRONT_URL } from "../lib/siteAccess.js";
 import { ALL_PRODUCTS } from "../data/mockData.js";
 import CmsPreviewMockup from "../components/CmsPreviewMockup.jsx";
@@ -79,8 +83,9 @@ function BankAssetUpload({ label, value, onChange, surfaceBorderColor, kind }) {
       setError("Image must be a PNG, JPG, or WebP file.");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Image must be smaller than 5MB.");
+    const sizeError = validateUploadFileSize(file);
+    if (sizeError) {
+      setError(sizeError);
       return;
     }
 
@@ -237,7 +242,11 @@ function BankAssetUpload({ label, value, onChange, surfaceBorderColor, kind }) {
       </Box>
       {error ? (
         <Typography sx={{ fontSize: "0.72rem", color: "error.main" }}>{error}</Typography>
-      ) : null}
+      ) : (
+        <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.4 }}>
+          {UPLOAD_SIZE_DISCLAIMER}
+        </Typography>
+      )}
     </Stack>
   );
 }
@@ -255,6 +264,7 @@ function PerkIconPicker({ pickerId, value, accent, onChange, surfaceBorderColor,
   const theme = useTheme();
   const [anchorEl, setAnchorEl] = useState(null);
   const optionRefs = useRef([]);
+  const fieldRef = useRef(null);
   const selectedId = value || "sparkle";
   const selectedOption = PERK_ICON_OPTIONS.find((option) => option.id === selectedId) ?? PERK_ICON_OPTIONS[0];
   const selectedIndex = Math.max(0, PERK_ICON_OPTIONS.findIndex((option) => option.id === selectedId));
@@ -289,54 +299,58 @@ function PerkIconPicker({ pickerId, value, accent, onChange, surfaceBorderColor,
     setAnchorEl(null);
   }
 
-  function handleOpen(event) {
-    setAnchorEl(event.currentTarget);
+  function handleOpen() {
+    setAnchorEl(fieldRef.current);
     window.setTimeout(() => focusOption(selectedIndex), 0);
   }
 
   return (
-    <Stack spacing={0.5} sx={{ width: 96, flexShrink: 0 }}>
-      <Typography
-        component="label"
-        id={`${pickerId}-label`}
-        sx={{
-          color: "text.secondary",
-          fontFamily: MONO_FONT,
-          fontSize: "0.62rem",
-          fontWeight: 700,
-          letterSpacing: 1,
-          textTransform: "uppercase",
-        }}
-      >
+    <FormControl size="small" variant="outlined" sx={{ width: 104, flexShrink: 0 }} ref={fieldRef}>
+      <InputLabel id={`${pickerId}-label`} shrink>
         Icon
-      </Typography>
-      <Button
-        type="button"
-        variant="outlined"
-        aria-label={`${ariaLabel}. Current icon: ${selectedOption.label}`}
-        aria-haspopup="dialog"
-        aria-expanded={open ? "true" : undefined}
-        aria-controls={open ? popoverId : undefined}
+      </InputLabel>
+      <OutlinedInput
+        notched
+        label="Icon"
+        readOnly
+        value=""
         onClick={handleOpen}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            handleOpen();
+          }
+        }}
+        inputProps={{
+          "aria-labelledby": `${pickerId}-label`,
+          "aria-label": `${ariaLabel}. Current icon: ${selectedOption.label}`,
+          "aria-haspopup": "dialog",
+          "aria-expanded": open ? "true" : undefined,
+          "aria-controls": open ? popoverId : undefined,
+          style: { cursor: "pointer", padding: 0, width: 0, minWidth: 0 },
+        }}
+        startAdornment={
+          <InputAdornment position="start" sx={{ m: 0, mr: 0, width: "100%", maxWidth: "100%", justifyContent: "center" }}>
+            <SelectedIcon sx={{ fontSize: 22, color: accent }} />
+          </InputAdornment>
+        }
         sx={{
-          minWidth: 0,
+          cursor: "pointer",
           height: 40,
-          px: 1,
-          borderColor: open ? alpha(theme.palette.primary.main, 0.8) : surfaceBorderColor,
+          pr: 0,
+          pl: 0,
           bgcolor: alpha("#fff", 0.03),
-          color: accent,
-          "&:hover": {
+          "& .MuiOutlinedInput-input": { p: 0, width: 0, minWidth: 0 },
+          "& .MuiInputAdornment-root": { width: "100%", maxWidth: "100%", ml: 0, mr: 0 },
+          "&:hover .MuiOutlinedInput-notchedOutline": {
             borderColor: alpha(theme.palette.primary.main, 0.8),
-            bgcolor: alpha(theme.palette.primary.main, 0.08),
           },
-          "&.Mui-focusVisible": {
+          "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
             borderColor: theme.palette.primary.main,
-            boxShadow: `0 0 0 3px ${alpha(theme.palette.primary.main, 0.22)}`,
+            borderWidth: 1,
           },
         }}
-      >
-        <SelectedIcon sx={{ fontSize: 22 }} />
-      </Button>
+      />
       <Popover
         open={open}
         anchorEl={anchorEl}
@@ -407,7 +421,7 @@ function PerkIconPicker({ pickerId, value, accent, onChange, surfaceBorderColor,
           })}
         </Box>
       </Popover>
-    </Stack>
+    </FormControl>
   );
 }
 
@@ -707,8 +721,8 @@ function HomepageTab({ panelSx, surfaceBorderColor }) {
                       background: `linear-gradient(90deg, ${accent}, ${alpha(accent, 0.15)})`,
                     }}
                   />
-                  <Stack spacing={1.5} sx={{ p: 2.5 }}>
-                    <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                  <Stack spacing={2} sx={{ p: 2.5 }}>
+                    <Stack direction="row" spacing={2} alignItems="flex-start">
                       <PerkIconPicker
                         pickerId={`perk-icon-${perk.id}`}
                         value={perk.icon}
@@ -741,7 +755,7 @@ function HomepageTab({ panelSx, surfaceBorderColor }) {
                         ariaLabel={`Color for ${perk.title || "perk"}`}
                         fallback={theme.palette.primary.main}
                       />
-                      <Stack direction="row" spacing={0.5} alignItems="center">
+                      <Stack direction="row" spacing={1} alignItems="center">
                         <Switch
                           checked={perk.active !== false}
                           onChange={(e) => updatePerk(perk.id, { active: e.target.checked })}
@@ -750,10 +764,23 @@ function HomepageTab({ panelSx, surfaceBorderColor }) {
                         <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>Active</Typography>
                         <IconButton
                           size="small"
+                          aria-label={`Delete ${perk.title || "perk"}`}
                           onClick={() => removePerk(perk.id)}
-                          sx={{ color: "text.secondary", border: "1px solid", borderColor: surfaceBorderColor }}
+                          sx={{
+                            width: 32,
+                            height: 32,
+                            p: 0,
+                            borderRadius: "50%",
+                            color: "error.main",
+                            border: "1px solid",
+                            borderColor: surfaceBorderColor,
+                            "&:hover": {
+                              borderColor: "error.main",
+                              bgcolor: (t) => alpha(t.palette.error.main, 0.1),
+                            },
+                          }}
                         >
-                          ✕
+                          <TrashIcon sx={{ fontSize: 18 }} />
                         </IconButton>
                       </Stack>
                     </Stack>

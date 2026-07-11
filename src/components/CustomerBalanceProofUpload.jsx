@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -17,10 +17,14 @@ import { MONO_FONT } from "../theme.js";
 import { PESO } from "./ProductCard.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
-import { itemNeedsBalanceProof } from "../data/orderWorkflow.js";
+import { itemNeedsBalanceProof, itemOutstandingBalance } from "../data/orderWorkflow.js";
 import { resolveProofAttachmentUrl } from "../lib/orderProofStorage.js";
 import { compressProofFile } from "../lib/imageCompression.js";
+import { UPLOAD_PROOF_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLimits.js";
 import { BANK_ACCOUNTS } from "../data/checkoutSettings.js";
+import { useCms } from "../lib/cmsContent.jsx";
+import ProofImage from "./ProofImage.jsx";
+import QrCodeTile from "./QrCodeTile.jsx";
 
 function formatProofTime(iso) {
   try {
@@ -55,7 +59,7 @@ function ProofPreviewModal({ open, attachment, onClose, surfaceBorderColor }) {
             <Box component="iframe" src={url} title={label || "Proof"} sx={{ width: "100%", minHeight: { xs: 360, sm: 480 }, border: "1px solid", borderColor: surfaceBorderColor, borderRadius: 1 }} />
           </Stack>
         ) : (
-          <Box component="img" src={url} alt={label || "Proof"} sx={{ width: "100%", maxHeight: "70vh", objectFit: "contain", borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor, display: "block", mx: "auto" }} />
+          <ProofImage src={url} alt={label || "Proof"} surfaceBorderColor={surfaceBorderColor} />
         )}
       </DialogContent>
     </Dialog>
@@ -65,6 +69,7 @@ function ProofPreviewModal({ open, attachment, onClose, surfaceBorderColor }) {
 export default function CustomerBalanceProofUpload({ order, item, surfaceBorderColor }) {
   const theme = useTheme();
   const { user } = useAuth();
+  const { content } = useCms();
   const { submitBalanceProof } = useOrders();
   const inputRef = useRef(null);
   const [proofFile, setProofFile] = useState(null);
@@ -73,9 +78,30 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [preview, setPreview] = useState(null);
-  const banks = useMemo(() => BANK_ACCOUNTS.filter((bank) => bank.active !== false), []);
+  const banks = useMemo(
+    () => (content.bankDetails?.accounts ?? BANK_ACCOUNTS).filter((bank) => bank.active !== false),
+    [content.bankDetails?.accounts],
+  );
   const [selectedBankId, setSelectedBankId] = useState(banks[0]?.id ?? "");
   const selectedBank = banks.find((bank) => bank.id === selectedBankId) ?? banks[0];
+
+  useEffect(() => {
+    if (banks.length && !banks.some((bank) => bank.id === selectedBankId)) {
+      setSelectedBankId(banks[0].id);
+    }
+  }, [banks, selectedBankId]);
+
+  useEffect(() => {
+    if (!showBanks) return;
+    banks.forEach((bank) => {
+      [bank.logo, bank.qrImage].forEach((src) => {
+        if (!src) return;
+        const img = new Image();
+        img.decoding = "async";
+        img.src = src;
+      });
+    });
+  }, [banks, showBanks]);
 
   const uploadedProofs = useMemo(
     () => (order.trail ?? [])
@@ -93,7 +119,7 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
   const needsProof = itemNeedsBalanceProof(item);
   if (!needsProof && uploadedProofs.length === 0) return null;
 
-  const balanceDue = item.balanceDue ?? 0;
+  const balanceDue = itemOutstandingBalance(item);
 
   function uploadButtonLabel() {
     if (proofFile) return "Change file";
@@ -108,13 +134,18 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
       setError("Upload an image or PDF receipt.");
       return;
     }
+    const sizeError = validateUploadFileSize(file);
+    if (sizeError) {
+      setError(sizeError);
+      return;
+    }
     try {
       const dataUrl = await compressProofFile(file);
       setProofFile({ name: file.name, dataUrl });
       setError("");
       setSuccess("");
-    } catch {
-      setError("Could not read file. Try a smaller image or PDF.");
+    } catch (err) {
+      setError(err.message || "Could not read file. Try a smaller image or PDF.");
     }
   }
 
@@ -154,27 +185,38 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
         p: 1.5,
         borderRadius: 1,
         border: "1px solid",
-        borderColor: alpha(theme.palette.warning.main, 0.35),
-        bgcolor: alpha(theme.palette.warning.main, 0.06),
+        borderColor: needsProof ? alpha(theme.palette.warning.main, 0.5) : surfaceBorderColor,
+        bgcolor: needsProof ? alpha(theme.palette.warning.main, 0.08) : "transparent",
       }}
     >
-      <Typography sx={{ fontWeight: 800, fontSize: "0.82rem" }}>
-        Pay remaining balance
-      </Typography>
-      <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", mt: 0.35, lineHeight: 1.45 }}>
-        Transfer <strong>{PESO.format(balanceDue)}</strong> to one of our accounts, then upload your receipt below.
-      </Typography>
+      {needsProof ? (
+        <>
+          <Stack direction="row" spacing={0.75} alignItems="center">
+            <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "warning.main", flexShrink: 0 }} />
+            <Typography sx={{ fontWeight: 800, fontSize: "0.82rem" }}>
+              Balance due — pay {PESO.format(balanceDue)}
+            </Typography>
+          </Stack>
+          <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", mt: 0.35, lineHeight: 1.45 }}>
+            Transfer <strong>{PESO.format(balanceDue)}</strong> to one of our accounts, then upload your receipt below to complete your pre-order.
+          </Typography>
 
-      <Button
-        size="small"
-        variant="text"
-        onClick={() => setShowBanks((value) => !value)}
-        sx={{ mt: 0.75, px: 0, minWidth: 0, fontWeight: 700, fontSize: "0.75rem" }}
-      >
-        {showBanks ? "Hide payment accounts" : "View payment accounts"}
-      </Button>
+          <Button
+            size="small"
+            variant="text"
+            onClick={() => setShowBanks((value) => !value)}
+            sx={{ mt: 0.75, px: 0, minWidth: 0, fontWeight: 700, fontSize: "0.75rem" }}
+          >
+            {showBanks ? "Hide payment accounts" : "View payment accounts"}
+          </Button>
+        </>
+      ) : (
+        <Typography sx={{ fontWeight: 800, fontSize: "0.78rem", letterSpacing: 0.3, color: "text.secondary" }}>
+          Balance payment
+        </Typography>
+      )}
 
-      <Collapse in={showBanks}>
+      <Collapse in={showBanks && needsProof}>
         <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1, mb: 1 }}>
           {banks.map((bank) => (
             <Chip
@@ -189,26 +231,67 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
           ))}
         </Stack>
         {selectedBank ? (
-          <Box sx={{ p: 1.25, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor, bgcolor: "background.paper" }}>
-            <Typography sx={{ fontWeight: 800, fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.8, color: "primary.main" }}>
-              {selectedBank.label.toUpperCase()}
-            </Typography>
-            <Typography sx={{ fontWeight: 700, mt: 0.5, fontSize: "0.85rem" }}>{selectedBank.accountName}</Typography>
-            <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.95rem", fontWeight: 800, mt: 0.25 }}>
-              {selectedBank.accountNumber}
-            </Typography>
-            {selectedBank.note ? (
-              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-                {selectedBank.note}
+          <Box
+            sx={{
+              p: { xs: 1.5, sm: 2 },
+              borderRadius: 1,
+              border: "1px solid",
+              borderColor: surfaceBorderColor,
+              bgcolor: "background.paper",
+              display: "flex",
+              flexDirection: { xs: "column", sm: "row" },
+              alignItems: { xs: "stretch", sm: "center" },
+              gap: { xs: 1.5, sm: 2.5 },
+            }}
+          >
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                {selectedBank.logo ? (
+                  <Box
+                    component="img"
+                    src={selectedBank.logo}
+                    alt={selectedBank.label}
+                    decoding="async"
+                    sx={{
+                      height: selectedBank.id === "chinabank" ? 44 : 28,
+                      width: "auto",
+                      maxWidth: selectedBank.id === "chinabank" ? 180 : 120,
+                      objectFit: "contain",
+                      objectPosition: "left center",
+                      display: "block",
+                    }}
+                  />
+                ) : (
+                  <Typography sx={{ fontWeight: 800, fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.8, color: "primary.main" }}>
+                    {selectedBank.label.toUpperCase()}
+                  </Typography>
+                )}
+              </Stack>
+              <Typography sx={{ fontWeight: 700, mt: 0.75, fontSize: "0.9rem" }}>{selectedBank.accountName}</Typography>
+              <Typography sx={{ fontFamily: MONO_FONT, fontSize: "1.05rem", fontWeight: 800, mt: 0.35, letterSpacing: 0.3 }}>
+                {selectedBank.accountNumber}
               </Typography>
-            ) : null}
+              {selectedBank.note ? (
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75, lineHeight: 1.45, textTransform: "none" }}>
+                  {selectedBank.note}
+                </Typography>
+              ) : null}
+            </Box>
+            <Box sx={{ flexShrink: 0, alignSelf: { xs: "center", sm: "center" } }}>
+              <QrCodeTile
+                label={selectedBank.label}
+                imageUrl={selectedBank.qrImage}
+                surfaceBorderColor={surfaceBorderColor}
+                size="compact"
+              />
+            </Box>
           </Box>
         ) : null}
       </Collapse>
 
       {uploadedProofs.length ? (
         <Box sx={{ mt: 1.25 }}>
-          <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, letterSpacing: 0.5, textTransform: "uppercase", color: "text.secondary", mb: 0.75 }}>
+          <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, letterSpacing: 0.5, textTransform: "none", color: "text.secondary", mb: 0.75 }}>
             Uploaded proofs ({uploadedProofs.length})
           </Typography>
           <Stack spacing={0.75}>
@@ -254,30 +337,51 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
       {success ? <Alert severity="success" sx={{ mt: 1.25 }}>{success}</Alert> : null}
 
       {needsProof ? (
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }} sx={{ mt: 1.25 }}>
+        <Stack spacing={1} sx={{ mt: 1.25 }}>
           <input ref={inputRef} type="file" accept="image/*,application/pdf" hidden onChange={handleFileChange} />
-          <Button
-            size="small"
-            variant="contained"
-            color="primary"
-            onClick={() => inputRef.current?.click()}
-            sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4, textTransform: "uppercase" }}
-          >
-            {uploadButtonLabel()}
-          </Button>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+            <Button
+              size="small"
+              variant="contained"
+              color="primary"
+              onClick={() => inputRef.current?.click()}
+              sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4, textTransform: "uppercase", flexShrink: 0 }}
+            >
+              {uploadButtonLabel()}
+            </Button>
+            <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.4, textTransform: "none", flexShrink: 0 }}>
+              {UPLOAD_PROOF_DISCLAIMER}
+            </Typography>
+          </Stack>
           {proofFile ? (
-            <>
-              <Chip label={proofFile.name} size="small" color="success" sx={{ maxWidth: "100%" }} />
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, maxWidth: "100%" }}>
+              <Chip
+                label={proofFile.name}
+                size="small"
+                color="success"
+                title={proofFile.name}
+                sx={{
+                  minWidth: 0,
+                  maxWidth: "100%",
+                  flex: "1 1 auto",
+                  "& .MuiChip-label": {
+                    display: "block",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  },
+                }}
+              />
               <Button
                 size="small"
                 variant="contained"
                 disabled={busy}
                 onClick={handleSubmit}
-                sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem" }}
+                sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", flexShrink: 0 }}
               >
                 {busy ? "Submitting…" : "Submit proof"}
               </Button>
-            </>
+            </Stack>
           ) : null}
         </Stack>
       ) : null}

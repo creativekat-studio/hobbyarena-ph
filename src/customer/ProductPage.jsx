@@ -64,7 +64,7 @@ function ProductImage({ product, isDarkMode }) {
       }}
     >
       {product.image ? (
-        <Box component="img" src={product.image} alt={product.name} sx={{ position: "relative", zIndex: 1, width: "100%", maxHeight: { xs: 320, md: 460 }, objectFit: "contain" }} />
+        <Box component="img" src={product.image} alt={product.name} decoding="async" fetchpriority="high" sx={{ position: "relative", zIndex: 1, width: "100%", maxHeight: { xs: 320, md: 460 }, objectFit: "contain" }} />
       ) : (
         <Glyph sx={{ fontSize: 120, color: OFF_WHITE.glyph, position: "relative", zIndex: 1 }} />
       )}
@@ -263,7 +263,7 @@ export default function ProductPage() {
 
               {isPreorder ? (
                 <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", fontWeight: 700, color: preorderClosed ? "error.main" : "warning.main", letterSpacing: 0.5 }}>
-                  {preorderClosed ? "CLOSED" : `${getDepositPercent(product)}% DEPOSIT DUE AT CHECKOUT — BALANCE BEFORE RELEASE`}
+                  {preorderClosed ? "CLOSED" : `${getDepositPercent(product)}% deposit due at checkout — balance before release`}
                 </Typography>
               ) : null}
 

@@ -21,6 +21,7 @@ import { useInventory } from "../lib/inventoryStore.jsx";
 import { useFirebaseData } from "../lib/firebase/config.js";
 import { uploadProductImage } from "../lib/firebase/repositories/uploads.js";
 import { compressProductImageFile } from "../lib/imageCompression.js";
+import { UPLOAD_SIZE_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLimits.js";
 import { MONO_FONT } from "../theme.js";
 import { DEFAULT_DEPOSIT_PERCENT, fromDatetimeLocalValue, toDatetimeLocalValue } from "../lib/preorder.js";
 
@@ -192,8 +193,9 @@ export default function AddProductDialog({
       setError("Image must be a PNG, JPG, or WebP file.");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Image must be smaller than 5MB.");
+    const sizeError = validateUploadFileSize(file);
+    if (sizeError) {
+      setError(sizeError);
       return;
     }
 
@@ -531,7 +533,7 @@ export default function AddProductDialog({
                     ) : null}
                   </Stack>
                   <Typography sx={{ fontSize: "0.72rem", color: "text.disabled", lineHeight: 1.4 }}>
-                    PNG, JPG, or WebP · up to 5MB. Stored in Firebase Storage.
+                    PNG, JPG, or WebP. {UPLOAD_SIZE_DISCLAIMER}
                   </Typography>
                 </Stack>
               </Stack>

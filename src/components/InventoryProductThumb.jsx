@@ -29,6 +29,8 @@ export default function InventoryProductThumb({ row, size = 48, isDarkMode }) {
           component="img"
           src={row.image}
           alt=""
+          loading="lazy"
+          decoding="async"
           sx={{ width: "100%", height: "100%", objectFit: "cover" }}
         />
       ) : (

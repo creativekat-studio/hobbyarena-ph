@@ -30,7 +30,7 @@ function PercentHighlight({ percent, timing, amount, pesoFormatter, compact, ton
           fontSize: compact ? "0.68rem" : "0.72rem",
           fontWeight: 800,
           letterSpacing: 0.8,
-          textTransform: "uppercase",
+          textTransform: "none",
           color: accent,
           lineHeight: 1.2,
         }}

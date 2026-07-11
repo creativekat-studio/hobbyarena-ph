@@ -68,6 +68,8 @@ import {
 } from "../data/orderWorkflow.js";
 import { hydrateProofAttachment, resolveProofAttachmentUrl, ensureTrailEntryAttachment } from "../lib/orderProofStorage.js";
 import { compressProofFile } from "../lib/imageCompression.js";
+import { UPLOAD_PROOF_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLimits.js";
+import ProofImage from "../components/ProofImage.jsx";
 
 export { PAYMENT_COLOR, STATUS_COLOR, PAYMENT_OPTIONS, STATUS_OPTIONS };
 
@@ -136,6 +138,7 @@ export function ProofPreview({ proof, surfaceBorderColor, panelSx, large = false
         component="img"
         src={proof}
         alt="Proof of payment"
+        decoding="async"
         sx={{
           width: "100%",
           maxHeight: large ? 560 : 420,
@@ -185,22 +188,7 @@ function AttachmentPreviewModal({ open, attachment, onClose, surfaceBorderColor 
             />
           </Stack>
         ) : (
-          <Box
-            component="img"
-            src={url}
-            alt={label || "Attachment"}
-            sx={{
-              width: "100%",
-              maxHeight: "70vh",
-              objectFit: "contain",
-              borderRadius: 1,
-              border: "1px solid",
-              borderColor: surfaceBorderColor,
-              bgcolor: alpha("#000", 0.03),
-              display: "block",
-              mx: "auto",
-            }}
-          />
+          <ProofImage src={url} alt={label || "Attachment"} surfaceBorderColor={surfaceBorderColor} />
         )}
       </DialogContent>
     </Dialog>
@@ -590,12 +578,17 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
       setSaveError("Attachment must be an image or PDF.");
       return;
     }
+    const sizeError = validateUploadFileSize(file);
+    if (sizeError) {
+      setSaveError(sizeError);
+      return;
+    }
     try {
       const dataUrl = await compressProofFile(file);
       setDraftAttachment({ name: file.name, dataUrl });
       setSaveError("");
-    } catch {
-      setSaveError("Could not read attachment. Try a smaller image or PDF.");
+    } catch (err) {
+      setSaveError(err.message || "Could not read attachment. Try a smaller image or PDF.");
     }
   }
 
@@ -635,7 +628,11 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
     isPreorder ? { ...lineItem, allocatedQty: effectiveAllocated } : lineItem,
     draftStatus,
   );
-  const errorMessage = saveError || (!allocationHint.ok ? allocationHint.message : "");
+  // Live allocation guidance sits under the stock field; other save errors stay at the bottom.
+  const allocationFieldError = !allocationHint.ok
+    ? allocationHint.message
+    : (showAllocationField && saveError && /allocat|Full allocation|allocated qty/i.test(saveError) ? saveError : "");
+  const footerError = saveError && saveError !== allocationFieldError ? saveError : "";
 
   function handleSave() {
     if (!dirty) return;
@@ -873,7 +870,13 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
               value={draftQty}
               onChange={(e) => handleAllocationChange(e.target.value)}
               inputProps={{ min: 1, max: maxQty }}
+              error={Boolean(allocationFieldError)}
             />
+            {allocationFieldError ? (
+              <Typography variant="caption" color="error.main" sx={{ display: "block", mt: 0.75, lineHeight: 1.45 }}>
+                {allocationFieldError}
+              </Typography>
+            ) : null}
           </Grid>
         ) : null}
         {showRefundField ? (
@@ -952,6 +955,9 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
               Image or PDF — saved with this status/payment update.
             </Typography>
           )}
+          <Typography variant="caption" color="text.secondary" sx={{ width: "100%", lineHeight: 1.4 }}>
+            {UPLOAD_PROOF_DISCLAIMER}
+          </Typography>
           <Button
             size="small"
             variant="contained"
@@ -969,9 +975,9 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
           </Button>
         </Stack>
       </Box>
-      {errorMessage ? (
+      {footerError ? (
         <Typography variant="caption" color="error.main" sx={{ lineHeight: 1.45 }}>
-          {errorMessage}
+          {footerError}
         </Typography>
       ) : null}
 

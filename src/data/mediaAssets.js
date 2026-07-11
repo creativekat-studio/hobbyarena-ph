@@ -8,7 +8,7 @@ export function publicAsset(path) {
     .join("/");
 }
 
-export const BRAND_LOGO = publicAsset("/hobby_arena_hd.png");
+export const BRAND_LOGO = publicAsset("/hobby_arena_logo.png");
 export const BRAND_LOGO_HD = BRAND_LOGO;
 
 export const PAYMENT_QR = {

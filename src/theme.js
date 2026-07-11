@@ -66,8 +66,9 @@ export function createAppTheme(mode, proposalId = 2) {
       },
       caption: {
         fontFamily: MONO_FONT,
-        textTransform: "uppercase",
-        letterSpacing: "0.06em",
+        // Helper/info text — sentence case, not all caps.
+        textTransform: "none",
+        letterSpacing: "0.02em",
       },
     },
     components: {

@@ -272,7 +272,7 @@ function TierQuestCard({ clientTier, tierProgress, fulfilledSpend }) {
               />
             </Box>
 
-            <Typography sx={{ mt: 1.25, fontFamily: MONO_FONT, fontSize: "0.65rem", letterSpacing: 0.6, color: "text.secondary", textTransform: "uppercase" }}>
+            <Typography sx={{ mt: 1.25, fontFamily: MONO_FONT, fontSize: "0.65rem", letterSpacing: 0.6, color: "text.secondary", textTransform: "none" }}>
               Unlock {tierProgress.nextTier.name} · Goal {PESO.format(tierProgress.nextTier.minSpend ?? 0)}
             </Typography>
           </Box>

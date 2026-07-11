@@ -17,6 +17,7 @@ import { useAuth } from "../auth/AuthProvider.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { itemNeedsRefundDetails, refundedAmountForLineItem } from "../data/orderWorkflow.js";
 import { compressProofFile } from "../lib/imageCompression.js";
+import { UPLOAD_PROOF_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLimits.js";
 
 export default function CustomerRefundDetails({ order, item, surfaceBorderColor }) {
   const theme = useTheme();
@@ -46,13 +47,18 @@ export default function CustomerRefundDetails({ order, item, surfaceBorderColor 
       setError("Upload an image or PDF of your QR code.");
       return;
     }
+    const sizeError = validateUploadFileSize(file);
+    if (sizeError) {
+      setError(sizeError);
+      return;
+    }
     try {
       const dataUrl = await compressProofFile(file);
       setQrFile({ name: file.name, dataUrl });
       setError("");
       setSuccess("");
-    } catch {
-      setError("Could not read file. Try a smaller image.");
+    } catch (err) {
+      setError(err.message || "Could not read file. Try a smaller image.");
     }
   }
 
@@ -165,6 +171,9 @@ export default function CustomerRefundDetails({ order, item, surfaceBorderColor 
             {qrFile ? "Change QR image" : "Upload QR code"}
           </Button>
           {qrFile ? <Chip label={qrFile.name} size="small" color="success" sx={{ maxWidth: "100%" }} /> : null}
+          <Typography variant="caption" color="text.secondary" sx={{ width: "100%", lineHeight: 1.4, textTransform: "none" }}>
+            {UPLOAD_PROOF_DISCLAIMER}
+          </Typography>
         </Stack>
       )}
 

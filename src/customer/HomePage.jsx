@@ -496,6 +496,8 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
               component="img"
               src={product.image}
               alt={product.name}
+              decoding="async"
+              fetchpriority="high"
               sx={{
                 position: "absolute",
                 inset: 0,

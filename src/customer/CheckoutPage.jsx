@@ -6,13 +6,9 @@ import {
   Checkbox,
   Chip,
   Container,
-  Dialog,
-  DialogContent,
-  DialogTitle,
   Divider,
   FormControlLabel,
   Grid,
-  IconButton,
   Stack,
   Step,
   StepLabel,
@@ -43,14 +39,14 @@ import {
 import { useCms } from "../lib/cmsContent.jsx";
 import { useCheckoutConfirmation, writeCheckoutConfirmation } from "../lib/checkoutConfirmation.js";
 import { compressProofFile } from "../lib/imageCompression.js";
+import { UPLOAD_PROOF_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLimits.js";
 import { getCustomerCheckoutDefaults, patchCustomerProfileIfEmpty, useCustomers } from "../lib/customersStore.jsx";
 import { readCheckoutDetails, writeCheckoutDetails, clearCheckoutDetails } from "../lib/checkoutDetails.js";
 import { formatPhPhoneInput, isValidPhPhone } from "../lib/phone.js";
 import PasswordField from "../components/PasswordField.jsx";
+import QrCodeTile from "../components/QrCodeTile.jsx";
 
 const STEPS = ["Account", "Details", "Payment"];
-const QR_TILE_SIZE = 180;
-const QR_TILE_SIZE_COMPACT = 140;
 
 function CheckoutStepShell({ panelSx, children, sx }) {
   return (
@@ -76,97 +72,6 @@ function StepHeading({ step, title, subtitle, action }) {
       </Box>
       {action ?? null}
     </Stack>
-  );
-}
-
-function ZoomInIcon(props) {
-  return (
-    <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" {...props}>
-      <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
-      <path d="M12 10h-2v1.5H9V10H7.5V8.5H9V7h1.5v1.5H12z" />
-    </svg>
-  );
-}
-
-function QrCodeTile({ label, imageUrl, surfaceBorderColor, size = "default" }) {
-  const theme = useTheme();
-  const [zoomOpen, setZoomOpen] = useState(false);
-  const tileSize = size === "compact" ? QR_TILE_SIZE_COMPACT : QR_TILE_SIZE;
-
-  const tileSx = {
-    width: tileSize,
-    height: tileSize,
-    maxWidth: "100%",
-    mx: "auto",
-    position: "relative",
-    borderRadius: 1,
-    border: "1px solid",
-    borderColor: surfaceBorderColor,
-    bgcolor: "#fff",
-    overflow: "hidden",
-  };
-
-  if (!imageUrl) {
-    return (
-      <Box
-        sx={{
-          ...tileSx,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          bgcolor: alpha(theme.palette.text.primary, 0.04),
-          fontFamily: MONO_FONT,
-          fontSize: "0.72rem",
-          color: "text.secondary",
-          textAlign: "center",
-          px: 1,
-        }}
-      >
-        QR code coming soon
-      </Box>
-    );
-  }
-
-  return (
-    <>
-      <Box sx={tileSx}>
-        <Box
-          component="img"
-          src={imageUrl}
-          alt={`${label} QR code`}
-          sx={{ width: "100%", height: "100%", objectFit: "contain", p: 0.75, display: "block" }}
-        />
-        <IconButton
-          size="small"
-          onClick={() => setZoomOpen(true)}
-          aria-label={`Zoom ${label} QR code`}
-          sx={{
-            position: "absolute",
-            right: 6,
-            bottom: 6,
-            bgcolor: alpha(theme.palette.background.paper, 0.94),
-            border: "1px solid",
-            borderColor: surfaceBorderColor,
-            boxShadow: "none",
-            "&:hover": { bgcolor: "background.paper" },
-          }}
-        >
-          <ZoomInIcon sx={{ fontSize: 18 }} />
-        </IconButton>
-      </Box>
-
-      <Dialog open={zoomOpen} onClose={() => setZoomOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontWeight: 800 }}>{label} QR code</DialogTitle>
-        <DialogContent sx={{ display: "flex", justifyContent: "center", pb: 3 }}>
-          <Box
-            component="img"
-            src={imageUrl}
-            alt={`${label} QR code`}
-            sx={{ width: "100%", maxHeight: "70vh", objectFit: "contain", borderRadius: 1 }}
-          />
-        </DialogContent>
-      </Dialog>
-    </>
   );
 }
 
@@ -586,7 +491,7 @@ function StockHoldBanner({ hold, surfaceBorderColor }) {
   );
 }
 
-function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proofFile, setProofFile, confirmedTransfer, setConfirmedTransfer, onBack, onPlaceOrder, busy, error, hold }) {
+function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proofFile, setProofFile, confirmedTransfer, setConfirmedTransfer, onBack, onPlaceOrder, busy, error, setError, hold }) {
   const theme = useTheme();
   const { content } = useCms();
   const banks = useMemo(
@@ -602,17 +507,37 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
     }
   }, [banks, selectedBankId]);
 
+  // Warm the browser cache for every bank's logo + QR so switching is instant
+  // (otherwise each first switch triggers a fresh fetch/decode and flashes).
+  useEffect(() => {
+    banks.forEach((bank) => {
+      [bank.logo, bank.qrImage].forEach((src) => {
+        if (!src) return;
+        const img = new Image();
+        img.decoding = "async";
+        img.src = src;
+      });
+    });
+  }, [banks]);
+
   async function handleFileChange(event) {
     const file = event.target.files?.[0];
+    event.target.value = "";
     if (!file) return;
     if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+      return;
+    }
+    const sizeError = validateUploadFileSize(file);
+    if (sizeError) {
+      setError(sizeError);
       return;
     }
     try {
       const dataUrl = await compressProofFile(file);
       setProofFile({ name: file.name, dataUrl });
-    } catch {
-      // ignore invalid/unreadable files
+      setError("");
+    } catch (err) {
+      setError(err.message || "Could not read file. Try a smaller image or PDF.");
     }
   }
 
@@ -667,6 +592,7 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
                   component="img"
                   src={selectedBank.logo}
                   alt={selectedBank.label}
+                  decoding="async"
                   sx={{
                     height: selectedBank.id === "chinabank" ? 52 : 32,
                     width: "auto",
@@ -686,7 +612,7 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
             <Typography sx={{ fontFamily: MONO_FONT, fontSize: "1.15rem", fontWeight: 800, mt: 0.5, letterSpacing: 0.3 }}>
               {selectedBank.accountNumber}
             </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1, lineHeight: 1.45 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1, lineHeight: 1.45, textTransform: "none" }}>
               {selectedBank.note}
             </Typography>
           </Box>
@@ -716,16 +642,35 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
             <input type="file" hidden accept="image/*,application/pdf" onChange={handleFileChange} />
           </Button>
           {proofFile ? (
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
-              <Chip label={proofFile.name} size="small" color="success" sx={{ maxWidth: "100%" }} />
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
+              <Chip
+                label={proofFile.name}
+                size="small"
+                color="success"
+                title={proofFile.name}
+                sx={{
+                  minWidth: 0,
+                  maxWidth: "100%",
+                  flex: "1 1 auto",
+                  "& .MuiChip-label": {
+                    display: "block",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  },
+                }}
+              />
               {proofFile.dataUrl?.startsWith("data:image") ? (
-                <Box component="img" src={proofFile.dataUrl} alt="Proof preview" sx={{ height: 40, width: 40, objectFit: "cover", borderRadius: 0.75, border: "1px solid", borderColor: surfaceBorderColor, flexShrink: 0 }} />
+                <Box component="img" src={proofFile.dataUrl} alt="Proof preview" loading="lazy" decoding="async" sx={{ height: 40, width: 40, objectFit: "cover", borderRadius: 0.75, border: "1px solid", borderColor: surfaceBorderColor, flexShrink: 0 }} />
               ) : null}
             </Stack>
           ) : (
             <Typography variant="body2" color="text.secondary">Screenshot or PDF of your transfer.</Typography>
           )}
         </Stack>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75, lineHeight: 1.4, textTransform: "none" }}>
+          {UPLOAD_PROOF_DISCLAIMER}
+        </Typography>
 
         <FormControlLabel
           sx={{
@@ -768,8 +713,8 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
         </Button>
       </Stack>
 
-      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.5, lineHeight: 1.45 }}>
-        Marked <strong>Pending Verification</strong> until our team confirms payment.
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.5, lineHeight: 1.45, textTransform: "none" }}>
+        Marked <strong>pending verification</strong> until our team confirms payment.
         {orderIdPreview ? ` Reference: ${orderIdPreview}` : ""}
       </Typography>
     </CheckoutStepShell>
@@ -1142,6 +1087,7 @@ export default function CheckoutPage() {
                   onPlaceOrder={handlePlaceOrder}
                   busy={busy}
                   error={paymentError}
+                  setError={setPaymentError}
                   hold={{
                     status: holdState.status,
                     remainingMs: holdRemaining,

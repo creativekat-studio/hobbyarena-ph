@@ -13,6 +13,10 @@ export default function BrandLogo({ sx, imageSx }) {
         component="img"
         src={BRAND_LOGO}
         alt="Hobby Arena"
+        decoding="async"
+        fetchpriority="high"
+        width={512}
+        height={341}
         sx={{
           display: "block",
           height: { xs: 54, md: 66 },

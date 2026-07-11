@@ -84,7 +84,7 @@ function SegmentsCountdown({ parts, compact, accent, panelSx, dark, wrapLabel, f
           fontSize: featured ? { xs: "0.62rem", md: "0.78rem" } : compact ? "0.58rem" : "0.68rem",
           fontWeight: 800,
           letterSpacing: featured ? { xs: 0.5, md: 0.8 } : 0.8,
-          textTransform: "uppercase",
+          textTransform: "none",
           color: accent,
           lineHeight: 1.25,
           ...(wrapLabel
@@ -130,7 +130,7 @@ function InlineCountdown({ parts, compact, accent, panelSx, dark, wrapLabel, fea
           fontWeight: 800,
           color: accent,
           letterSpacing: 0.6,
-          textTransform: "uppercase",
+          textTransform: "none",
           lineHeight: 1.25,
           ...(wrapLabel
             ? { maxWidth: compact ? 72 : 96, flexShrink: 1, minWidth: 0 }

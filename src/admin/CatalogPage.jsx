@@ -14,6 +14,7 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
@@ -24,8 +25,17 @@ import { useCatalog } from "../lib/catalogStore.jsx";
 import { useFirebaseData } from "../lib/firebase/config.js";
 import { uploadCmsAsset } from "../lib/firebase/repositories/uploads.js";
 import { compressProductImageFile } from "../lib/imageCompression.js";
+import { UPLOAD_SIZE_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLimits.js";
 import { resolveLineLogo } from "../lib/shopFilterUi.js";
 import TermsEditor from "./TermsEditor.jsx";
+
+function InfoIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden {...props}>
+      <path d="M11 7h2v2h-2V7zm0 4h2v6h-2v-6zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" />
+    </svg>
+  );
+}
 
 const MemberRanksPanel = lazy(() =>
   import("./MemberRanksPanel.jsx").then((mod) => ({ default: mod.MemberRanksPanel })),
@@ -58,24 +68,34 @@ function LineLogoUpload({ line, onChange, surfaceBorderColor }) {
   const firebaseEnabled = useFirebaseData();
   const inputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
   const preview = line.logo || resolveLineLogo(line);
 
   async function handleFileChange(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (!file.type.startsWith("image/")) return;
-    if (file.size > 5 * 1024 * 1024) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Image must be a PNG, JPG, or WebP file.");
+      return;
+    }
+    const sizeError = validateUploadFileSize(file);
+    if (sizeError) {
+      setError(sizeError);
+      return;
+    }
 
     setUploading(true);
+    setError("");
     try {
       const compressedFile = await compressProductImageFile(file);
       const url = firebaseEnabled
         ? await uploadCmsAsset(compressedFile, `line-${line.id || "logo"}`)
         : await readAsDataUrl(compressedFile);
       onChange(url);
-    } catch (error) {
-      console.error("[catalog] Line logo upload failed:", error);
+    } catch (uploadError) {
+      console.error("[catalog] Line logo upload failed:", uploadError);
+      setError(uploadError.message || "Could not upload the image. Please try again.");
     } finally {
       setUploading(false);
     }
@@ -113,26 +133,68 @@ function LineLogoUpload({ line, onChange, surfaceBorderColor }) {
           <Typography sx={{ fontSize: "0.58rem", color: "text.secondary", fontFamily: MONO_FONT }}>LOGO</Typography>
         )}
       </Box>
-      <Stack spacing={0.25}>
-        <Button
-          size="small"
-          variant="outlined"
-          disabled={uploading}
-          onClick={() => inputRef.current?.click()}
-          sx={{ fontSize: "0.65rem", minWidth: 0, px: 1, py: 0.25, lineHeight: 1.4 }}
-        >
-          {line.logo ? "Replace" : "Upload"}
-        </Button>
+      <Stack spacing={0.5} sx={{ minWidth: 0 }}>
+        <Stack direction="row" spacing={0.75} alignItems="center">
+          <Button
+            size="small"
+            variant="outlined"
+            disabled={uploading}
+            onClick={() => inputRef.current?.click()}
+            sx={{ fontSize: "0.68rem", minWidth: 88, px: 1.5, py: 0.4, lineHeight: 1.4 }}
+          >
+            {line.logo ? "Replace" : "Upload"}
+          </Button>
+          <Tooltip
+            title={UPLOAD_SIZE_DISCLAIMER}
+            arrow
+            placement="top"
+            enterTouchDelay={0}
+            slotProps={{
+              tooltip: {
+                sx: {
+                  fontFamily: MONO_FONT,
+                  fontSize: "0.72rem",
+                  fontWeight: 500,
+                  letterSpacing: 0.2,
+                  textTransform: "none",
+                  lineHeight: 1.45,
+                  maxWidth: 220,
+                },
+              },
+            }}
+          >
+            <Box
+              component="span"
+              role="img"
+              aria-label={UPLOAD_SIZE_DISCLAIMER}
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                color: "text.secondary",
+                cursor: "help",
+                lineHeight: 0,
+                "&:hover": { color: "primary.main" },
+              }}
+            >
+              <InfoIcon style={{ fontSize: 15 }} />
+            </Box>
+          </Tooltip>
+        </Stack>
         {line.logo ? (
           <Button
             size="small"
             color="inherit"
             disabled={uploading}
             onClick={() => onChange("")}
-            sx={{ fontSize: "0.62rem", minWidth: 0, px: 1, py: 0, color: "text.secondary" }}
+            sx={{ fontSize: "0.62rem", minWidth: 0, px: 1, py: 0, color: "text.secondary", alignSelf: "flex-start" }}
           >
             Remove
           </Button>
+        ) : null}
+        {error ? (
+          <Typography variant="caption" color="error.main" sx={{ lineHeight: 1.4, textTransform: "none" }}>
+            {error}
+          </Typography>
         ) : null}
       </Stack>
     </Stack>

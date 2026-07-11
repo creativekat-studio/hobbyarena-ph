@@ -298,3 +298,15 @@ export function EyeOffIcon(props) {
     </SvgIcon>
   );
 }
+
+/** Simple trash can — lid + body, matches admin delete affordance. */
+export function TrashIcon(props) {
+  return (
+    <SvgIcon viewBox="0 0 24 24" {...props}>
+      <path
+        d="M9.2 3.75h5.6c.3 0 .55.25.55.55V5.5h3.4c.4 0 .75.35.75.75s-.35.75-.75.75h-1.05v11.2c0 1.2-.95 2.15-2.15 2.15H8.45c-1.2 0-2.15-.95-2.15-2.15V7h-1.05c-.4 0-.75-.35-.75-.75s.35-.75.75-.75h3.4V4.3c0-.3.25-.55.55-.55Zm1.05 1.75v-.5h3.5v.5h-3.5ZM7.8 7v11.2c0 .36.29.65.65.65h7.1c.36 0 .65-.29.65-.65V7H7.8Zm2.2 2.4c.4 0 .75.35.75.75v5.6c0 .4-.35.75-.75.75s-.75-.35-.75-.75v-5.6c0-.4.35-.75.75-.75Zm4 0c.4 0 .75.35.75.75v5.6c0 .4-.35.75-.75.75s-.75-.35-.75-.75v-5.6c0-.4.35-.75.75-.75Z"
+        fill="currentColor"
+      />
+    </SvgIcon>
+  );
+}

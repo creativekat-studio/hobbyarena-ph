@@ -1,7 +1,12 @@
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { STORAGE_PATHS } from "../../../data/firestoreSchema.js";
 import { compressProductImageFile, compressProofDataUrl, normalizeProofDataUrl } from "../../imageCompression.js";
+import { assertUploadFileSize } from "../../uploadLimits.js";
 import { getFirebaseStorage } from "../app.js";
+
+// Uploaded assets live at unique, content-addressed paths (timestamped names),
+// so they never change — let browsers/CDN cache them for a year.
+const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
 function sanitizeFileName(name) {
   const cleaned = String(name || "image").replace(/[^a-zA-Z0-9._-]/g, "-");
@@ -48,7 +53,10 @@ export async function uploadOrderProofFromDataUrl(orderId, dataUrl, fileLabel = 
   const path = `${STORAGE_PATHS.orderProofs(orderId)}/${Date.now()}-${sanitizeFileName(fileLabel)}.${ext}`;
   const storageRef = ref(storage, path);
   const blob = dataUrlToBlob(compressed);
-  await uploadBytes(storageRef, blob, { contentType: contentTypeForDataUrl(compressed) });
+  await uploadBytes(storageRef, blob, {
+    contentType: contentTypeForDataUrl(compressed),
+    cacheControl: IMMUTABLE_CACHE_CONTROL,
+  });
   return getDownloadURL(storageRef);
 }
 
@@ -59,12 +67,16 @@ export async function uploadOrderProofFromDataUrl(orderId, dataUrl, fileLabel = 
 export async function uploadProductImage(productId, file) {
   const storage = getFirebaseStorage();
   if (!storage) throw new Error("Firebase Storage is not configured.");
+  assertUploadFileSize(file);
 
   const compressedFile = await compressProductImageFile(file);
   const id = productId || `new-${Date.now()}`;
   const path = `${STORAGE_PATHS.productImages(id)}/${Date.now()}-${sanitizeFileName(compressedFile.name)}`;
   const storageRef = ref(storage, path);
-  await uploadBytes(storageRef, compressedFile, { contentType: compressedFile.type });
+  await uploadBytes(storageRef, compressedFile, {
+    contentType: compressedFile.type,
+    cacheControl: IMMUTABLE_CACHE_CONTROL,
+  });
   return getDownloadURL(storageRef);
 }
 
@@ -75,11 +87,15 @@ export async function uploadProductImage(productId, file) {
 export async function uploadCmsAsset(file, kind = "asset") {
   const storage = getFirebaseStorage();
   if (!storage) throw new Error("Firebase Storage is not configured.");
+  assertUploadFileSize(file);
 
   const compressedFile = await compressProductImageFile(file);
   const filename = `${kind}-${Date.now()}-${sanitizeFileName(compressedFile.name)}`;
   const path = STORAGE_PATHS.cmsAssets(filename);
   const storageRef = ref(storage, path);
-  await uploadBytes(storageRef, compressedFile, { contentType: compressedFile.type });
+  await uploadBytes(storageRef, compressedFile, {
+    contentType: compressedFile.type,
+    cacheControl: IMMUTABLE_CACHE_CONTROL,
+  });
   return getDownloadURL(storageRef);
 }

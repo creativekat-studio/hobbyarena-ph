@@ -133,7 +133,7 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
           }}
         >
           {product.image ? (
-            <Box component="img" src={product.image} alt={product.name} loading="lazy" sx={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: 1 }} />
+            <Box component="img" src={product.image} alt={product.name} loading="lazy" decoding="async" sx={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: 1 }} />
           ) : (
             <Box sx={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1 }}>
               <Glyph sx={{ fontSize: 66, color: OFF_WHITE.glyph }} />

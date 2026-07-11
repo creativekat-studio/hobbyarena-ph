@@ -114,12 +114,12 @@ export default function CustomerNavbar({ surfaces, onOpenCart, onOpenSearch }) {
                   <Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1, letterSpacing: "-0.02em", fontSize: { xs: "1.6rem", md: "1.95rem" } }}>
                     Hobby Arena
                   </Typography>
-                  <Typography variant="caption" sx={{ color: "text.secondary", fontFamily: MONO_FONT, letterSpacing: 0.8, fontSize: "0.58rem", lineHeight: 1.3, maxWidth: 220 }}>
+                  <Typography variant="caption" sx={{ color: "text.secondary", fontFamily: MONO_FONT, letterSpacing: 0.8, fontSize: "0.58rem", lineHeight: 1.3, maxWidth: 220, textTransform: "none" }}>
                     {tagline}
                   </Typography>
                 </Stack>
               ) : (
-                <Typography variant="caption" sx={{ color: "text.secondary", fontFamily: MONO_FONT, letterSpacing: 0.8, fontSize: "0.58rem", lineHeight: 1.3, display: { xs: "none", md: "block" }, maxWidth: 220 }}>
+                <Typography variant="caption" sx={{ color: "text.secondary", fontFamily: MONO_FONT, letterSpacing: 0.8, fontSize: "0.58rem", lineHeight: 1.3, display: { xs: "none", md: "block" }, maxWidth: 220, textTransform: "none" }}>
                   {tagline}
                 </Typography>
               )}
@@ -172,7 +172,7 @@ export default function CustomerNavbar({ surfaces, onOpenCart, onOpenSearch }) {
       </AppBar>
 
       <Drawer anchor="left" open={mobileOpen} onClose={() => setMobileOpen(false)} PaperProps={{ sx: { width: 280, p: 2 } }}>
-        <Typography variant="caption" sx={{ color: "text.secondary", fontFamily: MONO_FONT, letterSpacing: 0.8, mb: 2, display: "block" }}>
+        <Typography variant="caption" sx={{ color: "text.secondary", fontFamily: MONO_FONT, letterSpacing: 0.8, mb: 2, display: "block", textTransform: "none" }}>
           {tagline}
         </Typography>
         <Stack spacing={0.5}>

@@ -1,19 +1,23 @@
+import { assertUploadFileSize } from "./uploadLimits.js";
+
 /** Resize and compress images before Firebase Storage upload (browser only). */
 
 const PROOF_DEFAULTS = {
   maxWidth: 1400,
   maxHeight: 1400,
-  quality: 0.8,
+  quality: 0.7,
   minBytesToCompress: 0,
   /** Stay under Firebase Storage 5MB rule with headroom. */
   maxBytes: 4_000_000,
 };
 
 const PRODUCT_DEFAULTS = {
-  maxWidth: 1920,
-  maxHeight: 1920,
-  quality: 0.85,
-  minBytesToCompress: 200_000,
+  // Storefront renders these into ~300-450px cards; 900px keeps the product
+  // detail view crisp while cutting payloads ~5-10x vs the old 1920px assets.
+  maxWidth: 900,
+  maxHeight: 900,
+  quality: 0.8,
+  minBytesToCompress: 0,
   maxBytes: 4_000_000,
 };
 
@@ -118,14 +122,14 @@ export async function normalizeProofDataUrl(dataUrl) {
 /** Read a proof file from an upload control and compress images before storage. */
 export async function compressProofFile(file) {
   if (!file) throw new Error("No file selected.");
-  if (file.type === "application/pdf" && file.size > PDF_MAX_BYTES) {
-    throw new Error("PDF is too large. Please upload a file under 4 MB.");
-  }
+  assertUploadFileSize(file);
   const dataUrl = await readFileAsDataUrl(file);
   return normalizeProofDataUrl(dataUrl);
 }
 
 export async function compressProductImageFile(file) {
+  if (!file) throw new Error("No file selected.");
+  assertUploadFileSize(file);
   if (typeof window === "undefined" || !file?.type?.startsWith("image/")) return file;
   if (file.type === "image/gif" || file.type === "image/svg+xml") return file;
   if (file.size < PRODUCT_DEFAULTS.minBytesToCompress) return file;

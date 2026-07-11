@@ -6,7 +6,7 @@ export const EMAIL_BRAND = {
   name: "Hobby Arena PH",
   tagline: "Your Trusted Source for Premium TCG",
   siteUrl: "https://hobbyarena.vercel.app",
-  logoPath: "/hobby_arena_hd.png",
+  logoPath: "/hobby_arena_logo.png",
   logoAspect: 1536 / 1024,
   colors: {
     page: "#F7F7F5",

@@ -29,7 +29,7 @@ function SummaryRow({ icon, label, value, valueColor = "text.primary" }) {
     <Stack direction="row" spacing={1.5} alignItems="center">
       <Box sx={{ color: "primary.main", display: "flex", flexShrink: 0 }}>{icon}</Box>
       <Box sx={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-        <Typography variant="caption" color="text.secondary" sx={{ display: "block", lineHeight: 1.2 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", lineHeight: 1.2, textTransform: "none" }}>
           {label}
         </Typography>
         <Typography
@@ -155,7 +155,7 @@ export default function CheckoutConfirmation({ order, panelSx, surfaceBorderColo
             bgcolor: alpha(theme.palette.info.main, 0.08),
           }}
         >
-          <SummaryRow icon={<ClockIcon />} label="Status" value="PENDING VERIFICATION" valueColor="success.main" />
+          <SummaryRow icon={<ClockIcon />} label="Status" value="Pending verification" valueColor="success.main" />
           <Divider sx={{ my: 1.5, borderColor: dividerBorder }} />
           <SummaryRow icon={<WalletIcon />} label="Amount" value={PESO.format(total)} valueColor={gold} />
           {balanceDue > 0 ? (
