@@ -1,4 +1,4 @@
-import { formatPeso, getSupportContactHtml, shouldShowPreorderReminder } from "./emailUtils.js";
+import { formatPeso, getSupportContactHtml, resolveReminderFooter, shouldShowPreorderReminder } from "./emailUtils.js";
 import {
   EMAIL_BRAND,
   bodyLead,
@@ -84,13 +84,12 @@ export function buildOrderAcknowledgementEmail(order, options = {}) {
     totalRows.push({ label: "Total", value: formatPeso(order.total), strong: true });
   }
 
-  const showReminder = shouldShowPreorderReminder(order, null, {
-    enabled: options.reminder?.enabled,
-  });
+  const assignedFooter = resolveReminderFooter(options.reminder, null);
+  const showReminder = shouldShowPreorderReminder(order, null, options.reminder);
   const reminderOpts = {
     depositPercent: dp,
-    title: options.reminder?.title,
-    lines: options.reminder?.lines,
+    title: assignedFooter?.title,
+    lines: assignedFooter?.lines,
   };
 
   const text = [

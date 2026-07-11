@@ -50,13 +50,6 @@ export function isPreorderEmailContext(order) {
   return false;
 }
 
-/** Status emails that may include the Pre-Order Reminder footer (when not fully paid). */
-const PREORDER_REMINDER_EMAIL_TYPES = new Set([
-  "deposit_received",
-  "balance_due_full",
-  "balance_due_partial",
-]);
-
 /** True when the customer still owes a balance on a pre-order. */
 export function orderHasOutstandingBalance(order) {
   if (!isPreorderEmailContext(order)) return false;
@@ -72,16 +65,56 @@ export function orderHasOutstandingBalance(order) {
 }
 
 /**
- * Pre-order reminder footer — for unpaid pre-orders only.
- * Shown on deposit verified (DP paid / awaiting stock) and balance-due emails,
- * plus order acknowledgements when no emailType is passed.
+ * Resolve the footer assigned to an email type from the reminder/footer library payload.
+ * Returns `{ title, lines }` or null when blank / missing.
  */
-export function shouldShowPreorderReminder(order, emailType = null, options = {}) {
-  if (options.enabled === false) return false;
-  if (!isPreorderEmailContext(order)) return false;
-  if (!orderHasOutstandingBalance(order)) return false;
-  if (emailType) return PREORDER_REMINDER_EMAIL_TYPES.has(emailType);
-  return true;
+export function resolveReminderFooter(reminder, emailType = null) {
+  if (!reminder || typeof reminder !== "object") return null;
+
+  if (Array.isArray(reminder.footers)) {
+    const key = emailType || "order_acknowledgement";
+    const footerId = String(reminder.assignmentByType?.[key] || "").trim();
+    if (!footerId) return null;
+    const footer = reminder.footers.find((row) => row?.id === footerId);
+    if (!footer) return null;
+    const lines = Array.isArray(footer.lines)
+      ? footer.lines.map((line) => String(line ?? "").trim()).filter(Boolean)
+      : [];
+    return {
+      title: String(footer.title || footer.name || "Footer").trim() || "Footer",
+      lines,
+    };
+  }
+
+  // Legacy single-footer payload
+  if (emailType && reminder.enabledByType && reminder.enabledByType[emailType] === false) {
+    return null;
+  }
+  if (reminder.enabled === false) return null;
+  if (emailType && Array.isArray(reminder.footers) === false && reminder.title) {
+    // Old shape only applied to classic reminder types unless explicitly assigned.
+    const classic = new Set(["deposit_received", "balance_due_full", "balance_due_partial"]);
+    if (emailType && !classic.has(emailType) && !reminder.enabledByType) return null;
+  }
+  if (!reminder.title && !reminder.lines) return null;
+  return {
+    title: String(reminder.title || "Pre-Order Reminder").trim() || "Pre-Order Reminder",
+    lines: Array.isArray(reminder.lines)
+      ? reminder.lines.map((line) => String(line ?? "").trim()).filter(Boolean)
+      : [],
+  };
+}
+
+/**
+ * Whether a custom footer block should render for this order/email.
+ * Status emails: show when a footer is assigned to that template.
+ * Order acknowledgement (no emailType): only for unpaid pre-orders with an assigned footer.
+ */
+export function shouldShowPreorderReminder(order, emailType = null, reminder = null) {
+  const footer = resolveReminderFooter(reminder, emailType);
+  if (!footer) return false;
+  if (emailType) return true;
+  return isPreorderEmailContext(order) && orderHasOutstandingBalance(order);
 }
 
 export function formatPeso(amount) {

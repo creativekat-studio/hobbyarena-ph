@@ -1069,12 +1069,17 @@ export function OrdersProvider({ children }) {
         if (!storeRefundProof(orderId, lineItemId, qrDataUrl)) {
           throw new Error("Could not save your QR code. Try a smaller image.");
         }
-        attachment = buildStoredTrailAttachment({
-          label: "Refund QR code",
-          type: qrDataUrl.startsWith("data:application/pdf") ? "pdf" : "image",
-          kind: "refund",
-          lineItemId,
-        });
+        attachment = {
+          ...buildStoredTrailAttachment({
+            label: "Refund QR code",
+            type: qrDataUrl.startsWith("data:application/pdf") ? "pdf" : "image",
+            kind: "refund",
+            lineItemId,
+          }),
+          // Keep the blob on the attachment so Storage upload can find it even
+          // if localStorage lookup by trail entry id misses the refund key.
+          ...(firebaseEnabled ? { url: qrDataUrl } : {}),
+        };
         noteLines.push("Customer shared a payment QR code for the refund.");
         if (details.note?.trim()) noteLines.push(details.note.trim());
       } else {

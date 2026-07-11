@@ -283,7 +283,7 @@ export async function patchCustomerOrderTrail(order) {
   const latestEntry = compact.trail?.[compact.trail.length - 1];
   const needsProof = latestEntry?.attachment && !latestEntry.attachment.storageUrl && !latestEntry.attachment.purged;
   if (needsProof) {
-    throw new Error("Could not upload proof to storage. Try a smaller image or PDF.");
+    throw new Error("Could not upload your file to storage. Please try again, or use a different image or PDF.");
   }
 
   const patch = {

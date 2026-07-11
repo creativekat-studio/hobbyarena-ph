@@ -24,21 +24,55 @@ export const EMAIL_PLACEHOLDERS = [
   { token: "{{qty}}", description: "Ordered qty" },
 ];
 
-/** Tokens for the Pre-Order Reminder footer block. */
+/** Tokens for email footer blocks. */
 export const PREORDER_REMINDER_PLACEHOLDERS = [
   { token: "{{depositPercent}}", description: "Deposit % (e.g. 30)" },
   { token: "{{balancePercent}}", description: "Balance % (e.g. 70)" },
 ];
 
-/** Default Pre-Order Reminder footer — shown on unpaid pre-order emails. */
-export const DEFAULT_PREORDER_REMINDER = {
-  enabled: true,
+export const DEFAULT_FOOTER_ID = "ft-preorder-reminder";
+
+const DEFAULT_FOOTER_LINES = [
+  "{{depositPercent}}% down payment is non-refundable (unless it is due to country allocation cuts)",
+  "The remaining {{balancePercent}}% balance must be fully settled before the Product Release Day to ensure smooth processing and timely turnover of your order.",
+  "Orders that remain unpaid or unclaimed seven (7) days after the Product Release Day will be considered abandoned, and the corresponding down payment will strictly be forfeited.",
+];
+
+/** Built-in default footer used for unpaid pre-order emails. */
+export const DEFAULT_EMAIL_FOOTER = {
+  id: DEFAULT_FOOTER_ID,
+  name: "Pre-Order Reminder",
   title: "Pre-Order Reminder",
-  lines: [
-    "{{depositPercent}}% down payment is non-refundable (unless it is due to country allocation cuts)",
-    "The remaining {{balancePercent}}% balance must be fully settled before the Product Release Day to ensure smooth processing and timely turnover of your order.",
-    "Orders that remain unpaid or unclaimed seven (7) days after the Product Release Day will be considered abandoned, and the corresponding down payment will strictly be forfeited.",
-  ],
+  lines: [...DEFAULT_FOOTER_LINES],
+};
+
+/** @deprecated Use DEFAULT_EMAIL_FOOTER — kept for older imports. */
+export const DEFAULT_PREORDER_REMINDER = {
+  title: DEFAULT_EMAIL_FOOTER.title,
+  lines: [...DEFAULT_EMAIL_FOOTER.lines],
+};
+
+/** Email types that get the default Pre-Order Reminder footer assigned out of the box. */
+export const PREORDER_REMINDER_EMAIL_TYPES = [
+  "deposit_received",
+  "balance_due_full",
+  "balance_due_partial",
+];
+
+export const ORDER_ACK_FOOTER_KEY = "order_acknowledgement";
+
+function defaultAssignmentByType() {
+  const map = { [ORDER_ACK_FOOTER_KEY]: DEFAULT_FOOTER_ID };
+  for (const type of PREORDER_REMINDER_EMAIL_TYPES) {
+    map[type] = DEFAULT_FOOTER_ID;
+  }
+  return map;
+}
+
+/** Default multi-footer library + per-template assignments. */
+export const DEFAULT_EMAIL_FOOTER_LIBRARY = {
+  footers: [{ ...DEFAULT_EMAIL_FOOTER, lines: [...DEFAULT_EMAIL_FOOTER.lines] }],
+  assignmentByType: defaultAssignmentByType(),
 };
 
 /** Default plain-text bodies — mirror the server templates in api/_lib/orderStatusEmail.js. */
@@ -125,23 +159,102 @@ export function clearEmailBodyOverride(emailType) {
   return getEditableEmailBody(emailType);
 }
 
-function normalizeReminderConfig(raw) {
-  const base = DEFAULT_PREORDER_REMINDER;
-  if (!raw || typeof raw !== "object") {
-    return {
-      enabled: base.enabled,
-      title: base.title,
-      lines: [...base.lines],
-    };
-  }
-  const lines = Array.isArray(raw.lines)
+function newFooterId() {
+  return `ft-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function normalizeFooterItem(raw, fallbackIndex = 0) {
+  const base = DEFAULT_EMAIL_FOOTER;
+  const lines = Array.isArray(raw?.lines)
     ? raw.lines.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, 6)
     : [...base.lines];
+  const name = String(raw?.name ?? raw?.title ?? `Footer ${fallbackIndex + 1}`).trim() || `Footer ${fallbackIndex + 1}`;
+  const title = String(raw?.title ?? name).trim() || name;
   return {
-    enabled: raw.enabled !== false,
-    title: String(raw.title ?? base.title).trim() || base.title,
+    id: String(raw?.id || "").trim() || newFooterId(),
+    name,
+    title,
     lines: lines.length ? lines : [...base.lines],
   };
+}
+
+function migrateLegacyReminder(raw) {
+  const footer = normalizeFooterItem({
+    id: DEFAULT_FOOTER_ID,
+    name: String(raw?.title || DEFAULT_EMAIL_FOOTER.name).trim() || DEFAULT_EMAIL_FOOTER.name,
+    title: String(raw?.title || DEFAULT_EMAIL_FOOTER.title).trim() || DEFAULT_EMAIL_FOOTER.title,
+    lines: Array.isArray(raw?.lines) ? raw.lines : DEFAULT_EMAIL_FOOTER.lines,
+  });
+
+  const assignmentByType = defaultAssignmentByType();
+  if (raw?.enabledByType && typeof raw.enabledByType === "object") {
+    for (const type of PREORDER_REMINDER_EMAIL_TYPES) {
+      assignmentByType[type] = raw.enabledByType[type] === false ? "" : footer.id;
+    }
+  } else if (raw?.enabled === false) {
+    for (const type of PREORDER_REMINDER_EMAIL_TYPES) {
+      assignmentByType[type] = "";
+    }
+    assignmentByType[ORDER_ACK_FOOTER_KEY] = "";
+  } else {
+    for (const type of PREORDER_REMINDER_EMAIL_TYPES) {
+      assignmentByType[type] = footer.id;
+    }
+    assignmentByType[ORDER_ACK_FOOTER_KEY] = footer.id;
+  }
+
+  return { footers: [footer], assignmentByType };
+}
+
+function normalizeFooterLibrary(raw) {
+  if (!raw || typeof raw !== "object") {
+    return {
+      footers: DEFAULT_EMAIL_FOOTER_LIBRARY.footers.map((footer) => ({
+        ...footer,
+        lines: [...footer.lines],
+      })),
+      assignmentByType: { ...DEFAULT_EMAIL_FOOTER_LIBRARY.assignmentByType },
+    };
+  }
+
+  // Legacy single-footer shape (title/lines/enabledByType).
+  if (!Array.isArray(raw.footers) && (raw.title || raw.lines || raw.enabledByType || typeof raw.enabled === "boolean")) {
+    return migrateLegacyReminder(raw);
+  }
+
+  const footers = (Array.isArray(raw.footers) ? raw.footers : [])
+    .map((item, index) => normalizeFooterItem(item, index))
+    .filter((item) => item.name);
+
+  const list = footers.length
+    ? footers
+    : DEFAULT_EMAIL_FOOTER_LIBRARY.footers.map((footer) => ({
+      ...footer,
+      lines: [...footer.lines],
+    }));
+
+  const validIds = new Set(list.map((footer) => footer.id));
+  const assignmentByType = { ...defaultAssignmentByType() };
+
+  // Start blank for types not in the default map, then apply saved assignments.
+  for (const type of Object.keys(ORDER_STATUS_EMAIL_LABELS)) {
+    if (!(type in assignmentByType)) assignmentByType[type] = "";
+  }
+
+  if (raw.assignmentByType && typeof raw.assignmentByType === "object") {
+    for (const [key, value] of Object.entries(raw.assignmentByType)) {
+      const id = String(value ?? "").trim();
+      assignmentByType[key] = id && validIds.has(id) ? id : "";
+    }
+  }
+
+  // Ensure default keys still point at a valid footer when untouched.
+  for (const key of Object.keys(assignmentByType)) {
+    const id = assignmentByType[key];
+    if (id && !validIds.has(id)) assignmentByType[key] = "";
+  }
+
+  return { footers: list, assignmentByType };
 }
 
 function readReminderStore() {
@@ -164,23 +277,39 @@ function writeReminderStore(config) {
   }
 }
 
-function reminderEqualsDefault(config) {
-  const normalized = normalizeReminderConfig(config);
-  const defaults = DEFAULT_PREORDER_REMINDER;
-  if (normalized.enabled !== defaults.enabled) return false;
-  if (normalized.title.trim() !== defaults.title.trim()) return false;
-  if (normalized.lines.length !== defaults.lines.length) return false;
-  return normalized.lines.every((line, i) => line.trim() === defaults.lines[i].trim());
+function libraryEqualsDefault(config) {
+  const normalized = normalizeFooterLibrary(config);
+  const defaults = DEFAULT_EMAIL_FOOTER_LIBRARY;
+  if (normalized.footers.length !== defaults.footers.length) return false;
+  const sameFooters = normalized.footers.every((footer, index) => {
+    const base = defaults.footers[index];
+    return footer.id === base.id
+      && footer.name.trim() === base.name.trim()
+      && footer.title.trim() === base.title.trim()
+      && footer.lines.join("\n") === base.lines.join("\n");
+  });
+  if (!sameFooters) return false;
+  const defaultAssignments = defaults.assignmentByType;
+  const keys = new Set([
+    ...Object.keys(defaultAssignments),
+    ...Object.keys(normalized.assignmentByType),
+  ]);
+  for (const key of keys) {
+    const expected = defaultAssignments[key] || "";
+    const actual = normalized.assignmentByType[key] || "";
+    if (expected !== actual) return false;
+  }
+  return true;
 }
 
-/** Saved Pre-Order Reminder config (or defaults). */
+/** Saved footer library (or defaults). */
 export function getPreorderReminderConfig() {
-  return normalizeReminderConfig(readReminderStore());
+  return normalizeFooterLibrary(readReminderStore());
 }
 
 export function setPreorderReminderConfig(config) {
-  const normalized = normalizeReminderConfig(config);
-  if (reminderEqualsDefault(normalized)) {
+  const normalized = normalizeFooterLibrary(config);
+  if (libraryEqualsDefault(normalized)) {
     if (typeof window !== "undefined") {
       try {
         window.localStorage.removeItem(REMINDER_STORAGE_KEY);
@@ -205,6 +334,75 @@ export function clearPreorderReminderConfig() {
   return getPreorderReminderConfig();
 }
 
+export function setEmailFooterAssignment(emailType, footerId) {
+  const current = getPreorderReminderConfig();
+  const id = String(footerId ?? "").trim();
+  const valid = !id || current.footers.some((footer) => footer.id === id);
+  return setPreorderReminderConfig({
+    ...current,
+    assignmentByType: {
+      ...current.assignmentByType,
+      [emailType]: valid ? id : "",
+    },
+  });
+}
+
+export function addEmailFooter(partial = {}) {
+  const current = getPreorderReminderConfig();
+  const footer = normalizeFooterItem({
+    id: newFooterId(),
+    name: partial.name || `Footer ${current.footers.length + 1}`,
+    title: partial.title || partial.name || "Email footer",
+    lines: partial.lines || ["Add your footer message here."],
+  }, current.footers.length);
+  return setPreorderReminderConfig({
+    ...current,
+    footers: [...current.footers, footer],
+  });
+}
+
+export function updateEmailFooter(footerId, partial) {
+  const current = getPreorderReminderConfig();
+  const footers = current.footers.map((footer) => (
+    footer.id === footerId
+      ? normalizeFooterItem({ ...footer, ...partial, id: footer.id })
+      : footer
+  ));
+  return setPreorderReminderConfig({ ...current, footers });
+}
+
+export function removeEmailFooter(footerId) {
+  const current = getPreorderReminderConfig();
+  if (current.footers.length <= 1) return current;
+  const footers = current.footers.filter((footer) => footer.id !== footerId);
+  const assignmentByType = { ...current.assignmentByType };
+  for (const [key, value] of Object.entries(assignmentByType)) {
+    if (value === footerId) assignmentByType[key] = "";
+  }
+  return setPreorderReminderConfig({ footers, assignmentByType });
+}
+
+/** Resolve the footer assigned to an email type (or null if blank / missing). */
+export function resolveAssignedFooter(reminderConfig, emailType) {
+  const config = normalizeFooterLibrary(reminderConfig);
+  const key = emailType || ORDER_ACK_FOOTER_KEY;
+  const footerId = String(config.assignmentByType?.[key] || "").trim();
+  if (!footerId) return null;
+  return config.footers.find((footer) => footer.id === footerId) || null;
+}
+
 export function isPreorderReminderCustomized() {
-  return !reminderEqualsDefault(getPreorderReminderConfig());
+  return !libraryEqualsDefault(getPreorderReminderConfig());
+}
+
+/** @deprecated Prefer resolveAssignedFooter — always true for any email type now. */
+export function emailTypeSupportsPreorderReminder() {
+  return true;
+}
+
+/** @deprecated Use setEmailFooterAssignment. */
+export function setPreorderReminderEnabledForType(emailType, enabled) {
+  const current = getPreorderReminderConfig();
+  const fallbackId = current.footers[0]?.id || DEFAULT_FOOTER_ID;
+  return setEmailFooterAssignment(emailType, enabled ? fallbackId : "");
 }

@@ -5,8 +5,11 @@ import {
   Button,
   Chip,
   CircularProgress,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
   Stack,
-  Switch,
   Tab,
   Tabs,
   TextField,
@@ -22,16 +25,18 @@ import { sendOrderStatusEmail } from "../lib/emailService.js";
 import { buildOrderStatusEmail } from "../lib/email/orderStatusEmail.js";
 import {
   DEFAULT_EMAIL_BODIES,
-  DEFAULT_PREORDER_REMINDER,
   EMAIL_PLACEHOLDERS,
   EMAIL_TYPES,
+  ORDER_ACK_FOOTER_KEY,
   PREORDER_REMINDER_PLACEHOLDERS,
+  addEmailFooter,
+  clearEmailBodyOverride,
   getEditableEmailBody,
   getPreorderReminderConfig,
+  removeEmailFooter,
   setEmailBodyOverride,
-  clearEmailBodyOverride,
+  setEmailFooterAssignment,
   setPreorderReminderConfig,
-  clearPreorderReminderConfig,
 } from "../lib/emailTemplatesStore.js";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import EmailSimInbox from "./EmailSimInbox.jsx";
@@ -172,13 +177,23 @@ function EmailPreview({ emailType, body, reminder, surfaceBorderColor }) {
   );
 }
 
-function EmailEditor({ emailType, draft, onDraftChange, surfaceBorderColor, testEmail, onTestResult, reminder }) {
+function EmailEditor({
+  emailType,
+  draft,
+  onDraftChange,
+  surfaceBorderColor,
+  testEmail,
+  onTestResult,
+  reminder,
+  onReminderChange,
+}) {
   const theme = useTheme();
   const [saved, setSaved] = useState(false);
   const [sending, setSending] = useState(false);
 
   const defaultBody = DEFAULT_EMAIL_BODIES[emailType] || "";
   const isCustom = draft.trim() !== defaultBody.trim();
+  const selectedFooterId = reminder?.assignmentByType?.[emailType] || "";
 
   function handleSave() {
     setEmailBodyOverride(emailType, draft);
@@ -195,6 +210,11 @@ function EmailEditor({ emailType, draft, onDraftChange, surfaceBorderColor, test
   function insertPlaceholder(token) {
     onDraftChange(`${draft}${draft && !draft.endsWith(" ") ? " " : ""}${token}`);
     setSaved(false);
+  }
+
+  function handleFooterSelect(footerId) {
+    const next = setEmailFooterAssignment(emailType, footerId);
+    onReminderChange(next);
   }
 
   async function handleSendTest() {
@@ -268,7 +288,7 @@ function EmailEditor({ emailType, draft, onDraftChange, surfaceBorderColor, test
         ))}
       </Stack>
 
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }} flexWrap="wrap" useFlexGap>
         <Button
           variant="contained"
           color="primary"
@@ -277,6 +297,24 @@ function EmailEditor({ emailType, draft, onDraftChange, surfaceBorderColor, test
         >
           Save
         </Button>
+        <FormControl size="small" sx={{ minWidth: 200 }}>
+          <InputLabel id={`footer-select-${emailType}`}>Footer</InputLabel>
+          <Select
+            labelId={`footer-select-${emailType}`}
+            label="Footer"
+            value={selectedFooterId}
+            onChange={(e) => handleFooterSelect(e.target.value)}
+          >
+            <MenuItem value="">
+              <em>No footer</em>
+            </MenuItem>
+            {(reminder?.footers || []).map((footer) => (
+              <MenuItem key={footer.id} value={footer.id}>
+                {footer.name}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
         <Button
           variant="text"
           color="inherit"
@@ -306,15 +344,24 @@ function EmailEditor({ emailType, draft, onDraftChange, surfaceBorderColor, test
   );
 }
 
-function PreorderReminderEditor({ draft, onDraftChange, surfaceBorderColor }) {
+function FooterTemplateEditor({ draft, onDraftChange, surfaceBorderColor }) {
   const theme = useTheme();
   const [saved, setSaved] = useState(false);
-  const isCustom = draft.enabled !== DEFAULT_PREORDER_REMINDER.enabled
-    || draft.title.trim() !== DEFAULT_PREORDER_REMINDER.title.trim()
-    || draft.lines.join("\n") !== DEFAULT_PREORDER_REMINDER.lines.join("\n");
+  const [activeFooterId, setActiveFooterId] = useState(draft.footers[0]?.id || "");
+  const activeFooter = draft.footers.find((footer) => footer.id === activeFooterId) || draft.footers[0] || null;
 
-  function update(partial) {
-    onDraftChange({ ...draft, ...partial });
+  useEffect(() => {
+    if (!draft.footers.some((footer) => footer.id === activeFooterId)) {
+      setActiveFooterId(draft.footers[0]?.id || "");
+    }
+  }, [draft.footers, activeFooterId]);
+
+  function updateActive(partial) {
+    if (!activeFooter) return;
+    const footers = draft.footers.map((footer) => (
+      footer.id === activeFooter.id ? { ...footer, ...partial } : footer
+    ));
+    onDraftChange({ ...draft, footers });
     setSaved(false);
   }
 
@@ -324,73 +371,120 @@ function PreorderReminderEditor({ draft, onDraftChange, surfaceBorderColor }) {
     setSaved(true);
   }
 
-  function handleReset() {
-    const next = clearPreorderReminderConfig();
+  function handleAdd() {
+    const next = addEmailFooter({
+      name: `Footer ${draft.footers.length + 1}`,
+      title: "Email footer",
+      lines: ["Add your footer message here."],
+    });
+    onDraftChange(next);
+    setActiveFooterId(next.footers[next.footers.length - 1]?.id || "");
+    setSaved(false);
+  }
+
+  function handleDelete() {
+    if (!activeFooter || draft.footers.length <= 1) return;
+    const next = removeEmailFooter(activeFooter.id);
+    onDraftChange(next);
+    setActiveFooterId(next.footers[0]?.id || "");
+    setSaved(false);
+  }
+
+  function handleAckAssignment(footerId) {
+    const next = setEmailFooterAssignment(ORDER_ACK_FOOTER_KEY, footerId);
     onDraftChange(next);
     setSaved(false);
   }
 
   function insertPlaceholder(token) {
-    const lines = [...draft.lines];
+    if (!activeFooter) return;
+    const lines = [...(activeFooter.lines || [])];
     const last = lines.length - 1;
     if (last < 0) {
-      update({ lines: [token] });
+      updateActive({ lines: [token] });
       return;
     }
     const current = lines[last] || "";
     lines[last] = `${current}${current && !current.endsWith(" ") ? " " : ""}${token}`;
-    update({ lines });
+    updateActive({ lines });
+  }
+
+  if (!activeFooter) {
+    return (
+      <Stack spacing={1.5}>
+        <Typography color="text.secondary">No footers yet.</Typography>
+        <Button variant="contained" onClick={handleAdd}>Add footer</Button>
+      </Stack>
+    );
   }
 
   return (
-    <Stack spacing={1.5}>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
-        <Box>
-          <Typography sx={{ fontWeight: 800, fontSize: "0.9rem" }}>Pre-order reminder footer</Typography>
-          <Typography sx={{ color: "text.secondary", fontSize: "0.8rem", mt: 0.25 }}>
-            Shown on Payment verified (DP paid &amp; awaiting stock) and balance-due emails when the customer is not fully paid.
-          </Typography>
-        </Box>
-        {isCustom ? (
-          <Chip label="Customized" size="small" color="primary" sx={{ height: 20, fontSize: "0.62rem", fontWeight: 700 }} />
-        ) : (
-          <Chip label="Default" size="small" variant="outlined" sx={{ height: 20, fontSize: "0.62rem", fontWeight: 700 }} />
-        )}
-      </Stack>
-
-      <Stack direction="row" alignItems="center" spacing={1.5}>
-        <Switch
-          checked={draft.enabled}
-          onChange={(e) => update({ enabled: e.target.checked })}
-          color="primary"
-          size="small"
-        />
-        <Typography sx={{ fontSize: "0.85rem", fontWeight: 600 }}>
-          {draft.enabled ? "Footer visible on unpaid pre-order emails" : "Footer hidden"}
+    <Stack spacing={2}>
+      <Box>
+        <Typography sx={{ fontWeight: 800, fontSize: "0.9rem" }}>Footer templates</Typography>
+        <Typography sx={{ color: "text.secondary", fontSize: "0.8rem", mt: 0.25 }}>
+          Create multiple footers, then assign one to each email template (or leave blank for none).
         </Typography>
+      </Box>
+
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
+        <FormControl size="small" sx={{ minWidth: 220, flex: 1 }}>
+          <InputLabel id="active-footer-label">Editing</InputLabel>
+          <Select
+            labelId="active-footer-label"
+            label="Editing"
+            value={activeFooter.id}
+            onChange={(e) => setActiveFooterId(e.target.value)}
+          >
+            {draft.footers.map((footer) => (
+              <MenuItem key={footer.id} value={footer.id}>{footer.name}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <Button
+          variant="outlined"
+          onClick={handleAdd}
+          sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem" }}
+        >
+          Add footer
+        </Button>
+        <Button
+          variant="text"
+          color="inherit"
+          disabled={draft.footers.length <= 1}
+          onClick={handleDelete}
+          sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem" }}
+        >
+          Delete
+        </Button>
       </Stack>
 
       <TextField
+        label="Footer name / type"
+        fullWidth
+        value={activeFooter.name}
+        onChange={(e) => updateActive({ name: e.target.value })}
+        helperText="Shown in the template footer dropdown."
+      />
+      <TextField
         label="Footer title"
         fullWidth
-        value={draft.title}
-        disabled={!draft.enabled}
-        onChange={(e) => update({ title: e.target.value })}
+        value={activeFooter.title}
+        onChange={(e) => updateActive({ title: e.target.value })}
       />
 
-      {draft.lines.map((line, index) => (
+      {(activeFooter.lines || []).map((line, index) => (
         <TextField
-          key={`reminder-line-${index}`}
+          key={`${activeFooter.id}-line-${index}`}
           label={`Message line ${index + 1}`}
           fullWidth
           multiline
           minRows={2}
           value={line}
-          disabled={!draft.enabled}
           onChange={(e) => {
-            const lines = [...draft.lines];
+            const lines = [...activeFooter.lines];
             lines[index] = e.target.value;
-            update({ lines });
+            updateActive({ lines });
           }}
         />
       ))}
@@ -402,13 +496,27 @@ function PreorderReminderEditor({ draft, onDraftChange, surfaceBorderColor }) {
             label={placeholder.token}
             size="small"
             variant="outlined"
-            disabled={!draft.enabled}
             onClick={() => insertPlaceholder(placeholder.token)}
             title={placeholder.description}
-            sx={{ fontFamily: MONO_FONT, fontSize: "0.66rem", borderColor: surfaceBorderColor, cursor: draft.enabled ? "pointer" : "default" }}
+            sx={{ fontFamily: MONO_FONT, fontSize: "0.66rem", borderColor: surfaceBorderColor, cursor: "pointer" }}
           />
         ))}
       </Stack>
+
+      <FormControl size="small" fullWidth>
+        <InputLabel id="ack-footer-label">Order confirmation footer</InputLabel>
+        <Select
+          labelId="ack-footer-label"
+          label="Order confirmation footer"
+          value={draft.assignmentByType?.[ORDER_ACK_FOOTER_KEY] || ""}
+          onChange={(e) => handleAckAssignment(e.target.value)}
+        >
+          <MenuItem value=""><em>No footer</em></MenuItem>
+          {draft.footers.map((footer) => (
+            <MenuItem key={footer.id} value={footer.id}>{footer.name}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
         <Button
@@ -419,23 +527,79 @@ function PreorderReminderEditor({ draft, onDraftChange, surfaceBorderColor }) {
         >
           Save footer
         </Button>
-        <Button
-          variant="text"
-          color="inherit"
-          disabled={!isCustom}
-          onClick={handleReset}
-          sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem" }}
-        >
-          Reset to default
-        </Button>
       </Stack>
 
       {saved ? (
         <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, color: theme.palette.success.main }}>
-          Saved — applied to the next unpaid pre-order emails.
+          Saved — available in template footer dropdowns.
         </Typography>
       ) : null}
     </Stack>
+  );
+}
+
+function TestRecipientCard({ panelSx, testEmail, setTestEmail, feedback, onClearFeedback, feedbackSeverity }) {
+  return (
+    <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
+      <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, mb: 1 }}>
+        <Typography sx={{ fontWeight: 800, fontSize: "0.9rem" }}>Test recipient</Typography>
+        <Tooltip
+          title="With simulation on, test sends are captured in the Simulated inbox tab. With simulation off, Resend delivers to your account email in test mode."
+          arrow
+          placement="top"
+          enterTouchDelay={0}
+          slotProps={{
+            tooltip: {
+              sx: {
+                fontFamily: MONO_FONT,
+                fontSize: "0.72rem",
+                fontWeight: 500,
+                letterSpacing: 0.2,
+                textTransform: "none",
+                lineHeight: 1.45,
+                maxWidth: 260,
+              },
+            },
+          }}
+        >
+          <Box
+            component="span"
+            role="img"
+            aria-label="Test recipient info"
+            onMouseDown={(e) => e.preventDefault()}
+            sx={{
+              display: "inline-flex",
+              alignItems: "center",
+              color: "text.secondary",
+              cursor: "help",
+              lineHeight: 0,
+              "&:hover": { color: "primary.main" },
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden style={{ fontSize: 13 }}>
+              <path d="M11 7h2v2h-2V7zm0 4h2v6h-2v-6zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" />
+            </svg>
+          </Box>
+        </Tooltip>
+      </Box>
+      <TextField
+        fullWidth
+        type="email"
+        label="Send test emails to"
+        value={testEmail}
+        onChange={(e) => setTestEmail(e.target.value.trim())}
+        placeholder="you@example.com"
+      />
+      {feedback ? (
+        <Alert
+          severity={feedbackSeverity()}
+          sx={{ mt: 1.5 }}
+          onClose={onClearFeedback}
+        >
+          {feedback.error || feedback.warning || feedback.message}
+        </Alert>
+      ) : null}
+    </Box>
   );
 }
 
@@ -482,140 +646,94 @@ export default function EmailTemplatesPage() {
         sx={{ ...panelSx, px: 1 }}
       >
         <Tab value="templates" label="Templates" />
+        <Tab value="footer" label="Footer template" />
         <Tab value="inbox" label="Simulated inbox" />
       </Tabs>
 
       {pageMode === "inbox" ? (
         <EmailSimInbox panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} />
-      ) : (
-        <>
-      <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
-        <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-          <Typography sx={{ fontWeight: 800, fontSize: "0.9rem" }}>Test recipient</Typography>
-          <Tooltip
-            title="With simulation on, test sends are captured in the Simulated inbox tab. With simulation off, Resend delivers to your account email in test mode."
-            arrow
-            placement="top"
-            enterTouchDelay={0}
-            slotProps={{
-              tooltip: {
-                sx: {
-                  fontFamily: MONO_FONT,
-                  fontSize: "0.72rem",
-                  fontWeight: 500,
-                  letterSpacing: 0.2,
-                  textTransform: "none",
-                  lineHeight: 1.45,
-                  maxWidth: 260,
-                },
-              },
-            }}
-          >
-            <Box
-              component="span"
-              role="img"
-              aria-label="Test recipient info"
-              onMouseDown={(e) => e.preventDefault()}
-              sx={{
-                display: "inline-flex",
-                alignItems: "center",
-                color: "text.secondary",
-                cursor: "help",
-                lineHeight: 0,
-                "&:hover": { color: "primary.main" },
-              }}
-            >
-              <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden style={{ fontSize: 13 }}>
-                <path d="M11 7h2v2h-2V7zm0 4h2v6h-2v-6zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" />
-              </svg>
-            </Box>
-          </Tooltip>
-        </Box>
-        <TextField
-          fullWidth
-          type="email"
-          label="Send test emails to"
-          value={testEmail}
-          onChange={(e) => setTestEmail(e.target.value.trim())}
-          placeholder="you@example.com"
-        />
-        {feedback ? (
-          <Alert
-            severity={feedbackSeverity()}
-            sx={{ mt: 1.5 }}
-            onClose={() => setFeedback(null)}
-          >
-            {feedback.error || feedback.warning || feedback.message}
-          </Alert>
-        ) : null}
-      </Box>
+      ) : null}
 
-      <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
-        <PreorderReminderEditor
-          draft={reminderDraft}
-          onDraftChange={setReminderDraft}
-          surfaceBorderColor={surfaceBorderColor}
-        />
-      </Box>
-
-      <Box sx={{ ...panelSx, overflow: "hidden" }}>
-        <Tabs
-          value={activeType}
-          onChange={(_, value) => setActiveType(value)}
-          variant="scrollable"
-          scrollButtons="auto"
-          allowScrollButtonsMobile
-          sx={{ px: 1.5, borderBottom: "1px solid", borderColor: surfaceBorderColor }}
-        >
-          {emailTypes.map((type) => (
-            <Tab
-              key={type}
-              value={type}
-              label={ORDER_STATUS_EMAIL_LABELS[type]}
-            />
-          ))}
-        </Tabs>
-
-        <Box
-          sx={{
-            p: { xs: 2, md: 3 },
-            display: "grid",
-            gap: { xs: 3, md: 3 },
-            gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) minmax(0, 1fr)" },
-            alignItems: "stretch",
-          }}
-        >
-          <EmailEditor
-            key={`${activeType}-editor`}
-            emailType={activeType}
-            draft={draft}
-            onDraftChange={setDraftForActive}
+      {pageMode === "footer" ? (
+        <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
+          <FooterTemplateEditor
+            draft={reminderDraft}
+            onDraftChange={setReminderDraft}
             surfaceBorderColor={surfaceBorderColor}
+          />
+        </Box>
+      ) : null}
+
+      {pageMode === "templates" ? (
+        <>
+          <TestRecipientCard
+            panelSx={panelSx}
             testEmail={testEmail}
-            onTestResult={setFeedback}
-            reminder={reminderDraft}
+            setTestEmail={setTestEmail}
+            feedback={feedback}
+            onClearFeedback={() => setFeedback(null)}
+            feedbackSeverity={feedbackSeverity}
           />
 
-          <Box
-            sx={{
-              p: 1.5,
-              borderRadius: 1,
-              border: "1px dashed",
-              borderColor: alpha(surfaceBorderColor, 0.9),
-              bgcolor: alpha(theme.palette.text.primary, 0.015),
-            }}
-          >
-            <EmailPreview
-              emailType={activeType}
-              body={draft}
-              reminder={reminderDraft}
-              surfaceBorderColor={surfaceBorderColor}
-            />
+          <Box sx={{ ...panelSx, overflow: "hidden" }}>
+            <Tabs
+              value={activeType}
+              onChange={(_, value) => setActiveType(value)}
+              variant="scrollable"
+              scrollButtons="auto"
+              allowScrollButtonsMobile
+              sx={{ px: 1.5, borderBottom: "1px solid", borderColor: surfaceBorderColor }}
+            >
+              {emailTypes.map((type) => (
+                <Tab
+                  key={type}
+                  value={type}
+                  label={ORDER_STATUS_EMAIL_LABELS[type]}
+                />
+              ))}
+            </Tabs>
+
+            <Box
+              sx={{
+                p: { xs: 2, md: 3 },
+                display: "grid",
+                gap: { xs: 3, md: 3 },
+                gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) minmax(0, 1fr)" },
+                alignItems: "stretch",
+              }}
+            >
+              <EmailEditor
+                key={`${activeType}-editor`}
+                emailType={activeType}
+                draft={draft}
+                onDraftChange={setDraftForActive}
+                surfaceBorderColor={surfaceBorderColor}
+                testEmail={testEmail}
+                onTestResult={setFeedback}
+                reminder={reminderDraft}
+                onReminderChange={setReminderDraft}
+              />
+
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderRadius: 1,
+                  border: "1px dashed",
+                  borderColor: alpha(surfaceBorderColor, 0.9),
+                  bgcolor: alpha(theme.palette.text.primary, 0.015),
+                }}
+              >
+                <EmailPreview
+                  emailType={activeType}
+                  body={draft}
+                  reminder={reminderDraft}
+                  surfaceBorderColor={surfaceBorderColor}
+                />
+              </Box>
+            </Box>
           </Box>
-        </Box>
-      </Box>
         </>
-      )}
+      ) : null}
     </Stack>
   );
 }

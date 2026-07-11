@@ -21,13 +21,39 @@ function readOrder(body) {
     : [];
 
   const reminderConfig = reminder && typeof reminder === "object"
-    ? {
-      enabled: reminder.enabled !== false,
-      title: reminder.title ? String(reminder.title).trim().slice(0, 120) : undefined,
-      lines: Array.isArray(reminder.lines)
-        ? reminder.lines.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, 6)
-        : undefined,
-    }
+    ? (Array.isArray(reminder.footers)
+      ? {
+        footers: reminder.footers.slice(0, 20).map((footer, index) => ({
+          id: footer?.id ? String(footer.id).trim().slice(0, 80) : `ft-${index}`,
+          name: footer?.name ? String(footer.name).trim().slice(0, 120) : `Footer ${index + 1}`,
+          title: footer?.title ? String(footer.title).trim().slice(0, 120) : undefined,
+          lines: Array.isArray(footer?.lines)
+            ? footer.lines.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, 6)
+            : [],
+        })),
+        assignmentByType: reminder.assignmentByType && typeof reminder.assignmentByType === "object"
+          ? Object.fromEntries(
+            Object.entries(reminder.assignmentByType)
+              .map(([key, value]) => [String(key), String(value ?? "").trim().slice(0, 80)]),
+          )
+          : {},
+      }
+      : {
+        enabled: reminder.enabled !== false,
+        title: reminder.title ? String(reminder.title).trim().slice(0, 120) : undefined,
+        lines: Array.isArray(reminder.lines)
+          ? reminder.lines.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, 6)
+          : undefined,
+        ...(reminder.enabledByType && typeof reminder.enabledByType === "object"
+          ? {
+            enabledByType: Object.fromEntries(
+              Object.entries(reminder.enabledByType)
+                .filter(([, value]) => typeof value === "boolean")
+                .map(([key, value]) => [String(key), value]),
+            ),
+          }
+          : {}),
+      })
     : null;
 
   return {

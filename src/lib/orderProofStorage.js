@@ -316,21 +316,23 @@ export async function uploadOrderProofAttachments(order) {
 
   const trail = Array.isArray(order.trail) ? [...order.trail] : [];
   let changed = false;
+  let lastUploadError = null;
 
   for (let index = 0; index < trail.length; index += 1) {
     const entry = trail[index];
     const attachment = entry?.attachment;
     if (!attachment || isHttpUrl(attachment.storageUrl)) continue;
 
+    const lineItemId = entry.lineItemId || attachment.lineItemId || null;
     let dataUrl = null;
     if (isDataUrl(attachment.url)) {
       dataUrl = attachment.url;
+    } else if (attachment.kind === "balance" && lineItemId) {
+      dataUrl = getBalanceProof(order.id, lineItemId, attachment.proofId);
+    } else if (attachment.kind === "refund" && lineItemId) {
+      dataUrl = getRefundProof(order.id, lineItemId);
     } else if (entry.id) {
       dataUrl = getTrailEntryProof(order.id, entry.id);
-    } else if (attachment.kind === "balance" && entry.lineItemId) {
-      dataUrl = getBalanceProof(order.id, entry.lineItemId, attachment.proofId);
-    } else if (attachment.kind === "refund" && entry.lineItemId) {
-      dataUrl = getRefundProof(order.id, entry.lineItemId);
     } else if (isDepositProofTrailEntry(entry) || attachment.kind === "deposit") {
       dataUrl = getOrderProof(order.id) || (isDataUrl(order.proofOfPayment) ? order.proofOfPayment : null);
     }
@@ -355,11 +357,18 @@ export async function uploadOrderProofAttachments(order) {
       };
       changed = true;
     } catch (error) {
+      lastUploadError = error;
       console.error("[orderProof] Upload failed for trail entry:", entry.id, error);
     }
   }
 
-  if (!changed) return order;
+  if (!changed) {
+    if (lastUploadError) {
+      const message = lastUploadError?.message || "Could not upload file to storage.";
+      throw new Error(message);
+    }
+    return order;
+  }
   return { ...order, trail, hasProof: Boolean(order.hasProof || trail.some((e) => e.attachment?.storageUrl)) };
 }
 
