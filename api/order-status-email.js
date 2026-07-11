@@ -2,13 +2,26 @@ import { buildOrderStatusEmail } from "./_lib/orderStatusEmail.js";
 import { dispatchEmail } from "./_lib/dispatchEmail.js";
 import { isValidEmail } from "./_lib/emailConfig.js";
 
+function readReminderConfig(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const lines = Array.isArray(raw.lines)
+    ? raw.lines.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, 6)
+    : null;
+  return {
+    enabled: raw.enabled !== false,
+    title: raw.title ? String(raw.title).trim().slice(0, 120) : undefined,
+    lines: lines && lines.length ? lines : undefined,
+  };
+}
+
 function readPayload(body) {
   if (!body || typeof body !== "object") return null;
-  const { emailType, order, bodyOverride } = body;
+  const { emailType, order, bodyOverride, reminder } = body;
   if (!emailType || !order?.id || !order?.customer || !isValidEmail(order.email)) return null;
   return {
     emailType: String(emailType),
     bodyOverride: typeof bodyOverride === "string" ? bodyOverride.slice(0, 4000) : "",
+    reminder: readReminderConfig(reminder),
     order: {
       id: String(order.id),
       customer: String(order.customer).trim(),
@@ -66,6 +79,7 @@ export default async function handler(req, res) {
 
     const content = buildOrderStatusEmail(payload.order, payload.emailType, {
       bodyOverride: payload.bodyOverride,
+      ...(payload.reminder ? { reminder: payload.reminder } : {}),
     });
     if (!content) {
       return res.status(400).json({ error: "Unknown email type." });

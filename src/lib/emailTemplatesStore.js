@@ -11,6 +11,7 @@
 import { ORDER_STATUS_EMAIL_LABELS } from "./orderEmailTriggers.js";
 
 const STORAGE_KEY = "hobbyarena:email-bodies";
+const REMINDER_STORAGE_KEY = "hobbyarena:email-preorder-reminder";
 
 /** Tokens admins can drop into a body — replaced with live order values. */
 export const EMAIL_PLACEHOLDERS = [
@@ -22,6 +23,23 @@ export const EMAIL_PLACEHOLDERS = [
   { token: "{{allocated}}", description: "Allocated qty" },
   { token: "{{qty}}", description: "Ordered qty" },
 ];
+
+/** Tokens for the Pre-Order Reminder footer block. */
+export const PREORDER_REMINDER_PLACEHOLDERS = [
+  { token: "{{depositPercent}}", description: "Deposit % (e.g. 30)" },
+  { token: "{{balancePercent}}", description: "Balance % (e.g. 70)" },
+];
+
+/** Default Pre-Order Reminder footer — shown on unpaid pre-order emails. */
+export const DEFAULT_PREORDER_REMINDER = {
+  enabled: true,
+  title: "Pre-Order Reminder",
+  lines: [
+    "{{depositPercent}}% down payment is non-refundable (unless it is due to country allocation cuts)",
+    "The remaining {{balancePercent}}% balance must be fully settled before the Product Release Day to ensure smooth processing and timely turnover of your order.",
+    "Orders that remain unpaid or unclaimed seven (7) days after the Product Release Day will be considered abandoned, and the corresponding down payment will strictly be forfeited.",
+  ],
+};
 
 /** Default plain-text bodies — mirror the server templates in api/_lib/orderStatusEmail.js. */
 export const DEFAULT_EMAIL_BODIES = {
@@ -105,4 +123,88 @@ export function clearEmailBodyOverride(emailType) {
   delete map[emailType];
   writeStore(map);
   return getEditableEmailBody(emailType);
+}
+
+function normalizeReminderConfig(raw) {
+  const base = DEFAULT_PREORDER_REMINDER;
+  if (!raw || typeof raw !== "object") {
+    return {
+      enabled: base.enabled,
+      title: base.title,
+      lines: [...base.lines],
+    };
+  }
+  const lines = Array.isArray(raw.lines)
+    ? raw.lines.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, 6)
+    : [...base.lines];
+  return {
+    enabled: raw.enabled !== false,
+    title: String(raw.title ?? base.title).trim() || base.title,
+    lines: lines.length ? lines : [...base.lines],
+  };
+}
+
+function readReminderStore() {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(REMINDER_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function writeReminderStore(config) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(REMINDER_STORAGE_KEY, JSON.stringify(config));
+  } catch {
+    // ignore quota / serialization errors
+  }
+}
+
+function reminderEqualsDefault(config) {
+  const normalized = normalizeReminderConfig(config);
+  const defaults = DEFAULT_PREORDER_REMINDER;
+  if (normalized.enabled !== defaults.enabled) return false;
+  if (normalized.title.trim() !== defaults.title.trim()) return false;
+  if (normalized.lines.length !== defaults.lines.length) return false;
+  return normalized.lines.every((line, i) => line.trim() === defaults.lines[i].trim());
+}
+
+/** Saved Pre-Order Reminder config (or defaults). */
+export function getPreorderReminderConfig() {
+  return normalizeReminderConfig(readReminderStore());
+}
+
+export function setPreorderReminderConfig(config) {
+  const normalized = normalizeReminderConfig(config);
+  if (reminderEqualsDefault(normalized)) {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(REMINDER_STORAGE_KEY);
+      } catch {
+        // ignore
+      }
+    }
+  } else {
+    writeReminderStore(normalized);
+  }
+  return getPreorderReminderConfig();
+}
+
+export function clearPreorderReminderConfig() {
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.removeItem(REMINDER_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  }
+  return getPreorderReminderConfig();
+}
+
+export function isPreorderReminderCustomized() {
+  return !reminderEqualsDefault(getPreorderReminderConfig());
 }

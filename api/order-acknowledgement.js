@@ -6,7 +6,7 @@ function readOrder(body) {
   if (!body || typeof body !== "object") return null;
   const {
     id, customer, email, items, lineItems, total, subtotal, shippingFee,
-    balanceDue, type, phone, payment, date,
+    balanceDue, type, phone, payment, date, depositPercent, reminder,
   } = body;
   if (!id || !customer || !isValidEmail(email)) return null;
 
@@ -20,20 +20,34 @@ function readOrder(body) {
       })).filter((item) => item.name)
     : [];
 
+  const reminderConfig = reminder && typeof reminder === "object"
+    ? {
+      enabled: reminder.enabled !== false,
+      title: reminder.title ? String(reminder.title).trim().slice(0, 120) : undefined,
+      lines: Array.isArray(reminder.lines)
+        ? reminder.lines.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, 6)
+        : undefined,
+    }
+    : null;
+
   return {
-    id: String(id),
-    customer: String(customer).trim(),
-    email: email.trim(),
-    items: items ? String(items) : "",
-    lineItems: parsedLineItems,
-    total: Number(total) || 0,
-    subtotal: Number(subtotal) || Number(total) || 0,
-    shippingFee: Number(shippingFee) || 0,
-    balanceDue: Number(balanceDue) || 0,
-    type: type ? String(type) : "In-stock",
-    phone: phone ? String(phone) : "",
-    payment: payment ? String(payment) : "Pending Verification",
-    date: date ? String(date) : new Date().toISOString().slice(0, 10),
+    order: {
+      id: String(id),
+      customer: String(customer).trim(),
+      email: email.trim(),
+      items: items ? String(items) : "",
+      lineItems: parsedLineItems,
+      total: Number(total) || 0,
+      subtotal: Number(subtotal) || Number(total) || 0,
+      shippingFee: Number(shippingFee) || 0,
+      balanceDue: Number(balanceDue) || 0,
+      depositPercent: Number(depositPercent) || 30,
+      type: type ? String(type) : "In-stock",
+      phone: phone ? String(phone) : "",
+      payment: payment ? String(payment) : "Pending Verification",
+      date: date ? String(date) : new Date().toISOString().slice(0, 10),
+    },
+    reminder: reminderConfig,
   };
 }
 
@@ -43,13 +57,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    const order = readOrder(req.body);
-    if (!order) {
+    const payload = readOrder(req.body);
+    if (!payload) {
       return res.status(400).json({ error: "Invalid order payload." });
     }
+    const { order, reminder } = payload;
 
     const { adminEmail } = getEmailConfig();
-    const customerEmail = buildOrderAcknowledgementEmail(order);
+    const customerEmail = buildOrderAcknowledgementEmail(order, reminder ? { reminder } : {});
     const adminEmailContent = buildAdminOrderNotificationEmail(order);
 
     const [customerResult, adminResult] = await Promise.all([

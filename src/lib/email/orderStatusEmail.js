@@ -634,17 +634,24 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     text.push("", `Attachment: ${order.statusAttachment.url}`);
   }
 
-  const showReminder = shouldShowPreorderReminder(order, emailType);
+  const showReminder = shouldShowPreorderReminder(order, emailType, {
+    enabled: options.reminder?.enabled,
+  });
   const depositPercent = depositPercentOf(order);
+  const reminderOpts = {
+    depositPercent,
+    title: options.reminder?.title,
+    lines: options.reminder?.lines,
+  };
   if (showReminder) {
-    text.push("", preorderReminderText({ depositPercent }));
+    text.push("", preorderReminderText(reminderOpts));
   } else {
     const templateFooter = typeof template.footer === "function" ? template.footer(order) : template.footer;
     if (templateFooter) text.push("", String(templateFooter).replace(/<[^>]+>/g, ""));
   }
 
   const footerNote = showReminder
-    ? preorderReminderBlock({ depositPercent })
+    ? preorderReminderBlock(reminderOpts)
     : (typeof template.footer === "function" ? template.footer(order) : template.footer);
 
   return {

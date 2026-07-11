@@ -58,7 +58,7 @@ function normalizeLineItems(order) {
   return [];
 }
 
-export function buildOrderAcknowledgementEmail(order) {
+export function buildOrderAcknowledgementEmail(order, options = {}) {
   const kind = orderKind(order);
   const isPreorder = kind === "preorder";
   const lineItems = normalizeLineItems(order);
@@ -84,7 +84,14 @@ export function buildOrderAcknowledgementEmail(order) {
     totalRows.push({ label: "Total", value: formatPeso(order.total), strong: true });
   }
 
-  const showReminder = shouldShowPreorderReminder(order);
+  const showReminder = shouldShowPreorderReminder(order, null, {
+    enabled: options.reminder?.enabled,
+  });
+  const reminderOpts = {
+    depositPercent: dp,
+    title: options.reminder?.title,
+    lines: options.reminder?.lines,
+  };
 
   const text = [
     `Hello ${order.customer},`,
@@ -103,7 +110,7 @@ export function buildOrderAcknowledgementEmail(order) {
     "",
     ...totalRows.map((row) => `${row.label}: ${row.value}`),
     "",
-    showReminder ? preorderReminderText({ depositPercent: dp }) : "Questions? Message us at Hobby Arena PH.",
+    showReminder ? preorderReminderText(reminderOpts) : "Questions? Message us at Hobby Arena PH.",
     "",
     `— ${EMAIL_BRAND.name}`,
   ].join("\n");
@@ -140,7 +147,7 @@ export function buildOrderAcknowledgementEmail(order) {
   const html = wrapSimpleEmail({
     preheader: `${order.id} — ${formatPeso(order.total)} received, pending verification`,
     bodyHtml,
-    footerNote: showReminder ? preorderReminderBlock({ depositPercent: dp }) : getSupportContactHtml(),
+    footerNote: showReminder ? preorderReminderBlock(reminderOpts) : getSupportContactHtml(),
   });
 
   return { subject, text, html, kind };

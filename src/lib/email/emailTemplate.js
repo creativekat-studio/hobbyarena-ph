@@ -157,26 +157,27 @@ export function defaultFooterNote() {
 }
 
 /** Pre-order reminder — only for customers who have not fully paid. */
-export function preorderReminderBlock({ depositPercent = 30 } = {}) {
+export function preorderReminderBlock({
+  depositPercent = 30,
+  title,
+  lines,
+} = {}) {
   const c = EMAIL_BRAND.colors;
   const dp = Math.max(0, Math.min(100, Number(depositPercent) || 30));
   const balance = Math.max(0, 100 - dp);
   const links = getEmailLinks();
+  const heading = String(title || "Pre-Order Reminder").trim() || "Pre-Order Reminder";
+  const paragraphs = resolveReminderLines(lines, dp, balance);
 
   return `
     <div style="margin:0 0 8px;padding:16px 18px;border-radius:8px;background:${c.page};border:1px solid ${c.border}">
       <p style="margin:0 0 10px;font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${c.ink}">
-        Pre-Order Reminder
+        ${escapeHtml(heading)}
       </p>
-      <p style="margin:0 0 8px;font-family:${FONT};font-size:13px;line-height:1.6;color:${c.text}">
-        ${dp}% down payment is non-refundable (unless it is due to country allocation cuts)
-      </p>
-      <p style="margin:0 0 8px;font-family:${FONT};font-size:13px;line-height:1.6;color:${c.text}">
-        The remaining ${balance}% balance must be fully settled before the Product Release Day to ensure smooth processing and timely turnover of your order.
-      </p>
-      <p style="margin:0 0 12px;font-family:${FONT};font-size:13px;line-height:1.6;color:${c.text}">
-        Orders that remain unpaid or unclaimed seven (7) days after the Product Release Day will be considered abandoned, and the corresponding down payment will strictly be forfeited.
-      </p>
+      ${paragraphs.map((line, index) => `
+      <p style="margin:0 0 ${index === paragraphs.length - 1 ? "12px" : "8px"};font-family:${FONT};font-size:13px;line-height:1.6;color:${c.text}">
+        ${escapeHtml(line)}
+      </p>`).join("")}
       <p style="margin:0;font-family:${FONT};font-size:13px;line-height:1.6;color:${c.muted}">
         Questions? Message us directly at
         <a href="${escapeHtml(links.messengerUrl)}" style="color:${c.ink};font-weight:600;text-decoration:underline">Hobby Arena PH</a>
@@ -185,21 +186,37 @@ export function preorderReminderBlock({ depositPercent = 30 } = {}) {
   `;
 }
 
-export function preorderReminderText({ depositPercent = 30 } = {}) {
+export function preorderReminderText({
+  depositPercent = 30,
+  title,
+  lines,
+} = {}) {
   const dp = Math.max(0, Math.min(100, Number(depositPercent) || 30));
   const balance = Math.max(0, 100 - dp);
   const links = getEmailLinks();
+  const heading = String(title || "Pre-Order Reminder").trim() || "Pre-Order Reminder";
+  const paragraphs = resolveReminderLines(lines, dp, balance);
   return [
-    "Pre-Order Reminder",
+    heading,
     "",
-    `${dp}% down payment is non-refundable (unless it is due to country allocation cuts)`,
-    "",
-    `The remaining ${balance}% balance must be fully settled before the Product Release Day to ensure smooth processing and timely turnover of your order.`,
-    "",
-    "Orders that remain unpaid or unclaimed seven (7) days after the Product Release Day will be considered abandoned, and the corresponding down payment will strictly be forfeited.",
+    ...paragraphs.flatMap((line, index) => (index === 0 ? [line] : ["", line])),
     "",
     `Questions? Message us directly at Hobby Arena PH (${links.messengerUrl})`,
   ].join("\n");
+}
+
+function resolveReminderLines(lines, depositPercent, balancePercent) {
+  const defaults = [
+    `${depositPercent}% down payment is non-refundable (unless it is due to country allocation cuts)`,
+    `The remaining ${balancePercent}% balance must be fully settled before the Product Release Day to ensure smooth processing and timely turnover of your order.`,
+    "Orders that remain unpaid or unclaimed seven (7) days after the Product Release Day will be considered abandoned, and the corresponding down payment will strictly be forfeited.",
+  ];
+  const source = Array.isArray(lines) && lines.length
+    ? lines.map((line) => String(line ?? "").trim()).filter(Boolean)
+    : defaults;
+  return source.map((line) => line
+    .replace(/\{\{\s*depositPercent\s*\}\}/g, String(depositPercent))
+    .replace(/\{\{\s*balancePercent\s*\}\}/g, String(balancePercent)));
 }
 
 /**

@@ -6,6 +6,7 @@ import {
   Chip,
   CircularProgress,
   Stack,
+  Switch,
   Tab,
   Tabs,
   TextField,
@@ -21,11 +22,16 @@ import { sendOrderStatusEmail } from "../lib/emailService.js";
 import { buildOrderStatusEmail } from "../lib/email/orderStatusEmail.js";
 import {
   DEFAULT_EMAIL_BODIES,
+  DEFAULT_PREORDER_REMINDER,
   EMAIL_PLACEHOLDERS,
   EMAIL_TYPES,
+  PREORDER_REMINDER_PLACEHOLDERS,
   getEditableEmailBody,
+  getPreorderReminderConfig,
   setEmailBodyOverride,
   clearEmailBodyOverride,
+  setPreorderReminderConfig,
+  clearPreorderReminderConfig,
 } from "../lib/emailTemplatesStore.js";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import EmailSimInbox from "./EmailSimInbox.jsx";
@@ -93,7 +99,7 @@ function buildSampleOrder(recipientEmail, emailType) {
   };
 }
 
-function EmailPreview({ emailType, body, surfaceBorderColor }) {
+function EmailPreview({ emailType, body, reminder, surfaceBorderColor }) {
   const [state, setState] = useState({ loading: true, html: "", subject: "", error: "" });
 
   useEffect(() => {
@@ -104,7 +110,7 @@ function EmailPreview({ emailType, body, surfaceBorderColor }) {
         const result = buildOrderStatusEmail(
           buildSampleOrder(PREVIEW_EMAIL, emailType),
           emailType,
-          { bodyOverride: body },
+          { bodyOverride: body, reminder },
         );
         if (cancelled) return;
         if (!result) {
@@ -121,7 +127,7 @@ function EmailPreview({ emailType, body, surfaceBorderColor }) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [emailType, body]);
+  }, [emailType, body, reminder]);
 
   return (
     <Box>
@@ -166,7 +172,7 @@ function EmailPreview({ emailType, body, surfaceBorderColor }) {
   );
 }
 
-function EmailEditor({ emailType, draft, onDraftChange, surfaceBorderColor, testEmail, onTestResult }) {
+function EmailEditor({ emailType, draft, onDraftChange, surfaceBorderColor, testEmail, onTestResult, reminder }) {
   const theme = useTheme();
   const [saved, setSaved] = useState(false);
   const [sending, setSending] = useState(false);
@@ -202,6 +208,7 @@ function EmailEditor({ emailType, draft, onDraftChange, surfaceBorderColor, test
         emailType,
         order: buildSampleOrder(testEmail, emailType),
         bodyOverride: draft,
+        reminder,
       });
       if (result?.simulated) {
         onTestResult({
@@ -299,6 +306,139 @@ function EmailEditor({ emailType, draft, onDraftChange, surfaceBorderColor, test
   );
 }
 
+function PreorderReminderEditor({ draft, onDraftChange, surfaceBorderColor }) {
+  const theme = useTheme();
+  const [saved, setSaved] = useState(false);
+  const isCustom = draft.enabled !== DEFAULT_PREORDER_REMINDER.enabled
+    || draft.title.trim() !== DEFAULT_PREORDER_REMINDER.title.trim()
+    || draft.lines.join("\n") !== DEFAULT_PREORDER_REMINDER.lines.join("\n");
+
+  function update(partial) {
+    onDraftChange({ ...draft, ...partial });
+    setSaved(false);
+  }
+
+  function handleSave() {
+    const next = setPreorderReminderConfig(draft);
+    onDraftChange(next);
+    setSaved(true);
+  }
+
+  function handleReset() {
+    const next = clearPreorderReminderConfig();
+    onDraftChange(next);
+    setSaved(false);
+  }
+
+  function insertPlaceholder(token) {
+    const lines = [...draft.lines];
+    const last = lines.length - 1;
+    if (last < 0) {
+      update({ lines: [token] });
+      return;
+    }
+    const current = lines[last] || "";
+    lines[last] = `${current}${current && !current.endsWith(" ") ? " " : ""}${token}`;
+    update({ lines });
+  }
+
+  return (
+    <Stack spacing={1.5}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+        <Box>
+          <Typography sx={{ fontWeight: 800, fontSize: "0.9rem" }}>Pre-order reminder footer</Typography>
+          <Typography sx={{ color: "text.secondary", fontSize: "0.8rem", mt: 0.25 }}>
+            Shown on Payment verified (DP paid &amp; awaiting stock) and balance-due emails when the customer is not fully paid.
+          </Typography>
+        </Box>
+        {isCustom ? (
+          <Chip label="Customized" size="small" color="primary" sx={{ height: 20, fontSize: "0.62rem", fontWeight: 700 }} />
+        ) : (
+          <Chip label="Default" size="small" variant="outlined" sx={{ height: 20, fontSize: "0.62rem", fontWeight: 700 }} />
+        )}
+      </Stack>
+
+      <Stack direction="row" alignItems="center" spacing={1.5}>
+        <Switch
+          checked={draft.enabled}
+          onChange={(e) => update({ enabled: e.target.checked })}
+          color="primary"
+          size="small"
+        />
+        <Typography sx={{ fontSize: "0.85rem", fontWeight: 600 }}>
+          {draft.enabled ? "Footer visible on unpaid pre-order emails" : "Footer hidden"}
+        </Typography>
+      </Stack>
+
+      <TextField
+        label="Footer title"
+        fullWidth
+        value={draft.title}
+        disabled={!draft.enabled}
+        onChange={(e) => update({ title: e.target.value })}
+      />
+
+      {draft.lines.map((line, index) => (
+        <TextField
+          key={`reminder-line-${index}`}
+          label={`Message line ${index + 1}`}
+          fullWidth
+          multiline
+          minRows={2}
+          value={line}
+          disabled={!draft.enabled}
+          onChange={(e) => {
+            const lines = [...draft.lines];
+            lines[index] = e.target.value;
+            update({ lines });
+          }}
+        />
+      ))}
+
+      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+        {PREORDER_REMINDER_PLACEHOLDERS.map((placeholder) => (
+          <Chip
+            key={placeholder.token}
+            label={placeholder.token}
+            size="small"
+            variant="outlined"
+            disabled={!draft.enabled}
+            onClick={() => insertPlaceholder(placeholder.token)}
+            title={placeholder.description}
+            sx={{ fontFamily: MONO_FONT, fontSize: "0.66rem", borderColor: surfaceBorderColor, cursor: draft.enabled ? "pointer" : "default" }}
+          />
+        ))}
+      </Stack>
+
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={handleSave}
+          sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
+        >
+          Save footer
+        </Button>
+        <Button
+          variant="text"
+          color="inherit"
+          disabled={!isCustom}
+          onClick={handleReset}
+          sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem" }}
+        >
+          Reset to default
+        </Button>
+      </Stack>
+
+      {saved ? (
+        <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, color: theme.palette.success.main }}>
+          Saved — applied to the next unpaid pre-order emails.
+        </Typography>
+      ) : null}
+    </Stack>
+  );
+}
+
 export default function EmailTemplatesPage() {
   const theme = useTheme();
   const { surfaces } = useOutletContext();
@@ -313,6 +453,7 @@ export default function EmailTemplatesPage() {
     draftsRef.current = Object.fromEntries(EMAIL_TYPES.map((type) => [type, getEditableEmailBody(type)]));
   }
   const [drafts, setDrafts] = useState(() => draftsRef.current);
+  const [reminderDraft, setReminderDraft] = useState(() => getPreorderReminderConfig());
 
   const draft = drafts[activeType] ?? "";
 
@@ -409,6 +550,14 @@ export default function EmailTemplatesPage() {
         ) : null}
       </Box>
 
+      <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
+        <PreorderReminderEditor
+          draft={reminderDraft}
+          onDraftChange={setReminderDraft}
+          surfaceBorderColor={surfaceBorderColor}
+        />
+      </Box>
+
       <Box sx={{ ...panelSx, overflow: "hidden" }}>
         <Tabs
           value={activeType}
@@ -444,6 +593,7 @@ export default function EmailTemplatesPage() {
             surfaceBorderColor={surfaceBorderColor}
             testEmail={testEmail}
             onTestResult={setFeedback}
+            reminder={reminderDraft}
           />
 
           <Box
@@ -458,6 +608,7 @@ export default function EmailTemplatesPage() {
             <EmailPreview
               emailType={activeType}
               body={draft}
+              reminder={reminderDraft}
               surfaceBorderColor={surfaceBorderColor}
             />
           </Box>

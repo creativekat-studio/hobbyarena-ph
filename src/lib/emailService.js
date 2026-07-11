@@ -1,3 +1,5 @@
+import { getPreorderReminderConfig } from "./emailTemplatesStore.js";
+
 async function postJson(path, payload) {
   const response = await fetch(path, {
     method: "POST",
@@ -20,20 +22,22 @@ async function postJson(path, payload) {
   return data;
 }
 
-export async function sendOrderStatusEmail({ emailType, order, bodyOverride }) {
+export async function sendOrderStatusEmail({ emailType, order, bodyOverride, reminder }) {
   return postJson("/api/order-status-email", {
     emailType,
     order,
     ...(bodyOverride ? { bodyOverride } : {}),
+    ...(reminder ? { reminder } : {}),
   });
 }
 
-export async function previewOrderStatusEmail({ emailType, order, bodyOverride }) {
+export async function previewOrderStatusEmail({ emailType, order, bodyOverride, reminder }) {
   return postJson("/api/order-status-email", {
     preview: true,
     emailType,
     order,
     ...(bodyOverride ? { bodyOverride } : {}),
+    ...(reminder ? { reminder } : {}),
   });
 }
 
@@ -48,7 +52,7 @@ export function queueOrderStatusEmail(payload, onResult) {
     });
 }
 
-export async function sendOrderAcknowledgementEmail(order) {
+export async function sendOrderAcknowledgementEmail(order, reminder) {
   return postJson("/api/order-acknowledgement", {
     id: order.id,
     customer: order.customer,
@@ -60,9 +64,11 @@ export async function sendOrderAcknowledgementEmail(order) {
     shippingFee: order.shippingFee,
     total: order.total,
     balanceDue: order.balanceDue,
+    depositPercent: order.depositPercent,
     type: order.type,
     payment: order.payment,
     date: order.date,
+    ...(reminder ? { reminder } : {}),
   });
 }
 
@@ -102,7 +108,7 @@ export async function clearEmailOutbox() {
 export function queueOrderAcknowledgement(order, onResult) {
   if (!order?.email) return;
 
-  sendOrderAcknowledgementEmail(order)
+  sendOrderAcknowledgementEmail(order, getPreorderReminderConfig())
     .then((result) => onResult?.({ ok: true, result }))
     .catch((error) => {
       console.warn("Order acknowledgement email failed:", error);

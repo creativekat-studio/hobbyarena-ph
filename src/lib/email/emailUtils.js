@@ -50,27 +50,12 @@ export function isPreorderEmailContext(order) {
   return false;
 }
 
-const BALANCE_DUE_STATUSES = new Set([
-  "Allocation Fulfilled & Pay Balance",
-  "Partially Fulfilled & Pay Balance",
-]);
-
-const BALANCE_DUE_EMAIL_TYPES = new Set([
+/** Status emails that may include the Pre-Order Reminder footer (when not fully paid). */
+const PREORDER_REMINDER_EMAIL_TYPES = new Set([
+  "deposit_received",
   "balance_due_full",
   "balance_due_partial",
 ]);
-
-function hasBalanceDueStatus(order) {
-  const item = order?.updatedLineItem;
-  if (item && BALANCE_DUE_STATUSES.has(String(item.status || ""))) return true;
-  if (BALANCE_DUE_STATUSES.has(String(order?.status || ""))) return true;
-  if (Array.isArray(order?.lineItems) && order.lineItems.some((row) => (
-    row.tag === "Pre-order" && BALANCE_DUE_STATUSES.has(String(row.status || ""))
-  ))) {
-    return true;
-  }
-  return false;
-}
 
 /** True when the customer still owes a balance on a pre-order. */
 export function orderHasOutstandingBalance(order) {
@@ -87,13 +72,16 @@ export function orderHasOutstandingBalance(order) {
 }
 
 /**
- * Pre-order reminder block — only for pre-orders that are in a balance-due state.
- * Never for in-stock orders or non-balance-due statuses (payment verified, fulfilled, etc.).
+ * Pre-order reminder footer — for unpaid pre-orders only.
+ * Shown on deposit verified (DP paid / awaiting stock) and balance-due emails,
+ * plus order acknowledgements when no emailType is passed.
  */
-export function shouldShowPreorderReminder(order, emailType = null) {
+export function shouldShowPreorderReminder(order, emailType = null, options = {}) {
+  if (options.enabled === false) return false;
   if (!isPreorderEmailContext(order)) return false;
-  if (emailType) return BALANCE_DUE_EMAIL_TYPES.has(emailType);
-  return hasBalanceDueStatus(order) && orderHasOutstandingBalance(order);
+  if (!orderHasOutstandingBalance(order)) return false;
+  if (emailType) return PREORDER_REMINDER_EMAIL_TYPES.has(emailType);
+  return true;
 }
 
 export function formatPeso(amount) {
