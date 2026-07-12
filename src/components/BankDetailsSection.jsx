@@ -3,18 +3,17 @@ import { alpha, useTheme } from "@mui/material/styles";
 import { MONO_FONT } from "../theme.js";
 import { wider } from "../lib/layout.js";
 import { CardIcon, ShieldIcon, SparkleIcon } from "./icons.jsx";
-import { PAYMENT_METHODS } from "../data/checkoutSettings.js";
+import { paymentMethodsFromAccounts } from "../data/checkoutSettings.js";
 
 function PaymentBadge({ method, account, surfaceBorderColor }) {
   const logo = account?.logo;
-  const isChinabank = method.id === "chinabank";
 
   return (
     <Box
       aria-label={method.name}
       sx={{
-        width: 168,
-        height: 88,
+        width: 200,
+        height: 108,
         borderRadius: 1.5,
         border: "1px solid",
         borderColor: surfaceBorderColor,
@@ -29,7 +28,8 @@ function PaymentBadge({ method, account, surfaceBorderColor }) {
         justifyContent: "center",
         overflow: "hidden",
         flexShrink: 0,
-        p: logo ? (isChinabank ? 1.25 : 2.5) : 1,
+        px: 2.5,
+        py: 2,
       }}
     >
       {logo ? (
@@ -39,10 +39,12 @@ function PaymentBadge({ method, account, surfaceBorderColor }) {
           alt={method.name}
           sx={{
             width: "auto",
-            height: isChinabank ? 58 : 28,
-            maxWidth: isChinabank ? 148 : 108,
-            borderRadius: 0,
+            height: "auto",
+            // Match BPI’s visual weight — roomy padding, not edge-to-edge.
+            maxWidth: 132,
+            maxHeight: 44,
             objectFit: "contain",
+            objectPosition: "center",
             display: "block",
           }}
         />
@@ -148,9 +150,9 @@ export default function BankDetailsSection({ bankDetails, panelSx, surfaceBorder
 
   const activeAccounts = (bankDetails.accounts ?? []).filter((account) => account.active !== false);
   const accountsById = new Map(activeAccounts.map((account) => [account.id, account]));
-  const activeIds = new Set(activeAccounts.map((account) => account.id));
-  const banks = PAYMENT_METHODS.filter((method) => method.type === "bank" && activeIds.has(method.id));
-  const ewallets = PAYMENT_METHODS.filter((method) => method.type === "ewallet" && activeIds.has(method.id));
+  const methods = paymentMethodsFromAccounts(activeAccounts);
+  const banks = methods.filter((method) => method.type === "bank");
+  const ewallets = methods.filter((method) => method.type === "ewallet");
 
   return (
     <Box id="payment-options" sx={{ ...panelSx, overflow: "hidden", py: { xs: 3, md: 4 }, px: { xs: 2.5, md: 4 } }}>

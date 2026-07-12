@@ -23,7 +23,7 @@ export default function DesignPreviewPage() {
       <AdminPageHeader
         eyebrow="Appearance"
         title="Design preview"
-        subtitle="Theme, color mode, navigation, listing filters, and pre-order UI. Settings on the left — live preview on the right."
+        subtitle="Theme, color mode, navigation, listing filters, and pre-order UI. Edit on the left — preview updates on the right. Save at the bottom of the settings to publish."
       />
 
       <Grid container spacing={2} alignItems="stretch">

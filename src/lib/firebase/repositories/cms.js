@@ -23,9 +23,8 @@ export function subscribeCmsContent(onData, onError) {
 export async function saveCmsContent(content) {
   const db = getFirestoreDb();
   if (!db) throw new Error("Firestore is not configured.");
-  await setDoc(
-    cmsContentRef(db),
-    { ...content, updatedAt: serverTimestamp() },
-    { merge: true },
-  );
+  // Full document write (no merge) so nested maps/arrays like bankDetails.accounts
+  // replace cleanly and cannot leave stale sibling fields from a partial draft.
+  const { updatedAt: _ignore, ...payload } = content || {};
+  await setDoc(cmsContentRef(db), { ...payload, updatedAt: serverTimestamp() });
 }

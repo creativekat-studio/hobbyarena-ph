@@ -32,7 +32,6 @@ import { getCustomerProfile, useCustomers } from "../lib/customersStore.jsx";
 import { useOrders, getOrdersForEmail } from "../lib/ordersStore.jsx";
 import { useWishlist } from "../lib/wishlistStore.jsx";
 import { useCart } from "../lib/cartStore.jsx";
-import { ACCOUNT } from "../data/mockData.js";
 import { CustomerOrderCard } from "../components/CustomerOrderCard.jsx";
 import { setAuthSurface } from "../auth/authSurface.js";
 import { sortOrdersByOrderNo } from "../lib/orderIds.js";
@@ -411,8 +410,8 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
   );
   const clientTier = useMemo(() => resolveClientTier(fulfilledSpend, tiers), [fulfilledSpend, tiers]);
   const tierProgress = useMemo(() => getNextTierProgress(fulfilledSpend, tiers), [fulfilledSpend, tiers]);
-  const displayName = user?.displayName || ACCOUNT.name;
-  const email = user?.email || ACCOUNT.email;
+  const displayName = user?.displayName || "Collector";
+  const email = user?.email || "";
   const profileLoading = authLoading && !user;
 
   return (

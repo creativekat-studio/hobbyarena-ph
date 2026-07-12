@@ -30,7 +30,6 @@ import { useOrders } from "../lib/ordersStore.jsx";
 import { useInventory } from "../lib/inventoryStore.jsx";
 import { useStockHolds } from "../lib/stockHoldStore.jsx";
 import {
-  BANK_ACCOUNTS,
   PROCESSING_HOURS,
   SHIPPING_DISCLAIMER,
   STORE_PICKUP_INFO,
@@ -495,7 +494,7 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
   const theme = useTheme();
   const { content } = useCms();
   const banks = useMemo(
-    () => (content.bankDetails?.accounts ?? BANK_ACCOUNTS).filter((bank) => bank.active !== false),
+    () => (content.bankDetails?.accounts ?? []).filter((bank) => bank.active !== false),
     [content.bankDetails?.accounts],
   );
   const [selectedBankId, setSelectedBankId] = useState(banks[0]?.id ?? "");

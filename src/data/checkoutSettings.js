@@ -1,6 +1,4 @@
-/** Checkout settings — banks & e-wallets from client-provided details. */
-
-import { PAYMENT_QR } from "./mediaAssets.js";
+/** Checkout settings — shipping/fulfillment. Bank accounts live in CMS (Firestore). */
 
 export const SHIPPING = {
   metroManila: 150,
@@ -25,79 +23,39 @@ export function fulfillmentLabel(fulfillment) {
   return fulfillment;
 }
 
-export const BANK_ACCOUNTS = [
-  {
-    id: "bdo",
-    type: "bank",
-    label: "BDO",
-    accountName: "Ralph Jeffrey Lim",
-    accountNumber: "0028-6036-3935",
-    qrImage: PAYMENT_QR.bdo,
-    note: "Use your order ID as payment reference.",
-    active: true,
-  },
-  {
-    id: "bpi",
-    type: "bank",
-    label: "BPI",
-    accountName: "Ralph Jeffrey Lim",
-    accountNumber: "3509-0105-27",
-    qrImage: PAYMENT_QR.bpi,
-    note: "Use your order ID as payment reference.",
-    active: true,
-  },
-  {
-    id: "unionbank",
-    type: "bank",
-    label: "UnionBank",
-    accountName: "Hobby Arena Marketing Corporation",
-    accountNumber: "Pending",
-    qrImage: "",
-    note: "Account details coming soon.",
-    active: false,
-  },
-  {
-    id: "chinabank",
-    type: "bank",
-    label: "Chinabank",
-    accountName: "Ralph Jeffrey Penaflor Lim",
-    accountNumber: "1509-0000-2663",
-    qrImage: "",
-    note: "Use your order ID as payment reference.",
-    active: true,
-  },
-  {
-    id: "gcash",
-    type: "ewallet",
-    label: "GCash",
-    accountName: "Ralph Jeffrey Lim",
-    accountNumber: "0917-793-0238",
-    qrImage: PAYMENT_QR.gcash,
-    note: "Send exact amount. Screenshot required at checkout.",
-    active: true,
-  },
-  {
-    id: "maya",
-    type: "ewallet",
-    label: "Maya",
-    accountName: "Ralph Jeffrey Lim",
-    accountNumber: "0917-793-0238",
-    qrImage: PAYMENT_QR.maya,
-    note: "Send exact amount. Screenshot required at checkout.",
-    active: true,
-  },
-];
-
 export function calcShipping() {
   return 0;
 }
 
-/** Accepted payment methods for checkout display. */
-export const PAYMENT_METHODS = [
-  { id: "bpi", name: "BPI", type: "bank", accent: "#C8102E" },
-  { id: "bdo", name: "BDO", type: "bank", accent: "#003DA5" },
-  { id: "unionbank", name: "UnionBank", type: "bank", accent: "#F7941D" },
-  { id: "chinabank", name: "Chinabank", type: "bank", accent: "#C41230" },
-  { id: "gcash", name: "GCash", type: "ewallet", accent: "#007DFE" },
-  { id: "maya", name: "Maya", type: "ewallet", accent: "#00D632" },
-];
+/** Accent colors for payment method display when an account id matches. */
+export const PAYMENT_METHOD_ACCENTS = {
+  bpi: { name: "BPI", type: "bank", accent: "#C8102E" },
+  bdo: { name: "BDO", type: "bank", accent: "#003DA5" },
+  chinabank: { name: "Chinabank", type: "bank", accent: "#C41230" },
+  gcash: { name: "GCash", type: "ewallet", accent: "#007DFE" },
+  maya: { name: "Maya", type: "ewallet", accent: "#00D632" },
+};
+
+/** @deprecated Prefer CMS bankDetails.accounts — kept empty so callers never seed mock banks. */
+export const BANK_ACCOUNTS = [];
+
+/** Display list built from CMS account ids + known accents. */
+export function paymentMethodsFromAccounts(accounts = []) {
+  return (accounts || [])
+    .filter((account) => account && account.active !== false)
+    .map((account) => {
+      const known = PAYMENT_METHOD_ACCENTS[account.id] || {};
+      return {
+        id: account.id,
+        name: account.label || known.name || account.id,
+        type: account.type || known.type || "bank",
+        accent: known.accent || "#2563EB",
+      };
+    });
+}
+
+/** @deprecated Use paymentMethodsFromAccounts(cmsAccounts). */
+export const PAYMENT_METHODS = Object.entries(PAYMENT_METHOD_ACCENTS).map(([id, meta]) => ({
+  id,
+  ...meta,
+}));

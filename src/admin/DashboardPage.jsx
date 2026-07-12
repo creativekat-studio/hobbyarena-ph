@@ -4,6 +4,7 @@ import {
   Button,
   Chip,
   Grid,
+  Popover,
   Stack,
   Table,
   TableBody,
@@ -11,6 +12,8 @@ import {
   TableHead,
   TableRow,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
@@ -36,14 +39,37 @@ import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
 import { computeDashboardAnalytics } from "../lib/dashboardAnalytics.js";
 import { STATUS_COLOR as ORDER_STATUS_COLOR, orderStatusLabel } from "../data/orderWorkflow.js";
 import { useOrders } from "../lib/ordersStore.jsx";
+
 const PERIOD_PRESETS = [
   { key: "1D", label: "1D" },
   { key: "1W", label: "1W" },
   { key: "1M", label: "1M" },
   { key: "3M", label: "3M" },
   { key: "1Y", label: "1Y" },
-  { key: "custom", label: "Custom" },
 ];
+
+const PERIOD_TOGGLE_SX = {
+  px: 1.5,
+  fontFamily: MONO_FONT,
+  fontSize: "0.68rem",
+  letterSpacing: 0.4,
+  textTransform: "uppercase",
+  fontWeight: 700,
+  "&.Mui-selected": {
+    bgcolor: "primary.main",
+    color: "primary.contrastText",
+    borderColor: "primary.main",
+    "&:hover": {
+      bgcolor: "primary.main",
+      color: "primary.contrastText",
+      filter: "brightness(1.05)",
+    },
+  },
+  "&.Mui-selected.Mui-disabled": {
+    bgcolor: "primary.main",
+    color: "primary.contrastText",
+  },
+};
 
 function defaultCustomRange() {
   const end = new Date();
@@ -267,6 +293,8 @@ export default function DashboardPage() {
 
   const [period, setPeriod] = useState("1M");
   const [customRange, setCustomRange] = useState(defaultCustomRange);
+  const [customAnchor, setCustomAnchor] = useState(null);
+  const customOpen = Boolean(customAnchor);
 
   const periodQuery = useMemo(() => {
     if (period === "custom") {
@@ -318,6 +346,21 @@ export default function DashboardPage() {
     if (next === "custom" && (!customRange.from || !customRange.to)) {
       setCustomRange(defaultCustomRange());
     }
+    if (next !== "custom") {
+      setCustomAnchor(null);
+    }
+  }
+
+  function openCustomPopover(event) {
+    if (!customRange.from || !customRange.to) {
+      setCustomRange(defaultCustomRange());
+    }
+    setPeriod("custom");
+    setCustomAnchor(event.currentTarget);
+  }
+
+  function closeCustomPopover() {
+    setCustomAnchor(null);
   }
 
   return (
@@ -327,49 +370,101 @@ export default function DashboardPage() {
         title="Dashboard"
         subtitle="Live sales from your order history."
         action={(
-          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap alignItems="center">
-            {PERIOD_PRESETS.map(({ key, label }) => (
-              <Chip
-                key={key}
-                label={label}
-                onClick={() => selectPeriod(key)}
-                color={period === key ? "primary" : "default"}
-                variant={period === key ? "filled" : "outlined"}
-                sx={{ fontWeight: 700, fontFamily: MONO_FONT, height: 32 }}
-              />
-            ))}
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={period === "custom" ? null : period}
+              onChange={(_, next) => { if (next) selectPeriod(next); }}
+              sx={{ flexWrap: "wrap" }}
+            >
+              {PERIOD_PRESETS.map(({ key, label }) => (
+                <ToggleButton key={key} value={key} sx={PERIOD_TOGGLE_SX}>
+                  {label}
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+
+            <Button
+              size="small"
+              variant={period === "custom" ? "contained" : "outlined"}
+              color={period === "custom" ? "primary" : "inherit"}
+              onClick={openCustomPopover}
+              aria-haspopup="dialog"
+              aria-expanded={customOpen}
+              sx={{
+                fontFamily: MONO_FONT,
+                fontSize: "0.68rem",
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+                fontWeight: 700,
+                minHeight: 32,
+                px: 1.5,
+                ...(period !== "custom" ? { borderColor: surfaceBorderColor } : {}),
+              }}
+            >
+              Custom
+            </Button>
+
+            <Popover
+              open={customOpen}
+              anchorEl={customAnchor}
+              onClose={closeCustomPopover}
+              anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+              transformOrigin={{ vertical: "top", horizontal: "right" }}
+              slotProps={{
+                paper: {
+                  sx: {
+                    mt: 1,
+                    p: 2,
+                    minWidth: 280,
+                    border: "1px solid",
+                    borderColor: surfaceBorderColor,
+                    ...panelSx,
+                  },
+                },
+              }}
+            >
+              <Stack spacing={1.75}>
+                <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", color: "text.secondary" }}>
+                  Custom dates
+                </Typography>
+                <TextField
+                  label="From"
+                  type="date"
+                  size="small"
+                  fullWidth
+                  value={customRange.from}
+                  onChange={(e) => setCustomRange((prev) => ({ ...prev, from: e.target.value }))}
+                  InputLabelProps={{ shrink: true }}
+                />
+                <TextField
+                  label="To"
+                  type="date"
+                  size="small"
+                  fullWidth
+                  value={customRange.to}
+                  onChange={(e) => setCustomRange((prev) => ({ ...prev, to: e.target.value }))}
+                  InputLabelProps={{ shrink: true }}
+                  inputProps={{ min: customRange.from }}
+                />
+                <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", lineHeight: 1.4 }}>
+                  Comparing to the same length immediately before your start date.
+                </Typography>
+                <Button
+                  size="small"
+                  variant="contained"
+                  color="primary"
+                  onClick={closeCustomPopover}
+                  sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase", fontSize: "0.68rem", alignSelf: "flex-end" }}
+                >
+                  Done
+                </Button>
+              </Stack>
+            </Popover>
           </Stack>
         )}
       />
-
-      {period === "custom" ? (
-        <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "stretch", sm: "flex-end" }}>
-            <TextField
-              label="From"
-              type="date"
-              size="small"
-              value={customRange.from}
-              onChange={(e) => setCustomRange((prev) => ({ ...prev, from: e.target.value }))}
-              InputLabelProps={{ shrink: true }}
-              sx={{ minWidth: { sm: 160 } }}
-            />
-            <TextField
-              label="To"
-              type="date"
-              size="small"
-              value={customRange.to}
-              onChange={(e) => setCustomRange((prev) => ({ ...prev, to: e.target.value }))}
-              InputLabelProps={{ shrink: true }}
-              inputProps={{ min: customRange.from }}
-              sx={{ minWidth: { sm: 160 } }}
-            />
-            <Typography sx={{ color: "text.secondary", fontSize: "0.82rem", pb: { sm: 1 } }}>
-              Comparing to the same length immediately before your start date.
-            </Typography>
-          </Stack>
-        </Box>
-      ) : null}
 
       <KpiStrip
         panelSx={panelSx}

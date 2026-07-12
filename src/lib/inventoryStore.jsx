@@ -1,56 +1,42 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { ALL_PRODUCTS } from "../data/mockData.js";
 import { productImage } from "../data/mediaAssets.js";
 import { DEFAULT_DEPOSIT_PERCENT } from "./preorder.js";
-import { seedInventory } from "./inventorySeed.js";
 import { useFirebaseData } from "./firebase/config.js";
 import { useAdminFirestoreWrite } from "./firebase/adminWriteAccess.js";
 import { subscribeProducts, upsertProduct, upsertProducts } from "./firebase/repositories/products.js";
 
 /**
- * Inventory store — stock levels, storefront publish state, and custom products.
- *
- * MOCK: persists to localStorage. When Firebase is wired, replace with a
- * `products` / `inventory` Firestore collection; keep this hook API stable.
+ * Inventory store — stock levels, storefront publish state, and products.
+ * Source of truth is Firestore when enabled; localStorage is an offline cache only.
  */
 
 const STORAGE_KEY = "hobbyarena:inventory";
+export const MAX_FEATURED_PRODUCTS = 4;
+
+function isDeletedRow(row) {
+  return Boolean(row?.deletedAt || row?.deleted);
+}
+
+function countFeatured(rows) {
+  return rows.filter((row) => !isDeletedRow(row) && row.featured).length;
+}
 
 function rowToProduct(row) {
-  const catalog = ALL_PRODUCTS.find((product) => product.id === row.id);
-  if (catalog) {
-    const isPreorder = row.type === "Pre-order" || catalog.tag === "Pre-order";
-    return {
-      ...catalog,
-      stock: row.stock,
-      image: row.image ?? catalog.image ?? productImage(row.id),
-      rating: typeof row.rating === "number" ? row.rating : catalog.rating,
-      reviews: typeof row.reviews === "number" ? row.reviews : catalog.reviews,
-      category: row.category ?? catalog.category ?? "tcg",
-      descriptionSections: row.descriptionSections ?? catalog.descriptionSections,
-      ...(isPreorder
-        ? {
-            preorderEndsAt: row.preorderEndsAt ?? catalog.preorderEndsAt ?? null,
-            depositPercent:
-              typeof row.depositPercent === "number"
-                ? row.depositPercent
-                : catalog.depositPercent ?? DEFAULT_DEPOSIT_PERCENT,
-          }
-        : {}),
-    };
-  }
-  const isPreorder = row.type === "Pre-order";
+  const isPreorder = row.type === "Pre-order" || row.tag === "Pre-order";
   return {
     id: row.id,
     name: row.name,
     line: row.line,
     price: row.price,
     stock: row.stock,
-    rating: row.rating ?? 4.5,
-    reviews: row.reviews ?? 0,
+    rating: typeof row.rating === "number" ? row.rating : 4.5,
+    reviews: typeof row.reviews === "number" ? row.reviews : 0,
     accent: row.accent ?? "#2563EB",
-    tag: isPreorder ? "Pre-order" : "Sealed",
-    image: row.image ?? null,
+    tag: isPreorder ? "Pre-order" : (row.tag || "Sealed"),
+    image: row.image ?? productImage(row.id) ?? null,
+    category: row.category ?? "tcg",
+    featured: Boolean(row.featured),
+    published: Boolean(row.published),
     descriptionSections: row.descriptionSections ?? [
       {
         title: "Product details",
@@ -60,61 +46,30 @@ function rowToProduct(row) {
     ...(isPreorder
       ? {
           preorderEndsAt: row.preorderEndsAt ?? null,
-          depositPercent: typeof row.depositPercent === "number" ? row.depositPercent : DEFAULT_DEPOSIT_PERCENT,
+          depositPercent:
+            typeof row.depositPercent === "number" ? row.depositPercent : DEFAULT_DEPOSIT_PERCENT,
         }
       : {}),
   };
 }
 
 function loadInventory() {
-  if (typeof window === "undefined") return seedInventory();
+  if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return seedInventory();
+    if (!raw) return [];
     const stored = JSON.parse(raw);
-    if (!Array.isArray(stored)) return seedInventory();
-
-    const seed = seedInventory();
-    const seedIds = new Set(seed.map((row) => row.id));
-    const byId = new Map(stored.map((row) => [row.id, row]));
-
-    const merged = seed.map((row) => {
-      const saved = byId.get(row.id);
-      if (!saved) return row;
-      return {
-        ...row,
-        name: saved.name ?? row.name,
-        line: saved.line ?? row.line,
-        type: saved.type ?? row.type,
-        price: typeof saved.price === "number" ? saved.price : row.price,
-        cost: typeof saved.cost === "number" ? saved.cost : row.cost,
-        stock: typeof saved.stock === "number" ? saved.stock : row.stock,
-        reorderAt: typeof saved.reorderAt === "number" ? saved.reorderAt : row.reorderAt,
-        rating: typeof saved.rating === "number" ? saved.rating : row.rating,
-        reviews: typeof saved.reviews === "number" ? saved.reviews : row.reviews,
-        published: typeof saved.published === "boolean" ? saved.published : row.published,
-        image: saved.image ?? row.image,
-        preorderEndsAt: saved.preorderEndsAt ?? row.preorderEndsAt ?? null,
-        depositPercent:
-          typeof saved.depositPercent === "number" ? saved.depositPercent : row.depositPercent,
-        category: saved.category ?? row.category ?? "tcg",
-        descriptionSections: saved.descriptionSections ?? row.descriptionSections,
-      };
-    });
-
-    const custom = stored
-      .filter((row) => !seedIds.has(row.id))
-      .map((row) => ({
-        reorderAt: 3,
-        custom: true,
-        published: Boolean(row.published),
-        image: row.image ?? null,
-        ...row,
-      }));
-
-    return [...merged, ...custom];
+    if (!Array.isArray(stored)) return [];
+    return stored.map((row) => ({
+      reorderAt: 3,
+      published: Boolean(row.published),
+      featured: Boolean(row.featured),
+      deletedAt: row.deletedAt ?? null,
+      image: row.image ?? null,
+      ...row,
+    }));
   } catch {
-    return seedInventory();
+    return [];
   }
 }
 
@@ -195,11 +150,90 @@ export function InventoryProvider({ children }) {
     });
   }, [persistRow]);
 
+  const setFeatured = useCallback((id, featured) => {
+    setItems((prev) => {
+      const current = prev.find((row) => row.id === id);
+      if (!current) return prev;
+      if (featured && current.stock <= 0) return prev;
+      if (featured && !current.featured && countFeatured(prev) >= MAX_FEATURED_PRODUCTS) {
+        return prev;
+      }
+      const next = prev.map((row) => (row.id === id ? { ...row, featured: Boolean(featured) } : row));
+      persistRow(next.find((row) => row.id === id));
+      return next;
+    });
+  }, [persistRow]);
+
+  const setFeaturedMany = useCallback((ids, featured) => {
+    const idSet = new Set(ids);
+    setItems((prev) => {
+      let remaining = MAX_FEATURED_PRODUCTS - countFeatured(prev.filter((row) => !idSet.has(row.id)));
+      const next = prev.map((row) => {
+        if (!idSet.has(row.id)) return row;
+        if (!featured) return { ...row, featured: false };
+        if (row.featured) return row;
+        if (row.stock <= 0 || remaining <= 0) return row;
+        remaining -= 1;
+        return { ...row, featured: true };
+      });
+      persistRows(next.filter((row) => idSet.has(row.id)));
+      return next;
+    });
+  }, [persistRows]);
+
+  const toggleFeatured = useCallback((id) => {
+    setItems((prev) => {
+      const current = prev.find((row) => row.id === id);
+      if (!current || isDeletedRow(current)) return prev;
+      const turningOn = !current.featured;
+      if (turningOn && current.stock <= 0) return prev;
+      if (turningOn && countFeatured(prev) >= MAX_FEATURED_PRODUCTS) {
+        return prev;
+      }
+      const next = prev.map((row) => (row.id === id ? { ...row, featured: turningOn } : row));
+      persistRow(next.find((row) => row.id === id));
+      return next;
+    });
+  }, [persistRow]);
+
+  const softDeleteMany = useCallback((ids) => {
+    const idSet = new Set(ids);
+    const deletedAt = new Date().toISOString();
+    setItems((prev) => {
+      const next = prev.map((row) => (
+        idSet.has(row.id)
+          ? { ...row, deletedAt, published: false, featured: false }
+          : row
+      ));
+      persistRows(next.filter((row) => idSet.has(row.id)));
+      return next;
+    });
+  }, [persistRows]);
+
+  const restoreMany = useCallback((ids) => {
+    const idSet = new Set(ids);
+    setItems((prev) => {
+      const next = prev.map((row) => (
+        idSet.has(row.id)
+          ? { ...row, deletedAt: null, deleted: false }
+          : row
+      ));
+      persistRows(next.filter((row) => idSet.has(row.id)));
+      return next;
+    });
+  }, [persistRows]);
+
   const setStock = useCallback((id, stock) => {
     setItems((prev) => {
-      const next = prev.map((row) =>
-        row.id === id ? { ...row, stock: Math.max(0, stock) } : row,
-      );
+      const next = prev.map((row) => {
+        if (row.id !== id) return row;
+        const nextStock = Math.max(0, stock);
+        return {
+          ...row,
+          stock: nextStock,
+          featured: nextStock <= 0 ? false : row.featured,
+        };
+      });
       persistRow(next.find((row) => row.id === id));
       return next;
     });
@@ -211,7 +245,12 @@ export function InventoryProvider({ children }) {
       const next = prev.map((row) => {
         const qty = qtyById.get(row.id);
         if (!qty || row.type === "Pre-order") return row;
-        return { ...row, stock: Math.max(0, row.stock - qty) };
+        const nextStock = Math.max(0, row.stock - qty);
+        return {
+          ...row,
+          stock: nextStock,
+          featured: nextStock <= 0 ? false : row.featured,
+        };
       });
       persistRows(next.filter((row) => qtyById.has(row.id)));
       return next;
@@ -259,6 +298,8 @@ export function InventoryProvider({ children }) {
       stock,
       reorderAt,
       published: Boolean(input.published),
+      featured: Boolean(input.featured) && stock > 0,
+      deletedAt: null,
       image: input.image?.trim() || null,
       custom: true,
       accent: line.startsWith("Pokémon") ? "#2563EB" : "#06b6d4",
@@ -309,6 +350,7 @@ export function InventoryProvider({ children }) {
           stock,
           reorderAt,
           published: typeof input.published === "boolean" ? input.published : row.published,
+          featured: (typeof input.featured === "boolean" ? input.featured : Boolean(row.featured)) && stock > 0,
           image: input.image?.trim() || null,
           rating: Math.min(5, Math.max(0, Number(input.rating) ?? row.rating ?? 0)),
           reviews: Math.max(0, Number(input.reviews) ?? row.reviews ?? 0),
@@ -327,21 +369,39 @@ export function InventoryProvider({ children }) {
     return Boolean(updated);
   }, [persistRow]);
 
-  const publishedIds = useMemo(
-    () => new Set(items.filter((row) => row.published).map((row) => row.id)),
+  const activeItems = useMemo(
+    () => items.filter((row) => !isDeletedRow(row)),
     [items],
+  );
+
+  const publishedIds = useMemo(
+    () => new Set(activeItems.filter((row) => row.published).map((row) => row.id)),
+    [activeItems],
   );
 
   const inventoryById = useMemo(
-    () => new Map(items.map((row) => [row.id, row])),
+    () => new Map(activeItems.map((row) => [row.id, row])),
+    [activeItems],
+  );
+
+  const catalogProducts = useMemo(() => activeItems.map(rowToProduct), [activeItems]);
+
+  const publishedCatalog = useMemo(
+    () => activeItems.filter((row) => row.published).map(rowToProduct),
+    [activeItems],
+  );
+
+  const featuredCount = useMemo(
+    () => countFeatured(items),
     [items],
   );
 
-  const catalogProducts = useMemo(() => items.map(rowToProduct), [items]);
-
-  const publishedCatalog = useMemo(
-    () => items.filter((row) => row.published).map(rowToProduct),
-    [items],
+  const featuredCatalog = useMemo(
+    () => activeItems
+      .filter((row) => row.published && row.featured && row.stock > 0)
+      .slice(0, MAX_FEATURED_PRODUCTS)
+      .map(rowToProduct),
+    [activeItems],
   );
 
   const isPublished = useCallback((id) => publishedIds.has(id), [publishedIds]);
@@ -364,20 +424,40 @@ export function InventoryProvider({ children }) {
     [publishedCatalog],
   );
 
+  const getFeaturedByCategory = useCallback(
+    (category) => {
+      if (category === "accessories") return [];
+      if (category === "sealed") return featuredCatalog.filter((product) => product.tag === "Sealed");
+      if (category === "preorder") return featuredCatalog.filter((product) => product.tag === "Pre-order");
+      return featuredCatalog;
+    },
+    [featuredCatalog],
+  );
+
   const value = useMemo(
     () => ({
       items,
+      activeItems,
       publishedIds,
       inventoryById,
       catalogProducts,
       publishedCatalog,
+      featuredCatalog,
+      featuredCount,
+      maxFeatured: MAX_FEATURED_PRODUCTS,
       publishedProducts: publishedCatalog,
       isPublished,
       getProduct,
       getPublishedByCategory,
+      getFeaturedByCategory,
       setPublished,
       setPublishedMany,
       togglePublished,
+      setFeatured,
+      setFeaturedMany,
+      toggleFeatured,
+      softDeleteMany,
+      restoreMany,
       setStock,
       decrementStockForCart,
       restockItems,
@@ -386,16 +466,25 @@ export function InventoryProvider({ children }) {
     }),
     [
       items,
+      activeItems,
       publishedIds,
       inventoryById,
       catalogProducts,
       publishedCatalog,
+      featuredCatalog,
+      featuredCount,
       isPublished,
       getProduct,
       getPublishedByCategory,
+      getFeaturedByCategory,
       setPublished,
       setPublishedMany,
       togglePublished,
+      setFeatured,
+      setFeaturedMany,
+      toggleFeatured,
+      softDeleteMany,
+      restoreMany,
       setStock,
       decrementStockForCart,
       restockItems,

@@ -21,7 +21,6 @@ import { itemNeedsBalanceProof, itemOutstandingBalance } from "../data/orderWork
 import { resolveProofAttachmentUrl } from "../lib/orderProofStorage.js";
 import { compressProofFile } from "../lib/imageCompression.js";
 import { UPLOAD_PROOF_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLimits.js";
-import { BANK_ACCOUNTS } from "../data/checkoutSettings.js";
 import { useCms } from "../lib/cmsContent.jsx";
 import ProofImage from "./ProofImage.jsx";
 import QrCodeTile from "./QrCodeTile.jsx";
@@ -79,7 +78,7 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
   const [success, setSuccess] = useState("");
   const [preview, setPreview] = useState(null);
   const banks = useMemo(
-    () => (content.bankDetails?.accounts ?? BANK_ACCOUNTS).filter((bank) => bank.active !== false),
+    () => (content.bankDetails?.accounts ?? []).filter((bank) => bank.active !== false),
     [content.bankDetails?.accounts],
   );
   const [selectedBankId, setSelectedBankId] = useState(banks[0]?.id ?? "");

@@ -1,27 +1,42 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   Button,
+  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   FormControlLabel,
+  Link,
   MenuItem,
   Stack,
   Switch,
+  Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Tabs,
   TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
+import { useNavigate } from "react-router-dom";
 import ProductDescriptionEditor, { normalizeDescriptionSections, serializeDescriptionSections } from "../components/ProductDescriptionEditor.jsx";
+import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
+import { TrashIcon } from "../components/icons.jsx";
 import { useCatalog } from "../lib/catalogStore.jsx";
 import { useInventory } from "../lib/inventoryStore.jsx";
+import { useOrders } from "../lib/ordersStore.jsx";
 import { useFirebaseData } from "../lib/firebase/config.js";
 import { uploadProductImage } from "../lib/firebase/repositories/uploads.js";
 import { compressProductImageFile } from "../lib/imageCompression.js";
 import { UPLOAD_SIZE_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLimits.js";
+import { orderHistoryForProduct, STATUS_COLOR } from "../data/orderWorkflow.js";
 import { MONO_FONT } from "../theme.js";
 import { DEFAULT_DEPOSIT_PERCENT, fromDatetimeLocalValue, toDatetimeLocalValue } from "../lib/preorder.js";
 
@@ -40,6 +55,7 @@ const EMPTY = {
   reorderAt: "3",
   image: "",
   published: false,
+  featured: false,
   rating: "",
   reviews: "0",
   preorderEndsAt: "",
@@ -123,6 +139,7 @@ function formFromProduct(product) {
     reorderAt: String(product.reorderAt ?? 3),
     image: product.image ?? "",
     published: Boolean(product.published),
+    featured: Boolean(product.featured),
     rating: product.rating != null ? String(product.rating) : "",
     reviews: String(product.reviews ?? 0),
     preorderEndsAt: toDatetimeLocalValue(product.preorderEndsAt),
@@ -139,6 +156,7 @@ function formFromCopy(product) {
     ...base,
     name: copyLabel,
     published: false,
+    featured: false,
     stock: "0",
   };
 }
@@ -151,20 +169,40 @@ export default function AddProductDialog({
   copyMode = false,
   onAdd,
   onUpdate,
+  onDelete,
   surfaceBorderColor,
+  featuredCount = 0,
+  maxFeatured = 4,
+  deleteBlocked = false,
 }) {
   const isEdit = Boolean(product);
+  const navigate = useNavigate();
   const { inventoryById } = useInventory();
+  const { orders } = useOrders();
   const { activeLines, activeCategories } = useCatalog();
   const firebaseEnabled = useFirebaseData();
   const [form, setForm] = useState(EMPTY);
   const [copyFromId, setCopyFromId] = useState("");
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [tab, setTab] = useState(0);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteBlockedOpen, setDeleteBlockedOpen] = useState(false);
   const fileInputRef = useRef(null);
+  const featuredAtLimit = !form.featured && featuredCount >= maxFeatured;
+  const outOfStock = Number(form.stock) <= 0;
+  const featuredDisabled = featuredAtLimit || (outOfStock && !form.featured);
+
+  const orderHistory = useMemo(
+    () => (isEdit && product?.id ? orderHistoryForProduct(orders, product.id) : []),
+    [isEdit, product?.id, orders],
+  );
 
   useEffect(() => {
     if (open) {
+      setTab(0);
+      setDeleteConfirmOpen(false);
+      setDeleteBlockedOpen(false);
       if (isEdit) {
         const source = inventoryById.get(product.id) ?? product;
         setForm(formFromProduct(source));
@@ -230,10 +268,34 @@ export default function AddProductDialog({
     setCopyFromId("");
     setError("");
     setUploading(false);
+    setTab(0);
+    setDeleteConfirmOpen(false);
+    setDeleteBlockedOpen(false);
     onClose();
   }
 
+  function requestDelete() {
+    if (deleteBlocked) {
+      setDeleteBlockedOpen(true);
+      return;
+    }
+    setDeleteConfirmOpen(true);
+  }
+
+  function confirmDelete() {
+    if (!product?.id || !onDelete) return;
+    onDelete(product.id);
+    handleClose();
+  }
+
+  function openOrder(orderId) {
+    handleClose();
+    navigate(`/admin/orders/${encodeURIComponent(orderId)}`);
+  }
+
   function handleSubmit(event) {
+    event.preventDefault();
+    if (tab !== 0) return;
     event.preventDefault();
     if (uploading) {
       setError("Please wait for the image to finish uploading.");
@@ -258,6 +320,7 @@ export default function AddProductDialog({
       reorderAt: Number(form.reorderAt),
       image: form.image,
       published: form.published,
+      featured: form.featured,
       rating: form.rating === "" ? 0 : Number(form.rating),
       reviews: Number(form.reviews),
       descriptionSections: serializeDescriptionSections(form.descriptionSections),
@@ -315,10 +378,90 @@ export default function AddProductDialog({
         },
       }}
     >
-      <DialogTitle sx={{ fontWeight: 800 }}>
+      <DialogTitle sx={{ fontWeight: 800, pb: isEdit ? 1 : 2 }}>
         {isEdit ? "Edit product" : copyMode ? "Add product from copy" : "Add product"}
+        {isEdit ? (
+          <Tabs
+            value={tab}
+            onChange={(_, next) => setTab(next)}
+            variant="scrollable"
+            scrollButtons="auto"
+            sx={{
+              mt: 1.5,
+              borderBottom: "1px solid",
+              borderColor: surfaceBorderColor || "divider",
+            }}
+          >
+            <Tab label="Details" />
+            <Tab label={`Order history${orderHistory.length ? ` (${orderHistory.length})` : ""}`} />
+          </Tabs>
+        ) : null}
       </DialogTitle>
       <DialogContent dividers sx={{ p: { xs: 2, md: 2.5 } }}>
+        {isEdit && tab === 1 ? (
+          <TableContainer sx={{ maxHeight: "min(560px, calc(100vh - 260px))" }}>
+            <Table stickyHeader size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 800 }}>Order</TableCell>
+                  <TableCell sx={{ fontWeight: 800 }}>Customer</TableCell>
+                  <TableCell sx={{ fontWeight: 800 }} align="right">Qty</TableCell>
+                  <TableCell sx={{ fontWeight: 800 }}>Status</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {orderHistory.map((row) => (
+                  <TableRow key={row.orderId} hover sx={{ cursor: "pointer" }} onClick={() => openOrder(row.orderId)}>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}>
+                      <Link
+                        component="button"
+                        type="button"
+                        underline="hover"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openOrder(row.orderId);
+                        }}
+                        sx={{
+                          fontFamily: MONO_FONT,
+                          fontWeight: 700,
+                          fontSize: "0.85rem",
+                          color: "primary.main",
+                          textAlign: "left",
+                        }}
+                      >
+                        {row.orderId}
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <Typography sx={{ fontWeight: 600, fontSize: "0.88rem" }}>{row.customer}</Typography>
+                      {row.email ? (
+                        <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>{row.email}</Typography>
+                      ) : null}
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontFamily: MONO_FONT, fontWeight: 700 }}>
+                      {row.quantity}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={row.statusLabel}
+                        size="small"
+                        color={STATUS_COLOR[row.status] || "default"}
+                        variant={row.fulfilled ? "filled" : "outlined"}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {orderHistory.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} sx={{ textAlign: "center", py: 5, color: "text.secondary" }}>
+                      No orders include this product yet.
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        ) : (
         <Box
           sx={{
             display: "grid",
@@ -565,24 +708,88 @@ export default function AddProductDialog({
             />
           </Box>
         </Box>
+        )}
       </DialogContent>
-      <DialogActions sx={{ px: 3, py: 2, borderTop: "1px solid", borderColor: surfaceBorderColor }}>
-        <FormControlLabel
-          sx={{ mr: "auto" }}
-          control={(
-            <Switch
-              checked={form.published}
-              onChange={(e) => update("published", e.target.checked)}
-              color="primary"
+      <DialogActions sx={{ px: 3, py: 2, borderTop: "1px solid", borderColor: surfaceBorderColor, flexWrap: "wrap", gap: 1 }}>
+        {tab === 0 ? (
+          <Stack direction="row" spacing={2} sx={{ mr: "auto" }} flexWrap="wrap" useFlexGap>
+            <FormControlLabel
+              control={(
+                <Switch
+                  checked={form.published}
+                  onChange={(e) => update("published", e.target.checked)}
+                  color="primary"
+                />
+              )}
+              label={form.published ? "Published on storefront" : "Draft — hidden from shop"}
             />
-          )}
-          label={form.published ? "Published on storefront" : "Draft — hidden from shop"}
-        />
+            <FormControlLabel
+              control={(
+                <Switch
+                  checked={form.featured && !outOfStock}
+                  onChange={(e) => update("featured", e.target.checked)}
+                  color="secondary"
+                  disabled={featuredDisabled}
+                />
+              )}
+              label={
+                outOfStock
+                  ? "Out of stock — can’t feature"
+                  : featuredAtLimit
+                    ? `Featured full (${featuredCount}/${maxFeatured})`
+                    : form.featured
+                      ? `Featured on homepage (${featuredCount}/${maxFeatured})`
+                      : `Feature on homepage (${featuredCount}/${maxFeatured})`
+              }
+            />
+          </Stack>
+        ) : (
+          <Box sx={{ mr: "auto" }} />
+        )}
+        {isEdit && onDelete ? (
+          <Tooltip title={deleteBlocked ? "Unable to delete — existing in-progress order" : "Delete product"}>
+            <span>
+              <Button
+                color="error"
+                variant="outlined"
+                onClick={requestDelete}
+                startIcon={<TrashIcon sx={{ fontSize: 18 }} />}
+                sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
+              >
+                Delete
+              </Button>
+            </span>
+          </Tooltip>
+        ) : null}
         <Button onClick={handleClose} color="inherit">Cancel</Button>
-        <Button type="submit" variant="contained" color="primary" disabled={uploading} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
-          {isEdit ? "Save changes" : "Add product"}
-        </Button>
+        {tab === 0 ? (
+          <Button type="submit" variant="contained" color="primary" disabled={uploading} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
+            {isEdit ? "Save changes" : "Add product"}
+          </Button>
+        ) : null}
       </DialogActions>
+
+      <TypeConfirmDialog
+        open={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={confirmDelete}
+        title="Delete product"
+        description="Soft-delete this product. It will be hidden from the storefront and inventory, but can be restored from the Deleted filter."
+        confirmLabel="Delete"
+        surfaceBorderColor={surfaceBorderColor}
+      />
+
+      <Dialog open={deleteBlockedOpen} onClose={() => setDeleteBlockedOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800 }}>Unable to delete product</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ color: "text.secondary", fontSize: "0.9rem", lineHeight: 1.5 }}>
+            Unable to delete — there is an existing in-progress order for this product.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setDeleteBlockedOpen(false)} variant="contained" color="primary">OK</Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 }

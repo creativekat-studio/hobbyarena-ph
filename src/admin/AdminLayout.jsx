@@ -129,6 +129,10 @@ export default function AdminLayout() {
         <Button fullWidth size="small" variant="outlined" color="inherit" onClick={handleSignOut} sx={{ mt: 1.5, borderColor: surfaceBorderColor }}>
           Sign out
         </Button>
+        <AdminStorefrontButton
+          fullWidth
+          sx={{ mt: 1 }}
+        />
       </Box>
     </Box>
   );
@@ -167,11 +171,13 @@ export default function AdminLayout() {
                 surfaceBorderColor={surfaceBorderColor}
                 notificationBell={<AdminNotificationBell surfaceBorderColor={surfaceBorderColor} />}
                 storefrontButton={(
-                  <Tooltip title="View storefront">
-                    <span>
-                      <AdminStorefrontButton />
-                    </span>
-                  </Tooltip>
+                  <Box sx={{ display: { xs: "inline-flex", md: "none" } }}>
+                    <Tooltip title="View storefront">
+                      <span>
+                        <AdminStorefrontButton />
+                      </span>
+                    </Tooltip>
+                  </Box>
                 )}
                 themeToggle={(
                   <Tooltip title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}>

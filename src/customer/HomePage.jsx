@@ -39,9 +39,6 @@ import {
   TiktokIcon,
 } from "../components/icons.jsx";
 import { getPerkIcon } from "../lib/perkIcons.js";
-import {
-  ALL_PRODUCTS,
-} from "../data/mockData.js";
 
 const shimmer = keyframes`
   0%   { transform: translateX(-120%) rotate(8deg); }
@@ -72,10 +69,6 @@ function resolveProductAccent(product, theme) {
     return theme.palette.primary.main;
   }
   return product.accent || theme.palette.primary.main;
-}
-
-function resolveFeatureDropProduct(drop) {
-  return ALL_PRODUCTS.find((p) => p.id === drop.productId) ?? ALL_PRODUCTS[0];
 }
 
 function scrollToId(id) {
@@ -400,7 +393,10 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
   const theme = useTheme();
   const brand = getBrand(theme);
   const { getProduct } = useInventory();
-  const slides = featureDrops.filter((d) => d.active);
+  const slides = featureDrops
+    .filter((d) => d.active && d.productId)
+    .map((d) => ({ drop: d, product: getProduct(d.productId) }))
+    .filter((entry) => entry.product);
   const [index, setIndex] = useState(0);
   const [tilt, setTilt] = useState({ x: -5, y: 3, hovered: false });
   const [paused, setPaused] = useState(false);
@@ -420,8 +416,8 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
   if (!slides.length) return null;
 
   const current = slides[index % slides.length];
-  const baseProduct = resolveFeatureDropProduct(current);
-  const product = getProduct(baseProduct.id) ?? baseProduct;
+  const product = current.product;
+  const drop = current.drop;
   const isPreorder = product.tag === "Pre-order";
   const accent = resolveProductAccent(product, theme);
   const Glyph = product.line?.startsWith("Pokémon") ? PokeballIcon : CardIcon;
@@ -465,11 +461,11 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
               {isPreorder ? "PRE-ORDER ▸ LIVE" : "DROP ▸ LIVE"}
             </Typography>
           </Stack>
-          <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.7rem", color: "text.secondary" }}>{current.tier || "ULTRA-PREMIUM"}</Typography>
+          <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.7rem", color: "text.secondary" }}>{drop.tier || "ULTRA-PREMIUM"}</Typography>
         </Stack>
 
         <Box
-          key={current.id}
+          key={drop.id}
           sx={{
             position: "relative",
             borderRadius: 1,
@@ -514,19 +510,19 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
             </Box>
           )}
           <Chip
-            label={current.badge || (isPreorder ? "PRE-ORDER" : "FEATURED DROP")}
+            label={drop.badge || (isPreorder ? "PRE-ORDER" : "FEATURED DROP")}
             size="small"
             sx={{
               position: "absolute",
               top: 12,
               left: 12,
               zIndex: 2,
-              bgcolor: current.color ? alpha(current.color, 0.92) : "rgba(0,0,0,0.45)",
-              color: current.color ? "#0B1538" : OFF_WHITE.textBright,
+              bgcolor: drop.color ? alpha(drop.color, 0.92) : "rgba(0,0,0,0.45)",
+              color: drop.color ? "#0B1538" : OFF_WHITE.textBright,
               fontFamily: MONO_FONT,
               letterSpacing: 1,
               backdropFilter: "blur(4px)",
-              border: current.color ? `1px solid ${alpha(current.color, 0.5)}` : "none",
+              border: drop.color ? `1px solid ${alpha(drop.color, 0.5)}` : "none",
             }}
           />
           {isPreorder && product.preorderEndsAt ? (
@@ -547,7 +543,7 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
           ) : null}
         </Box>
 
-        <Stack spacing={1} key={`${current.id}-meta`} sx={{ animation: `${fadeSlide} 480ms ease-out` }}>
+        <Stack spacing={1} key={`${drop.id}-meta`} sx={{ animation: `${fadeSlide} 480ms ease-out` }}>
           <Stack direction="row" alignItems="flex-end" justifyContent="space-between">
             <Box sx={{ minWidth: 0, pr: 1 }}>
               <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.15, fontSize: "1rem" }}>{product.name}</Typography>
@@ -685,10 +681,10 @@ export default function HomePage() {
   const location = useLocation();
   const { content } = useCms();
   const { surfaces, isDarkMode } = useOutletContext();
-  const { getPublishedByCategory } = useInventory();
+  const { getFeaturedByCategory } = useInventory();
   const { panelSx, surfaceBorderColor } = surfaces;
-  const sealedProducts = useMemo(() => getPublishedByCategory("sealed"), [getPublishedByCategory]);
-  const preorderProducts = useMemo(() => getPublishedByCategory("preorder"), [getPublishedByCategory]);
+  const sealedProducts = useMemo(() => getFeaturedByCategory("sealed"), [getFeaturedByCategory]);
+  const preorderProducts = useMemo(() => getFeaturedByCategory("preorder"), [getFeaturedByCategory]);
   const hero = content.hero;
   const hasHeroShowcase = content.featureDrops.some((d) => d.active);
   const sections = content.homepageSections;

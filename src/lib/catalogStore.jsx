@@ -93,9 +93,6 @@ export function CatalogProvider({ children }) {
           pendingSeed.current = null;
           setCatalog(mergeCatalogPayload(remote));
         }
-        queueMicrotask(() => {
-          syncingRemote.current = false;
-        });
       },
       (error) => console.error("[catalog] Firestore sync failed:", error),
     );
@@ -113,7 +110,11 @@ export function CatalogProvider({ children }) {
   }, [firebaseEnabled, adminWrite]);
 
   useEffect(() => {
-    if (syncingRemote.current) return undefined;
+    // Skip the save that would echo a remote hydrate (microtask clear ran too early before).
+    if (syncingRemote.current) {
+      syncingRemote.current = false;
+      return undefined;
+    }
 
     if (!firebaseEnabled) {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...catalog, version: CATALOG_VERSION }));

@@ -13,6 +13,8 @@ import {
   TableHead,
   TableRow,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
@@ -22,7 +24,6 @@ import { avatarStyles } from "../lib/surfaces.js";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import { CardIcon, SearchIcon, SparkleIcon, UserIcon } from "../components/icons.jsx";
-import { CategoryChip } from "../components/ShopFilters.jsx";
 import { useCustomers } from "../lib/customersStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { useClientTiers } from "../lib/clientTiersStore.jsx";
@@ -30,10 +31,19 @@ import { computeFulfilledSpendForEmail, resolveClientTier } from "../lib/clientT
 
 const FILTERS = [
   { id: "all", label: "All" },
-  { id: "marketing", label: "Marketing opt-in" },
+  { id: "marketing", label: "Opt-in" },
   { id: "active", label: "Active" },
   { id: "dormant", label: "Dormant" },
 ];
+
+const FILTER_TOGGLE_SX = {
+  px: 1.5,
+  fontFamily: MONO_FONT,
+  fontSize: "0.68rem",
+  letterSpacing: 0.4,
+  textTransform: "uppercase",
+  fontWeight: 700,
+};
 
 const AUTH_PROVIDER_LABEL = {
   google: "Google",
@@ -184,18 +194,29 @@ export default function CustomersPage() {
         </Grid>
 
         <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
-          <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems={{ xs: "stretch", md: "center" }} justifyContent="space-between">
-            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
+          <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "center" }}>
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={filter}
+              onChange={(_, next) => { if (next) setFilter(next); }}
+              sx={{ flexWrap: "wrap" }}
+            >
               {FILTERS.map((item) => (
-                <CategoryChip key={item.id} label={item.label} selected={filter === item.id} onClick={() => setFilter(item.id)} />
+                <ToggleButton key={item.id} value={item.id} sx={FILTER_TOGGLE_SX}>
+                  {item.label}
+                </ToggleButton>
               ))}
-            </Stack>
+            </ToggleButtonGroup>
+
+            <Box sx={{ flex: 1 }} />
+
             <TextField
               size="small"
               placeholder="Search name or email…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              sx={{ minWidth: { xs: "100%", md: 260 } }}
+              sx={{ minWidth: { xs: "100%", sm: 260 } }}
               InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
             />
           </Stack>

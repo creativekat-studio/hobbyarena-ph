@@ -6,11 +6,17 @@ import {
   Chip,
   CircularProgress,
   Collapse,
+  FormControl,
   Grid,
   IconButton,
   InputAdornment,
+  InputLabel,
+  MenuItem,
+  Select,
   Stack,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -20,7 +26,6 @@ import { MONO_FONT, getStatAccents } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import { BoxIcon, CardIcon, SearchIcon, SparkleIcon, TruckIcon } from "../components/icons.jsx";
-import { CategoryChip } from "../components/ShopFilters.jsx";
 import {
   ORDER_QUEUES,
   PAYMENT_COLOR,
@@ -39,6 +44,22 @@ import { useOrders } from "../lib/ordersStore.jsx";
 import { sortOrdersByOrderNo } from "../lib/orderIds.js";
 import { exportOrdersToExcel } from "../lib/ordersExcelExport.js";
 import AddOrderDialog from "./AddOrderDialog.jsx";
+
+const QUEUE_FILTERS = ORDER_QUEUES.filter((q) => q.id !== "preorder" && q.id !== "instock");
+const KIND_FILTERS = [
+  { id: "all", label: "All kinds" },
+  { id: "preorder", label: "Pre-orders" },
+  { id: "instock", label: "In-stock" },
+];
+
+const FILTER_TOGGLE_SX = {
+  px: 1.5,
+  fontFamily: MONO_FONT,
+  fontSize: "0.68rem",
+  letterSpacing: 0.4,
+  textTransform: "uppercase",
+  fontWeight: 700,
+};
 
 const ORDER_SUMMARY_GRID = "28px minmax(140px, 1.1fr) minmax(120px, 1fr) minmax(120px, 1.2fr) minmax(120px, 0.9fr) auto";
 const LINEITEM_GRID = "minmax(160px, 1.25fr) minmax(100px, 0.85fr) minmax(72px, 0.6fr) minmax(88px, 0.65fr) minmax(110px, 0.85fr) minmax(110px, 0.85fr)";
@@ -330,7 +351,8 @@ export default function OrdersPage() {
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
   const { orders, ordersError, ordersReady } = useOrders();
-  const [filter, setFilter] = useState("all");
+  const [queueFilter, setQueueFilter] = useState("all");
+  const [kindFilter, setKindFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [expandedOrderId, setExpandedOrderId] = useState(null);
@@ -347,7 +369,7 @@ export default function OrdersPage() {
     exportOrdersToExcel(rows);
   }
 
-  const activeQueue = ORDER_QUEUES.find((q) => q.id === filter) ?? ORDER_QUEUES[0];
+  const activeQueue = QUEUE_FILTERS.find((q) => q.id === queueFilter) ?? QUEUE_FILTERS[0];
 
   const rows = useMemo(() => {
     return sortOrdersByOrderNo(orders.filter((o) => {
@@ -357,10 +379,12 @@ export default function OrdersPage() {
         o.customer.toLowerCase().includes(query.toLowerCase()) ||
         o.items.toLowerCase().includes(query.toLowerCase());
       if (!matchesQuery) return false;
-      if (filter === "all") return true;
+      if (kindFilter === "preorder" && o.type !== "Pre-order") return false;
+      if (kindFilter === "instock" && o.type !== "In-stock") return false;
+      if (queueFilter === "all") return true;
       return activeQueue.match?.(o) ?? false;
     }));
-  }, [orders, filter, query, activeQueue]);
+  }, [orders, queueFilter, kindFilter, query, activeQueue]);
 
   const stats = useMemo(() => {
     const review = orders.filter((o) => migratePaymentStatus(o.payment) === "Pending Verification").length;
@@ -424,24 +448,43 @@ export default function OrdersPage() {
         </Grid>
 
         <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
-          <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems={{ xs: "stretch", md: "center" }} justifyContent="space-between">
-            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1, pt: 1.25, pb: 0.5 }}>
-              {ORDER_QUEUES.map((item) => (
-                <CategoryChip
-                  key={item.id}
-                  label={item.label}
-                  selected={filter === item.id}
-                  surfaceBorderColor={surfaceBorderColor}
-                  onClick={() => setFilter(item.id)}
-                />
+          <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "center" }}>
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={queueFilter}
+              onChange={(_, next) => { if (next) setQueueFilter(next); }}
+              sx={{ flexWrap: "wrap" }}
+            >
+              {QUEUE_FILTERS.map((item) => (
+                <ToggleButton key={item.id} value={item.id} sx={FILTER_TOGGLE_SX}>
+                  {item.label}
+                </ToggleButton>
               ))}
-            </Stack>
+            </ToggleButtonGroup>
+
+            <FormControl size="small" sx={{ minWidth: { xs: "100%", md: 150 } }}>
+              <InputLabel id="orders-kind-filter">Kind</InputLabel>
+              <Select
+                labelId="orders-kind-filter"
+                label="Kind"
+                value={kindFilter}
+                onChange={(event) => setKindFilter(event.target.value)}
+              >
+                {KIND_FILTERS.map((item) => (
+                  <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <Box sx={{ flex: 1 }} />
+
             <TextField
               size="small"
               placeholder="Search order, customer, item…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              sx={{ minWidth: { xs: "100%", md: 280 } }}
+              sx={{ minWidth: { xs: "100%", sm: 260 } }}
               InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
             />
           </Stack>

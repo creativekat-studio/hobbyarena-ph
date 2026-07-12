@@ -51,11 +51,17 @@ function drawCompressedDataUrl(img, options, quality = options.quality) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
 
-  // Fill white so JPEG doesn't turn transparent PNG areas black.
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, width, height);
+  const preserveTransparency = Boolean(options.preserveTransparency);
+  if (!preserveTransparency) {
+    // Fill white so JPEG doesn't turn transparent PNG areas black.
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+  }
   ctx.drawImage(img, 0, 0, width, height);
 
+  if (preserveTransparency) {
+    return canvas.toDataURL("image/png");
+  }
   return canvas.toDataURL("image/jpeg", quality);
 }
 
@@ -70,15 +76,17 @@ async function compressDataUrl(dataUrl, options) {
     let compressed = drawCompressedDataUrl(img, options, quality);
     if (!compressed) return dataUrl;
 
-    // Iteratively lower quality if still over the size budget.
-    while (
-      options.maxBytes
-      && estimateDataUrlBytes(compressed) > options.maxBytes
-      && quality > 0.45
-    ) {
-      quality = Math.max(0.45, quality - 0.1);
-      compressed = drawCompressedDataUrl(img, options, quality);
-      if (!compressed) break;
+    // JPEG quality loop only — PNG resize is a single pass.
+    if (!options.preserveTransparency) {
+      while (
+        options.maxBytes
+        && estimateDataUrlBytes(compressed) > options.maxBytes
+        && quality > 0.45
+      ) {
+        quality = Math.max(0.45, quality - 0.1);
+        compressed = drawCompressedDataUrl(img, options, quality);
+        if (!compressed) break;
+      }
     }
 
     if (!compressed) return dataUrl;
@@ -127,12 +135,19 @@ export async function compressProofFile(file) {
   return normalizeProofDataUrl(dataUrl);
 }
 
-export async function compressProductImageFile(file) {
+export async function compressProductImageFile(file, options = {}) {
   if (!file) throw new Error("No file selected.");
   assertUploadFileSize(file);
   if (typeof window === "undefined" || !file?.type?.startsWith("image/")) return file;
   if (file.type === "image/gif" || file.type === "image/svg+xml") return file;
   if (file.size < PRODUCT_DEFAULTS.minBytesToCompress) return file;
+
+  const preserveTransparency = Boolean(options.preserveTransparency);
+  const compressOptions = {
+    ...PRODUCT_DEFAULTS,
+    ...options,
+    preserveTransparency,
+  };
 
   const dataUrl = await new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -141,11 +156,14 @@ export async function compressProductImageFile(file) {
     reader.readAsDataURL(file);
   });
 
-  const compressed = await compressDataUrl(dataUrl, PRODUCT_DEFAULTS);
+  const compressed = await compressDataUrl(dataUrl, compressOptions);
   if (compressed === dataUrl) return file;
 
   const response = await fetch(compressed);
   const blob = await response.blob();
   const baseName = String(file.name || "image").replace(/\.[^.]+$/, "") || "image";
+  if (preserveTransparency) {
+    return new File([blob], `${baseName}.png`, { type: "image/png" });
+  }
   return new File([blob], `${baseName}.jpg`, { type: "image/jpeg" });
 }

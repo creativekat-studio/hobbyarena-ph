@@ -1,26 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { ALL_PRODUCTS, BRAND, TESTIMONIALS } from "../data/mockData.js";
-import { BANK_ACCOUNTS } from "../data/checkoutSettings.js";
+import { BRAND } from "../data/brand.js";
 import { useFirebaseData } from "./firebase/config.js";
 import { useAdminFirestoreWrite } from "./firebase/adminWriteAccess.js";
 import { saveCmsContent, subscribeCmsContent } from "./firebase/repositories/cms.js";
 
 /**
- * Lightweight CMS content store.
- *
- * MOCK: persists editable storefront content to localStorage so admin edits
- * survive reloads and show up on the customer site. When Firebase is wired,
- * replace the localStorage read/write with a Firestore document (e.g.
- * `cms/site`) and keep this hook's API the same.
+ * CMS content store — drafts locally, persists to Firestore only on Save.
+ * localStorage is a read cache for faster first paint, never auto-seeded to Firestore.
  */
 
 const STORAGE_KEY = "hobbyarena:cms";
-
-const DEFAULT_TESTIMONIALS = TESTIMONIALS.map((item, index) => ({
-  id: `t${index + 1}`,
-  ...item,
-  active: true,
-}));
 
 const DEFAULT_CONTENT = {
   hero: {
@@ -43,53 +32,14 @@ const DEFAULT_CONTENT = {
       anchorId: "featured-preorders",
     },
   },
-  banners: [
-    {
-      id: "b1",
-      title: "Featured Products",
-      subtitle: "Sealed Pokémon & One Piece — restocked weekly.",
-      ctaLabel: "Shop products",
-      link: "featured-products",
-      color: "#2563EB",
-      active: true,
-    },
-    {
-      id: "b2",
-      title: "Featured Pre-Orders",
-      subtitle: "Lock in upcoming sets with a small deposit.",
-      ctaLabel: "View pre-orders",
-      link: "featured-preorders",
-      color: "#C9A227",
-      active: true,
-    },
-  ],
-  featureDrops: [
-    {
-      id: "fd1",
-      productId: "pkm-ascended-etb",
-      badge: "FEATURED DROP",
-      tier: "SEALED DROP",
-      active: true,
-    },
-    {
-      id: "fd2",
-      productId: "op-treasure-chest-2",
-      badge: "PRE-ORDER",
-      tier: "ONE PIECE",
-      active: true,
-    },
-  ],
-  announcements: [
-    { id: "a1", text: "SEALED DROPS — Pokémon Mega Evolution now landing", active: true },
-    { id: "a2", text: "FREE shipping on orders over ₱5,000", active: true },
-    { id: "a3", text: "One Piece OP-15 booster boxes in stock", active: true },
-    { id: "a4", text: "Holiday hours: closed Dec 25", active: false },
-  ],
+  banners: [],
+  featureDrops: [],
+  announcements: [],
   testimonials: {
     enabled: false,
     overline: "Loved by collectors",
     title: "The thrill of the pull.",
-    items: DEFAULT_TESTIMONIALS,
+    items: [],
   },
   perks: {
     enabled: true,
@@ -140,7 +90,7 @@ const DEFAULT_CONTENT = {
     showBirSeal: true,
     birSealNote: "Official BIR QR Code Seal — coming soon.",
     birQrImage: "",
-    accounts: BANK_ACCOUNTS.map((account) => ({ ...account })),
+    accounts: [],
   },
   social: {
     instagram: "https://www.instagram.com/hobbyarena.ph/",
@@ -156,7 +106,7 @@ const DEFAULT_CONTENT = {
     address: "1139 Mahatma Gandhi St., Paco Manila, Metro Manila, Philippines",
     googleMapsUrl: "",
     hours: BRAND.hours,
-    handle: "@hobbyarena.ph",
+    handle: BRAND.handle,
   },
   storefront: {
     landingMode: false,
@@ -170,14 +120,19 @@ const DEFAULT_CONTENT = {
 
 function mergeTestimonials(saved) {
   if (!saved) return DEFAULT_CONTENT.testimonials;
-  const items = (saved.items ?? DEFAULT_TESTIMONIALS).map((item) => {
-    const fallback = DEFAULT_TESTIMONIALS.find((t) => t.id === item.id);
-    return { ...fallback, ...item };
-  });
+  const items = Array.isArray(saved.items)
+    ? saved.items.map((item, index) => ({
+        id: item.id || `t_${index + 1}`,
+        quote: item.quote || "",
+        name: item.name || "",
+        role: item.role || "",
+        active: item.active !== false,
+      }))
+    : [];
   return {
     ...DEFAULT_CONTENT.testimonials,
     ...saved,
-    items: items.length ? items : DEFAULT_TESTIMONIALS,
+    items,
   };
 }
 
@@ -196,28 +151,37 @@ function mergePerks(saved) {
 }
 
 function mergeBankAccount(account, patch) {
-  if (!patch) return { logo: "", ...account };
+  if (!patch) return { logo: "", qrImage: "", ...account };
   return {
     logo: "",
+    qrImage: "",
     ...account,
     ...patch,
     type: patch.type || account.type || "bank",
   };
 }
 
+/** Prefer the saved account list as-is so admin customizations are never replaced by defaults. */
 function mergeBankDetails(saved) {
   if (!saved) return DEFAULT_CONTENT.bankDetails;
-  const savedAccounts = saved.accounts ?? [];
-  const byId = new Map(savedAccounts.map((a) => [a.id, a]));
-  const defaults = DEFAULT_CONTENT.bankDetails.accounts;
-  const accounts = defaults.map((account) => mergeBankAccount(account, byId.get(account.id)));
-  const custom = savedAccounts
-    .filter((a) => !defaults.some((d) => d.id === a.id))
-    .map((a) => mergeBankAccount({ id: a.id, label: "", accountName: "", accountNumber: "", note: "", qrImage: "", active: true }, a));
+  const savedAccounts = Array.isArray(saved.accounts) ? saved.accounts : [];
   return {
     ...DEFAULT_CONTENT.bankDetails,
     ...saved,
-    accounts: [...accounts, ...custom],
+    accounts: savedAccounts.map((account) => mergeBankAccount(
+      {
+        id: account.id,
+        label: "",
+        accountName: "",
+        accountNumber: "",
+        note: "",
+        qrImage: "",
+        logo: "",
+        active: true,
+        type: "bank",
+      },
+      account,
+    )),
   };
 }
 
@@ -255,17 +219,18 @@ function mergeCmsPayload(parsed) {
     productReviews: { ...DEFAULT_CONTENT.productReviews, ...parsed.productReviews },
     bankDetails: mergeBankDetails(parsed.bankDetails),
     storefront: mergeStorefront(parsed.storefront),
-    banners: (parsed.banners || DEFAULT_CONTENT.banners).map((banner) => {
-      const fallback = DEFAULT_CONTENT.banners.find((b) => b.id === banner.id);
-      const { image: _image, ...rest } = banner;
-      return { ...fallback, ...rest };
-    }),
-    featureDrops: parsed.featureDrops || DEFAULT_CONTENT.featureDrops,
-    announcements: parsed.announcements || DEFAULT_CONTENT.announcements,
+    banners: Array.isArray(parsed.banners)
+      ? parsed.banners.map((banner) => {
+          const { image: _image, ...rest } = banner;
+          return { active: true, color: "#2563EB", link: "featured-products", ...rest };
+        })
+      : [],
+    featureDrops: Array.isArray(parsed.featureDrops) ? parsed.featureDrops : [],
+    announcements: Array.isArray(parsed.announcements) ? parsed.announcements : [],
   };
 }
 
-function loadContent() {
+function loadCachedContent() {
   if (typeof window === "undefined") return DEFAULT_CONTENT;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -285,14 +250,8 @@ function cacheContentLocally(payload) {
   }
 }
 
-/** Skip remote snapshots briefly after local edits so typing is not clobbered. */
-const CONTENT_EDIT_GRACE_MS = 5000;
-
-function persistCmsContent(payload, firebaseEnabled, adminWrite) {
-  cacheContentLocally(payload);
-  if (!firebaseEnabled) return Promise.resolve();
-  if (!adminWrite.ready || !adminWrite.allowed) return Promise.resolve();
-  return saveCmsContent(payload);
+function cloneContent(payload) {
+  return JSON.parse(JSON.stringify(payload));
 }
 
 const CmsContext = createContext(null);
@@ -300,49 +259,47 @@ const CmsContext = createContext(null);
 export function CmsProvider({ children }) {
   const firebaseEnabled = useFirebaseData();
   const adminWrite = useAdminFirestoreWrite();
-  const [content, setContent] = useState(() => loadContent());
+  const [content, setContent] = useState(() => loadCachedContent());
   const [hydrated, setHydrated] = useState(!firebaseEnabled);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [saveOk, setSaveOk] = useState(false);
   const syncingRemote = useRef(false);
-  const saveTimer = useRef(null);
-  const pendingSeed = useRef(null);
-  const lastContentEditAt = useRef(0);
-  const firebaseEnabledRef = useRef(firebaseEnabled);
-  const adminWriteRef = useRef(adminWrite);
+  const contentRef = useRef(content);
+  const dirtyRef = useRef(false);
+  const baselineRef = useRef(cloneContent(content));
 
-  firebaseEnabledRef.current = firebaseEnabled;
-  adminWriteRef.current = adminWrite;
+  contentRef.current = content;
+  dirtyRef.current = dirty;
 
-  const touchContent = useCallback(() => {
-    lastContentEditAt.current = Date.now();
-  }, []);
-
-  const flushContent = useCallback((payload) => {
-    persistCmsContent(payload, firebaseEnabledRef.current, adminWriteRef.current).catch((error) => {
-      console.error("[cms] Failed to save content:", error);
-    });
+  const markDirty = useCallback(() => {
+    setDirty(true);
+    dirtyRef.current = true;
+    setSaveOk(false);
+    setSaveError("");
   }, []);
 
   useEffect(() => {
-    if (!firebaseEnabled) return undefined;
+    if (!firebaseEnabled) {
+      setHydrated(true);
+      return undefined;
+    }
 
     return subscribeCmsContent(
       (remote) => {
         syncingRemote.current = true;
-        if (!remote) {
-          const local = loadContent();
-          setContent(local);
-          pendingSeed.current = local;
-        } else {
-          pendingSeed.current = null;
-          setContent((prev) => {
-            if (Date.now() - lastContentEditAt.current < CONTENT_EDIT_GRACE_MS) {
-              return prev;
-            }
+        if (remote) {
+          // Never clobber in-progress admin edits with a remote snapshot.
+          if (!dirtyRef.current) {
             const next = mergeCmsPayload(remote);
+            setContent(next);
+            baselineRef.current = cloneContent(next);
             cacheContentLocally(next);
-            return next;
-          });
+          }
         }
+        // If remote is empty, keep the cached draft — do NOT auto-seed Firestore
+        // (that previously overwrote live bank details with stale local defaults).
         setHydrated(true);
         queueMicrotask(() => {
           syncingRemote.current = false;
@@ -352,63 +309,66 @@ export function CmsProvider({ children }) {
     );
   }, [firebaseEnabled]);
 
-  useEffect(() => {
-    if (!firebaseEnabled || !adminWrite.ready || !adminWrite.allowed) return undefined;
-    if (!pendingSeed.current) return undefined;
-
-    const seed = pendingSeed.current;
-    pendingSeed.current = null;
-    saveCmsContent(seed).catch((error) => {
-      console.error("[cms] Failed to seed Firestore:", error);
-    });
-  }, [firebaseEnabled, adminWrite]);
-
-  useEffect(() => {
-    if (syncingRemote.current) return undefined;
-
-    if (!firebaseEnabled) {
-      cacheContentLocally(content);
-      return undefined;
+  const saveContent = useCallback(async () => {
+    if (firebaseEnabled && (!adminWrite.ready || !adminWrite.allowed)) {
+      setSaveError("Sign in as admin to save CMS changes.");
+      return { ok: false };
     }
 
-    if (!adminWrite.ready || !adminWrite.allowed) return undefined;
+    const payload = cloneContent(contentRef.current);
+    setSaving(true);
+    setSaveError("");
+    setSaveOk(false);
+    try {
+      cacheContentLocally(payload);
+      if (firebaseEnabled) {
+        await saveCmsContent(payload);
+      }
+      baselineRef.current = cloneContent(payload);
+      setDirty(false);
+      dirtyRef.current = false;
+      setSaveOk(true);
+      return { ok: true };
+    } catch (error) {
+      console.error("[cms] Failed to save content:", error);
+      setSaveError(error?.message || "Could not save CMS content.");
+      return { ok: false, error };
+    } finally {
+      setSaving(false);
+    }
+  }, [firebaseEnabled, adminWrite.ready, adminWrite.allowed]);
 
-    clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      saveCmsContent(content).catch((error) => {
-        console.error("[cms] Failed to save content:", error);
-      });
-    }, 400);
-
-    return () => clearTimeout(saveTimer.current);
-  }, [content, firebaseEnabled, adminWrite]);
+  const discardChanges = useCallback(() => {
+    const cached = cloneContent(baselineRef.current);
+    setContent(cached);
+    setDirty(false);
+    dirtyRef.current = false;
+    setSaveOk(false);
+    setSaveError("");
+  }, []);
 
   const api = useMemo(() => {
     const setHero = (hero) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({ ...c, hero: { ...c.hero, ...hero } }));
     };
     const setSocial = (social) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({ ...c, social: { ...c.social, ...social } }));
     };
     const setContact = (contact) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({ ...c, contact: { ...c.contact, ...contact } }));
     };
     const setStorefront = (patch) => {
-      touchContent();
-      setContent((c) => {
-        const next = {
-          ...c,
-          storefront: mergeStorefront({ ...c.storefront, ...patch }),
-        };
-        flushContent(next);
-        return next;
-      });
+      markDirty();
+      setContent((c) => ({
+        ...c,
+        storefront: mergeStorefront({ ...c.storefront, ...patch }),
+      }));
     };
     const setHomepageSection = (key, patch) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({
         ...c,
         homepageSections: {
@@ -418,15 +378,15 @@ export function CmsProvider({ children }) {
       }));
     };
     const setProductReviews = (patch) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({ ...c, productReviews: { ...c.productReviews, ...patch } }));
     };
     const setTestimonials = (patch) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({ ...c, testimonials: { ...c.testimonials, ...patch } }));
     };
     const addTestimonial = (item) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({
         ...c,
         testimonials: {
@@ -436,7 +396,7 @@ export function CmsProvider({ children }) {
       }));
     };
     const updateTestimonial = (id, patch) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({
         ...c,
         testimonials: {
@@ -446,7 +406,7 @@ export function CmsProvider({ children }) {
       }));
     };
     const removeTestimonial = (id) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({
         ...c,
         testimonials: {
@@ -456,11 +416,11 @@ export function CmsProvider({ children }) {
       }));
     };
     const setPerks = (patch) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({ ...c, perks: { ...c.perks, ...patch } }));
     };
     const addPerk = (item) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({
         ...c,
         perks: {
@@ -481,7 +441,7 @@ export function CmsProvider({ children }) {
       }));
     };
     const updatePerk = (id, patch) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({
         ...c,
         perks: {
@@ -491,7 +451,7 @@ export function CmsProvider({ children }) {
       }));
     };
     const removePerk = (id) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({
         ...c,
         perks: {
@@ -501,11 +461,11 @@ export function CmsProvider({ children }) {
       }));
     };
     const setBankDetails = (patch) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({ ...c, bankDetails: { ...c.bankDetails, ...patch } }));
     };
     const updateBankAccount = (id, patch) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({
         ...c,
         bankDetails: {
@@ -515,7 +475,7 @@ export function CmsProvider({ children }) {
       }));
     };
     const addBankAccount = (account) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({
         ...c,
         bankDetails: {
@@ -528,7 +488,7 @@ export function CmsProvider({ children }) {
       }));
     };
     const removeBankAccount = (id) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({
         ...c,
         bankDetails: {
@@ -539,30 +499,30 @@ export function CmsProvider({ children }) {
     };
 
     const addBanner = (banner) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({
         ...c,
         banners: [...c.banners, { id: `b_${Date.now()}`, active: true, color: "#2563EB", link: "featured-products", ...banner }],
       }));
     };
     const updateBanner = (id, patch) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({ ...c, banners: c.banners.map((b) => (b.id === id ? { ...b, ...patch } : b)) }));
     };
     const removeBanner = (id) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({ ...c, banners: c.banners.filter((b) => b.id !== id) }));
     };
 
     const addFeatureDrop = (drop) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({
         ...c,
         featureDrops: [
           ...c.featureDrops,
           {
             id: `fd_${Date.now()}`,
-            productId: ALL_PRODUCTS[0]?.id ?? "",
+            productId: "",
             badge: "FEATURED DROP",
             tier: "ULTRA-PREMIUM",
             color: "",
@@ -573,33 +533,33 @@ export function CmsProvider({ children }) {
       }));
     };
     const updateFeatureDrop = (id, patch) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({
         ...c,
         featureDrops: c.featureDrops.map((d) => (d.id === id ? { ...d, ...patch } : d)),
       }));
     };
     const removeFeatureDrop = (id) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({ ...c, featureDrops: c.featureDrops.filter((d) => d.id !== id) }));
     };
 
     const addAnnouncement = (text) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({ ...c, announcements: [...c.announcements, { id: `a_${Date.now()}`, text, active: true }] }));
     };
     const updateAnnouncement = (id, patch) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({ ...c, announcements: c.announcements.map((a) => (a.id === id ? { ...a, ...patch } : a)) }));
     };
     const removeAnnouncement = (id) => {
-      touchContent();
+      markDirty();
       setContent((c) => ({ ...c, announcements: c.announcements.filter((a) => a.id !== id) }));
     };
 
     const reset = () => {
-      touchContent();
-      setContent(DEFAULT_CONTENT);
+      markDirty();
+      setContent(cloneContent(DEFAULT_CONTENT));
     };
 
     return {
@@ -631,10 +591,23 @@ export function CmsProvider({ children }) {
       updateAnnouncement,
       removeAnnouncement,
       reset,
+      saveContent,
+      discardChanges,
     };
-  }, [flushContent, touchContent]);
+  }, [markDirty, saveContent, discardChanges]);
 
-  const value = useMemo(() => ({ content, hydrated, ...api }), [content, hydrated, api]);
+  const value = useMemo(
+    () => ({
+      content,
+      hydrated,
+      dirty,
+      saving,
+      saveError,
+      saveOk,
+      ...api,
+    }),
+    [content, hydrated, dirty, saving, saveError, saveOk, api],
+  );
 
   return <CmsContext.Provider value={value}>{children}</CmsContext.Provider>;
 }

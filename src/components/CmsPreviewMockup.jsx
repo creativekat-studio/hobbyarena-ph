@@ -3,7 +3,7 @@ import { alpha, useTheme } from "@mui/material/styles";
 import { MONO_FONT } from "../theme.js";
 import { BrowserChrome, WireSection } from "./WireframePreview.jsx";
 import { useCms } from "../lib/cmsContent.jsx";
-import { ALL_PRODUCTS } from "../data/mockData.js";
+import { useInventory } from "../lib/inventoryStore.jsx";
 import {
   MockAnnouncementBar,
   MockFeatureDropCard,
@@ -112,6 +112,7 @@ function MockContactLayout({ contact, panelSx, isDarkMode, surfaceBorderColor, a
 export default function CmsPreviewMockup({ panelSx, surfaceBorderColor, activeTab = 0 }) {
   const theme = useTheme();
   const { content } = useCms();
+  const { getProduct } = useInventory();
   const { hero, homepageSections, featureDrops, banners, announcements, testimonials, bankDetails, contact, social, storefront } = content;
   const { panelSx: cardPanelSx, isDarkMode } = useStorefrontMockSurfaces();
 
@@ -121,7 +122,7 @@ export default function CmsPreviewMockup({ panelSx, surfaceBorderColor, activeTa
   const activeAnnouncement = announcements.find((item) => item.active)?.text ?? "No active announcements";
   const activeBanners = banners.filter((banner) => banner.active);
   const activeDrop = featureDrops.find((drop) => drop.active) ?? featureDrops[0];
-  const dropProduct = activeDrop ? ALL_PRODUCTS.find((p) => p.id === activeDrop.productId) : null;
+  const dropProduct = activeDrop?.productId ? getProduct(activeDrop.productId) : null;
   const storefrontBg = theme.palette.background.default;
   const previewUrl = activeTab === 6 ? "hobbyarena.ph/contact" : activeTab === 0 ? "hobbyarena.ph" : "hobbyarena.ph/";
   const isContactView = activeTab === 6;

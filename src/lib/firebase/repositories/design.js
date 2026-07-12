@@ -23,9 +23,15 @@ export function subscribeDesignSettings(onData, onError) {
 export async function saveDesignSettings(settings) {
   const db = getFirestoreDb();
   if (!db) throw new Error("Firestore is not configured.");
-  await setDoc(
-    designRef(db),
-    { ...settings, updatedAt: serverTimestamp() },
-    { merge: true },
-  );
+  // Write the known design fields together so a Save never clobbers siblings via partial updates.
+  const payload = {
+    proposalId: settings.proposalId,
+    filterLayoutId: settings.filterLayoutId,
+    navLayoutId: settings.navLayoutId,
+    countdownVariant: settings.countdownVariant,
+    pricingVariant: settings.pricingVariant,
+    defaultColorMode: settings.defaultColorMode,
+    updatedAt: serverTimestamp(),
+  };
+  await setDoc(designRef(db), payload, { merge: true });
 }

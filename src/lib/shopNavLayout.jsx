@@ -1,35 +1,11 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useDesignSettings } from "./designSettings.jsx";
 
-const STORAGE_KEY = "hobbyarena:shop-nav-layout";
-
-const ShopNavLayoutContext = createContext(null);
-
+/** Pass-through — state lives in DesignSettingsProvider. */
 export function ShopNavLayoutProvider({ children }) {
-  const [layoutId, setLayoutId] = useState(() => {
-    if (typeof window === "undefined") return "crateDrop";
-    return window.localStorage.getItem(STORAGE_KEY) || "dock";
-  });
-
-  useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, layoutId);
-  }, [layoutId]);
-
-  const value = useMemo(
-    () => ({ layoutId, setLayoutId }),
-    [layoutId],
-  );
-
-  return (
-    <ShopNavLayoutContext.Provider value={value}>
-      {children}
-    </ShopNavLayoutContext.Provider>
-  );
+  return children;
 }
 
 export function useShopNavLayout() {
-  const context = useContext(ShopNavLayoutContext);
-  if (!context) {
-    throw new Error("useShopNavLayout must be used within ShopNavLayoutProvider");
-  }
-  return context;
+  const { navLayoutId, setNavLayoutId } = useDesignSettings();
+  return { layoutId: navLayoutId, setLayoutId: setNavLayoutId };
 }

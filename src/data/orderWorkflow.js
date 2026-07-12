@@ -549,6 +549,73 @@ export function getOrderLineItems(order) {
   return synthesizeLineItemsFromOrder(order);
 }
 
+/** Line items that are finished / cancelled — safe to delete the linked product. */
+const CLOSED_LINE_STATUSES = new Set(["Fulfilled", "Refunded", "Unpaid"]);
+
+/** True while a line item still needs fulfillment work (not fulfilled, refunded, or unpaid). */
+export function isLineItemInProgress(item) {
+  return !CLOSED_LINE_STATUSES.has(migrateOrderStatus(item?.status));
+}
+
+/**
+ * Order numbers that still reference `productId` on an in-progress line item.
+ * Cart/admin orders store the product id as the line item `id`.
+ */
+export function openOrderIdsForProduct(orders, productId) {
+  if (!productId || !Array.isArray(orders)) return [];
+  const hits = [];
+  for (const order of orders) {
+    const hasOpen = getOrderLineItems(order).some(
+      (item) => item.id === productId && isLineItemInProgress(item),
+    );
+    if (hasOpen) hits.push(order.id);
+  }
+  return hits;
+}
+
+/** Map of productId → open order ids for quick inventory delete checks. */
+export function openOrdersByProductId(orders) {
+  const map = new Map();
+  if (!Array.isArray(orders)) return map;
+  for (const order of orders) {
+    for (const item of getOrderLineItems(order)) {
+      if (!isLineItemInProgress(item) || !item.id) continue;
+      const list = map.get(item.id);
+      if (list) {
+        if (!list.includes(order.id)) list.push(order.id);
+      } else {
+        map.set(item.id, [order.id]);
+      }
+    }
+  }
+  return map;
+}
+
+/**
+ * Orders that include a product (line item id === productId), newest first.
+ * Used by the product edit “Order history” tab.
+ */
+export function orderHistoryForProduct(orders, productId) {
+  if (!productId || !Array.isArray(orders)) return [];
+  const rows = [];
+  for (const order of orders) {
+    const item = getOrderLineItems(order).find((line) => line.id === productId);
+    if (!item) continue;
+    const status = migrateOrderStatus(item.status);
+    rows.push({
+      orderId: order.id,
+      customer: order.customer || "—",
+      email: order.email || "",
+      status,
+      statusLabel: orderStatusLabel(status),
+      quantity: item.quantity ?? 1,
+      date: order.date || order.createdAt || order.placedAt || "",
+      fulfilled: status === "Fulfilled",
+    });
+  }
+  return rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+
 export function syncOrderRollup(lineItems) {
   if (!lineItems.length) return {};
   const payments = lineItems.map((item) => item.payment);

@@ -454,6 +454,7 @@ function InstockTermsTab({ panelSx, surfaceBorderColor, terms, setTerms }) {
         value={terms.generic}
         onSave={(lines) => setTerms("generic", lines)}
         surfaceBorderColor={surfaceBorderColor}
+        mode="lines"
       />
     </Box>
   );
