@@ -107,17 +107,20 @@ function PublishControl({ row, togglePublished }) {
   );
 }
 
-function FeaturedCheckbox({ row, featuredCount, toggleFeatured }) {
+function FeaturedCheckbox({ row, featuredCountSealed, featuredCountPreorder, toggleFeatured }) {
   const deleted = isDeletedRow(row);
   const outOfStock = row.stock <= 0;
-  const atLimit = !row.featured && featuredCount >= MAX_FEATURED_PRODUCTS;
+  const isPreorder = row.type === "Pre-order";
+  const kindCount = isPreorder ? featuredCountPreorder : featuredCountSealed;
+  const kindLabel = isPreorder ? "pre-order" : "in-stock";
+  const atLimit = !row.featured && kindCount >= MAX_FEATURED_PRODUCTS;
   const disabled = deleted || atLimit || (outOfStock && !row.featured);
   const title = deleted
     ? "Deleted products can’t be featured"
     : outOfStock && !row.featured
       ? "Out of stock items can’t be featured"
       : atLimit
-        ? `Homepage featured limit is ${MAX_FEATURED_PRODUCTS}`
+        ? `Homepage ${kindLabel} featured limit is ${MAX_FEATURED_PRODUCTS}`
         : row.featured
           ? "Remove from homepage featured"
           : "Feature on homepage";
@@ -143,7 +146,8 @@ function InventoryTableView({
   rows,
   togglePublished,
   toggleFeatured,
-  featuredCount,
+  featuredCountSealed,
+  featuredCountPreorder,
   isDarkMode,
   selectedIds,
   onToggleSelect,
@@ -176,11 +180,11 @@ function InventoryTableView({
             <TableCell sx={{ fontWeight: 800 }} align="right">Stock</TableCell>
             <TableCell sx={{ fontWeight: 800 }} align="center">Live</TableCell>
             <TableCell sx={{ fontWeight: 800 }} align="center">
-              <Tooltip title={`Up to ${MAX_FEATURED_PRODUCTS} products on the homepage`}>
+              <Tooltip title={`Up to ${MAX_FEATURED_PRODUCTS} in-stock and ${MAX_FEATURED_PRODUCTS} pre-order on the homepage`}>
                 <Box component="span" sx={{ display: "inline-flex", flexDirection: "column", alignItems: "center", lineHeight: 1.2 }}>
                   <Box component="span">Featured</Box>
                   <Box component="span" sx={{ fontWeight: 600, fontSize: "0.65rem", color: "text.secondary", fontFamily: MONO_FONT }}>
-                    {featuredCount}/{MAX_FEATURED_PRODUCTS}
+                    {featuredCountSealed}/{MAX_FEATURED_PRODUCTS} · {featuredCountPreorder}/{MAX_FEATURED_PRODUCTS}
                   </Box>
                 </Box>
               </Tooltip>
@@ -228,7 +232,12 @@ function InventoryTableView({
                   <PublishControl row={row} togglePublished={togglePublished} />
                 </TableCell>
                 <TableCell align="center">
-                  <FeaturedCheckbox row={row} featuredCount={featuredCount} toggleFeatured={toggleFeatured} />
+                  <FeaturedCheckbox
+                    row={row}
+                    featuredCountSealed={featuredCountSealed}
+                    featuredCountPreorder={featuredCountPreorder}
+                    toggleFeatured={toggleFeatured}
+                  />
                 </TableCell>
                 <TableCell align="right">
                   {deleted ? (
@@ -282,7 +291,8 @@ function InventoryCardView({
   panelSx,
   togglePublished,
   toggleFeatured,
-  featuredCount,
+  featuredCountSealed,
+  featuredCountPreorder,
   isDarkMode,
   selectedIds,
   onToggleSelect,
@@ -409,7 +419,12 @@ function InventoryCardView({
                 sx={{ position: "absolute", bottom: 8, right: 8 }}
                 onClick={(event) => event.stopPropagation()}
               >
-                <FeaturedCheckbox row={row} featuredCount={featuredCount} toggleFeatured={toggleFeatured} />
+                <FeaturedCheckbox
+                  row={row}
+                  featuredCountSealed={featuredCountSealed}
+                  featuredCountPreorder={featuredCountPreorder}
+                  toggleFeatured={toggleFeatured}
+                />
                 <PublishControl row={row} togglePublished={togglePublished} />
               </Stack>
             </Box>
@@ -429,7 +444,8 @@ export default function InventoryPage() {
     togglePublished,
     setPublishedMany,
     toggleFeatured,
-    featuredCount,
+    featuredCountSealed,
+    featuredCountPreorder,
     softDeleteMany,
     restoreMany,
     addProduct,
@@ -640,7 +656,7 @@ export default function InventoryPage() {
       <AdminPageHeader
         eyebrow="Inventory"
         title="Products & stock"
-        subtitle={`Manage SKUs and storefront visibility. Featured homepage slots: ${featuredCount}/${MAX_FEATURED_PRODUCTS}.`}
+        subtitle={`Manage SKUs and storefront visibility. Featured slots: in-stock ${featuredCountSealed}/${MAX_FEATURED_PRODUCTS}, pre-order ${featuredCountPreorder}/${MAX_FEATURED_PRODUCTS}.`}
         action={(
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             <Button
@@ -797,7 +813,8 @@ export default function InventoryPage() {
             rows={rows}
             togglePublished={togglePublished}
             toggleFeatured={toggleFeatured}
-            featuredCount={featuredCount}
+            featuredCountSealed={featuredCountSealed}
+            featuredCountPreorder={featuredCountPreorder}
             isDarkMode={isDarkMode}
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
@@ -814,7 +831,8 @@ export default function InventoryPage() {
             panelSx={panelSx}
             togglePublished={togglePublished}
             toggleFeatured={toggleFeatured}
-            featuredCount={featuredCount}
+            featuredCountSealed={featuredCountSealed}
+            featuredCountPreorder={featuredCountPreorder}
             isDarkMode={isDarkMode}
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
@@ -836,7 +854,8 @@ export default function InventoryPage() {
         onDelete={(id) => softDeleteMany([id])}
         deleteBlocked={Boolean(editingProduct && (openOrdersByProduct.get(editingProduct.id)?.length ?? 0) > 0)}
         surfaceBorderColor={surfaceBorderColor}
-        featuredCount={featuredCount}
+        featuredCountSealed={featuredCountSealed}
+        featuredCountPreorder={featuredCountPreorder}
         maxFeatured={MAX_FEATURED_PRODUCTS}
       />
 

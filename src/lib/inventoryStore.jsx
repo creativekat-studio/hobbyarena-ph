@@ -11,14 +11,26 @@ import { subscribeProducts, upsertProduct, upsertProducts } from "./firebase/rep
  */
 
 const STORAGE_KEY = "hobbyarena:inventory";
+/** Max featured products per storefront section (in-stock and pre-order each). */
 export const MAX_FEATURED_PRODUCTS = 4;
 
 function isDeletedRow(row) {
   return Boolean(row?.deletedAt || row?.deleted);
 }
 
-function countFeatured(rows) {
-  return rows.filter((row) => !isDeletedRow(row) && row.featured).length;
+function isPreorderRow(row) {
+  return row?.type === "Pre-order" || row?.tag === "Pre-order";
+}
+
+function countFeaturedOfKind(rows, preorder) {
+  return rows.filter(
+    (row) => !isDeletedRow(row) && row.featured && isPreorderRow(row) === preorder,
+  ).length;
+}
+
+function featuredSlotsRemaining(rows, row) {
+  const preorder = isPreorderRow(row);
+  return MAX_FEATURED_PRODUCTS - countFeaturedOfKind(rows, preorder);
 }
 
 function rowToProduct(row) {
@@ -155,7 +167,7 @@ export function InventoryProvider({ children }) {
       const current = prev.find((row) => row.id === id);
       if (!current) return prev;
       if (featured && current.stock <= 0) return prev;
-      if (featured && !current.featured && countFeatured(prev) >= MAX_FEATURED_PRODUCTS) {
+      if (featured && !current.featured && featuredSlotsRemaining(prev, current) <= 0) {
         return prev;
       }
       const next = prev.map((row) => (row.id === id ? { ...row, featured: Boolean(featured) } : row));
@@ -167,13 +179,27 @@ export function InventoryProvider({ children }) {
   const setFeaturedMany = useCallback((ids, featured) => {
     const idSet = new Set(ids);
     setItems((prev) => {
-      let remaining = MAX_FEATURED_PRODUCTS - countFeatured(prev.filter((row) => !idSet.has(row.id)));
+      let remainingSealed = MAX_FEATURED_PRODUCTS - countFeaturedOfKind(
+        prev.filter((row) => !idSet.has(row.id)),
+        false,
+      );
+      let remainingPreorder = MAX_FEATURED_PRODUCTS - countFeaturedOfKind(
+        prev.filter((row) => !idSet.has(row.id)),
+        true,
+      );
       const next = prev.map((row) => {
         if (!idSet.has(row.id)) return row;
         if (!featured) return { ...row, featured: false };
         if (row.featured) return row;
-        if (row.stock <= 0 || remaining <= 0) return row;
-        remaining -= 1;
+        if (row.stock <= 0) return row;
+        const preorder = isPreorderRow(row);
+        if (preorder) {
+          if (remainingPreorder <= 0) return row;
+          remainingPreorder -= 1;
+        } else {
+          if (remainingSealed <= 0) return row;
+          remainingSealed -= 1;
+        }
         return { ...row, featured: true };
       });
       persistRows(next.filter((row) => idSet.has(row.id)));
@@ -187,7 +213,7 @@ export function InventoryProvider({ children }) {
       if (!current || isDeletedRow(current)) return prev;
       const turningOn = !current.featured;
       if (turningOn && current.stock <= 0) return prev;
-      if (turningOn && countFeatured(prev) >= MAX_FEATURED_PRODUCTS) {
+      if (turningOn && featuredSlotsRemaining(prev, current) <= 0) {
         return prev;
       }
       const next = prev.map((row) => (row.id === id ? { ...row, featured: turningOn } : row));
@@ -287,41 +313,43 @@ export function InventoryProvider({ children }) {
     const prefix = line.startsWith("Pokémon") ? "PKM" : "OP";
     const id = `custom-${Date.now()}`;
 
-    const row = {
-      id,
-      sku: `HA-${prefix}-${String(2000 + items.length)}`,
-      name,
-      line,
-      type,
-      price,
-      cost,
-      stock,
-      reorderAt,
-      published: Boolean(input.published),
-      featured: Boolean(input.featured) && stock > 0,
-      deletedAt: null,
-      image: input.image?.trim() || null,
-      custom: true,
-      accent: line.startsWith("Pokémon") ? "#2563EB" : "#06b6d4",
-      rating: Math.min(5, Math.max(0, Number(input.rating) || 0)),
-      reviews: Math.max(0, Number(input.reviews) || 0),
-      category: type === "Pre-order" ? undefined : (input.category || "tcg"),
-      descriptionSections: input.descriptionSections ?? undefined,
-      ...(type === "Pre-order"
-        ? {
-            preorderEndsAt: input.preorderEndsAt || null,
-            depositPercent: Math.min(99, Math.max(1, Number(input.depositPercent) || DEFAULT_DEPOSIT_PERCENT)),
-          }
-        : {}),
-    };
-
+    let created = null;
     setItems((prev) => {
-      const next = [...prev, row];
+      const wantFeatured = Boolean(input.featured) && stock > 0;
+      const featured = wantFeatured && featuredSlotsRemaining(prev, { type }) > 0;
+      const row = {
+        id,
+        sku: `HA-${prefix}-${String(2000 + prev.length)}`,
+        name,
+        line,
+        type,
+        price,
+        cost,
+        stock,
+        reorderAt,
+        published: Boolean(input.published),
+        featured,
+        deletedAt: null,
+        image: input.image?.trim() || null,
+        custom: true,
+        accent: line.startsWith("Pokémon") ? "#2563EB" : "#06b6d4",
+        rating: Math.min(5, Math.max(0, Number(input.rating) || 0)),
+        reviews: Math.max(0, Number(input.reviews) || 0),
+        category: type === "Pre-order" ? undefined : (input.category || "tcg"),
+        descriptionSections: input.descriptionSections ?? undefined,
+        ...(type === "Pre-order"
+          ? {
+              preorderEndsAt: input.preorderEndsAt || null,
+              depositPercent: Math.min(99, Math.max(1, Number(input.depositPercent) || DEFAULT_DEPOSIT_PERCENT)),
+            }
+          : {}),
+      };
+      created = row;
       persistRow(row);
-      return next;
+      return [...prev, row];
     });
-    return row;
-  }, [items.length, persistRow]);
+    return created;
+  }, [persistRow]);
 
   const updateProduct = useCallback((id, input) => {
     const name = input.name?.trim();
@@ -340,6 +368,19 @@ export function InventoryProvider({ children }) {
     setItems((prev) =>
       prev.map((row) => {
         if (row.id !== id) return row;
+        const wantFeatured = (typeof input.featured === "boolean" ? input.featured : Boolean(row.featured)) && stock > 0;
+        const sameKind = isPreorderRow(row) === (type === "Pre-order");
+        let featured = false;
+        if (wantFeatured) {
+          if (row.featured && sameKind) {
+            featured = true;
+          } else {
+            featured = featuredSlotsRemaining(
+              prev.filter((other) => other.id !== id),
+              { type },
+            ) > 0;
+          }
+        }
         updated = {
           ...row,
           name,
@@ -350,7 +391,7 @@ export function InventoryProvider({ children }) {
           stock,
           reorderAt,
           published: typeof input.published === "boolean" ? input.published : row.published,
-          featured: (typeof input.featured === "boolean" ? input.featured : Boolean(row.featured)) && stock > 0,
+          featured,
           image: input.image?.trim() || null,
           rating: Math.min(5, Math.max(0, Number(input.rating) ?? row.rating ?? 0)),
           reviews: Math.max(0, Number(input.reviews) ?? row.reviews ?? 0),
@@ -391,15 +432,25 @@ export function InventoryProvider({ children }) {
     [activeItems],
   );
 
-  const featuredCount = useMemo(
-    () => countFeatured(items),
+  const featuredCountSealed = useMemo(
+    () => countFeaturedOfKind(items, false),
     [items],
   );
 
+  const featuredCountPreorder = useMemo(
+    () => countFeaturedOfKind(items, true),
+    [items],
+  );
+
+  const featuredCount = featuredCountSealed + featuredCountPreorder;
+
   const featuredCatalog = useMemo(
     () => activeItems
-      .filter((row) => row.published && row.featured && row.stock > 0)
-      .slice(0, MAX_FEATURED_PRODUCTS)
+      .filter((row) => {
+        if (!row.published || !row.featured) return false;
+        if (isPreorderRow(row)) return true;
+        return row.stock > 0;
+      })
       .map(rowToProduct),
     [activeItems],
   );
@@ -427,9 +478,17 @@ export function InventoryProvider({ children }) {
   const getFeaturedByCategory = useCallback(
     (category) => {
       if (category === "accessories") return [];
-      if (category === "sealed") return featuredCatalog.filter((product) => product.tag === "Sealed");
-      if (category === "preorder") return featuredCatalog.filter((product) => product.tag === "Pre-order");
-      return featuredCatalog;
+      if (category === "sealed") {
+        return featuredCatalog
+          .filter((product) => product.tag === "Sealed")
+          .slice(0, MAX_FEATURED_PRODUCTS);
+      }
+      if (category === "preorder") {
+        return featuredCatalog
+          .filter((product) => product.tag === "Pre-order")
+          .slice(0, MAX_FEATURED_PRODUCTS);
+      }
+      return featuredCatalog.slice(0, MAX_FEATURED_PRODUCTS * 2);
     },
     [featuredCatalog],
   );
@@ -444,6 +503,8 @@ export function InventoryProvider({ children }) {
       publishedCatalog,
       featuredCatalog,
       featuredCount,
+      featuredCountSealed,
+      featuredCountPreorder,
       maxFeatured: MAX_FEATURED_PRODUCTS,
       publishedProducts: publishedCatalog,
       isPublished,
@@ -473,6 +534,8 @@ export function InventoryProvider({ children }) {
       publishedCatalog,
       featuredCatalog,
       featuredCount,
+      featuredCountSealed,
+      featuredCountPreorder,
       isPublished,
       getProduct,
       getPublishedByCategory,

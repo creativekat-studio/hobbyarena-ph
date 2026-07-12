@@ -171,7 +171,8 @@ export default function AddProductDialog({
   onUpdate,
   onDelete,
   surfaceBorderColor,
-  featuredCount = 0,
+  featuredCountSealed = 0,
+  featuredCountPreorder = 0,
   maxFeatured = 4,
   deleteBlocked = false,
 }) {
@@ -189,9 +190,20 @@ export default function AddProductDialog({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteBlockedOpen, setDeleteBlockedOpen] = useState(false);
   const fileInputRef = useRef(null);
-  const featuredAtLimit = !form.featured && featuredCount >= maxFeatured;
+  const isPreorderForm = form.type === "Pre-order";
+  let featuredOthers = isPreorderForm ? featuredCountPreorder : featuredCountSealed;
+  if (
+    isEdit
+    && product?.featured
+    && ((product.type === "Pre-order") === isPreorderForm)
+  ) {
+    featuredOthers = Math.max(0, featuredOthers - 1);
+  }
+  const featuredCount = form.featured ? featuredOthers + 1 : featuredOthers;
+  const featuredAtLimit = !form.featured && featuredOthers >= maxFeatured;
   const outOfStock = Number(form.stock) <= 0;
   const featuredDisabled = featuredAtLimit || (outOfStock && !form.featured);
+  const featuredKindLabel = isPreorderForm ? "pre-order" : "in-stock";
 
   const orderHistory = useMemo(
     () => (isEdit && product?.id ? orderHistoryForProduct(orders, product.id) : []),
@@ -736,10 +748,10 @@ export default function AddProductDialog({
                 outOfStock
                   ? "Out of stock — can’t feature"
                   : featuredAtLimit
-                    ? `Featured full (${featuredCount}/${maxFeatured})`
+                    ? `${featuredKindLabel} featured full (${featuredCount}/${maxFeatured})`
                     : form.featured
-                      ? `Featured on homepage (${featuredCount}/${maxFeatured})`
-                      : `Feature on homepage (${featuredCount}/${maxFeatured})`
+                      ? `Featured on homepage (${featuredCount}/${maxFeatured} ${featuredKindLabel})`
+                      : `Feature on homepage (${featuredCount}/${maxFeatured} ${featuredKindLabel})`
               }
             />
           </Stack>
