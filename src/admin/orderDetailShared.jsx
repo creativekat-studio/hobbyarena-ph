@@ -67,7 +67,7 @@ import {
   ALLOCATION_FULFILLED_PAY_BALANCE,
   trailEntryShowsAttachment,
 } from "../data/orderWorkflow.js";
-import { hydrateProofAttachment, resolveProofAttachmentUrl, ensureTrailEntryAttachment } from "../lib/orderProofStorage.js";
+import { hydrateProofAttachment, resolveProofAttachmentUrl, prepareTrailForDisplay } from "../lib/orderProofStorage.js";
 import { compressProofFile } from "../lib/imageCompression.js";
 import { UPLOAD_PROOF_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLimits.js";
 import ProofImage from "../components/ProofImage.jsx";
@@ -1457,10 +1457,10 @@ export function OrderTrailPanel({
   const showLegacyControls = !embedded && (setPaymentAndStatus || setAllocation);
 
   const trail = useMemo(
-    () => [...(order.trail ?? [])]
-      .map((entry) => ensureTrailEntryAttachment(entry, order))
-      .filter((entry) => trailEntryAppliesToLineItem(entry, trailFilterId))
-      .sort((a, b) => new Date(b.at) - new Date(a.at)),
+    () => prepareTrailForDisplay(
+      [...(order.trail ?? [])].filter((entry) => trailEntryAppliesToLineItem(entry, trailFilterId)),
+      order,
+    ).sort((a, b) => new Date(b.at) - new Date(a.at)),
     [order, order.trail, trailFilterId],
   );
 

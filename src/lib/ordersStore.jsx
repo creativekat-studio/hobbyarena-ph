@@ -644,7 +644,12 @@ export function OrdersProvider({ children }) {
             note: payload.manual
               ? (payload.notes?.trim() || "Manually entered by staff.")
               : "Customer placed order and uploaded proof of payment.",
-            attachment: index === 0 ? attachmentFromProof(proofUrl) : undefined,
+            attachment: proofUrl
+              ? (index === 0
+                ? attachmentFromProof(proofUrl)
+                // Same checkout proof for every line — file lives once on item 0 / Storage.
+                : { label: "Proof of payment", type: "image", stored: true, kind: "deposit" })
+              : undefined,
           }),
         ),
       };

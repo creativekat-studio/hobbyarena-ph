@@ -278,7 +278,11 @@ export function orderHasStoredProof(order) {
   if (!order) return false;
   if (order.hasProof) return true;
   if (isDataUrl(order.proofOfPayment)) return true;
-  return Boolean(getOrderProof(order.id));
+  if (getOrderProof(order.id)) return true;
+  return (order.trail ?? []).some((entry) => (
+    isHttpUrl(entry?.attachment?.storageUrl)
+    && (entry.attachment.kind === "deposit" || isDepositProofTrailEntry(entry))
+  ));
 }
 
 export function resolveOrderProofUrl(order) {
@@ -286,6 +290,16 @@ export function resolveOrderProofUrl(order) {
   const sessionProof = getOrderProof(order.id);
   if (sessionProof) return sessionProof;
   if (isDataUrl(order.proofOfPayment)) return order.proofOfPayment;
+
+  // Multi-item checkouts only upload the deposit file on one trail row; reuse that URL.
+  for (const entry of order.trail ?? []) {
+    const storageUrl = entry?.attachment?.storageUrl;
+    if (!isHttpUrl(storageUrl)) continue;
+    if (entry.attachment.kind === "deposit" || isDepositProofTrailEntry(entry)) {
+      return storageUrl;
+    }
+  }
+
   return null;
 }
 
