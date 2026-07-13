@@ -14,6 +14,7 @@ import {
   MenuItem,
   Select,
   Stack,
+  TableSortLabel,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -41,9 +42,18 @@ import {
   orderStatusLabel,
 } from "../data/orderWorkflow.js";
 import { useOrders } from "../lib/ordersStore.jsx";
-import { sortOrdersByOrderNo } from "../lib/orderIds.js";
+import { compareOrdersByOrderNo } from "../lib/orderIds.js";
 import { exportOrdersToExcel } from "../lib/ordersExcelExport.js";
+import { formatOrderTimestamp, resolveOrderPlacedAt } from "../lib/orderTimestamps.js";
+import { sortRowsBy, toggleSortState } from "../lib/tableSort.js";
 import AddOrderDialog from "./AddOrderDialog.jsx";
+
+const ORDER_SORT_ACCESSORS = {
+  order: (o) => resolveOrderPlacedAt(o)?.getTime() ?? 0,
+  customer: (o) => o.customer || "",
+  items: (o) => o.items || "",
+  status: (o) => orderStatusLabel(migrateOrderStatus(o.status)),
+};
 
 const QUEUE_FILTERS = ORDER_QUEUES.filter((q) => q.id !== "preorder" && q.id !== "instock");
 const KIND_FILTERS = [
@@ -92,22 +102,39 @@ function lineItemGridSx(overrides = {}) {
   };
 }
 
+const HEADER_LABEL_SX = {
+  fontFamily: MONO_FONT,
+  fontWeight: 800,
+  fontSize: "0.75rem",
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "text.secondary",
+  whiteSpace: "nowrap",
+};
+
 function GridHeaderCell({ children, sx }) {
   return (
-    <Typography
+    <Typography sx={{ ...HEADER_LABEL_SX, ...sx }}>
+      {children}
+    </Typography>
+  );
+}
+
+function SortableGridHeader({ label, sortKey, sort, onSort, sx }) {
+  const active = sort.key === sortKey;
+  return (
+    <TableSortLabel
+      active={active}
+      direction={active ? sort.dir : "asc"}
+      onClick={() => onSort(sortKey)}
       sx={{
-        fontFamily: MONO_FONT,
-        fontWeight: 800,
-        fontSize: "0.75rem",
-        letterSpacing: "0.08em",
-        textTransform: "uppercase",
-        color: "text.secondary",
-        whiteSpace: "nowrap",
+        ...HEADER_LABEL_SX,
+        "& .MuiTableSortLabel-icon": { fontSize: "0.9rem" },
         ...sx,
       }}
     >
-      {children}
-    </Typography>
+      {label}
+    </TableSortLabel>
   );
 }
 
@@ -179,7 +206,9 @@ function AdminOrderAccordionRow({ order, surfaceBorderColor, onOpen, open, onTog
             ) : null}
             <Box sx={{ minWidth: 0 }}>
               <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap" }}>{order.id}</Typography>
-              <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", whiteSpace: "nowrap" }}>{order.date}</Typography>
+              <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", whiteSpace: "nowrap", fontFamily: MONO_FONT }}>
+                {formatOrderTimestamp(order)}
+              </Typography>
             </Box>
           </Stack>
         </Box>
@@ -356,6 +385,11 @@ export default function OrdersPage() {
   const [query, setQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [expandedOrderId, setExpandedOrderId] = useState(null);
+  const [sort, setSort] = useState({ key: "order", dir: "desc" });
+
+  function handleSort(key) {
+    setSort((prev) => toggleSortState(prev, key, { defaultDir: key === "order" ? "desc" : "asc" }));
+  }
 
   function toggleOrderAccordion(id) {
     setExpandedOrderId((current) => (current === id ? null : id));
@@ -372,7 +406,7 @@ export default function OrdersPage() {
   const activeQueue = QUEUE_FILTERS.find((q) => q.id === queueFilter) ?? QUEUE_FILTERS[0];
 
   const rows = useMemo(() => {
-    return sortOrdersByOrderNo(orders.filter((o) => {
+    const filtered = orders.filter((o) => {
       const matchesQuery =
         !query.trim() ||
         o.id.toLowerCase().includes(query.toLowerCase()) ||
@@ -383,8 +417,9 @@ export default function OrdersPage() {
       if (kindFilter === "instock" && o.type !== "In-stock") return false;
       if (queueFilter === "all") return true;
       return activeQueue.match?.(o) ?? false;
-    }));
-  }, [orders, queueFilter, kindFilter, query, activeQueue]);
+    });
+    return sortRowsBy(filtered, sort, ORDER_SORT_ACCESSORS, (a, b) => compareOrdersByOrderNo(a, b));
+  }, [orders, queueFilter, kindFilter, query, activeQueue, sort]);
 
   const stats = useMemo(() => {
     const review = orders.filter((o) => migratePaymentStatus(o.payment) === "Pending Verification").length;
@@ -520,10 +555,10 @@ export default function OrdersPage() {
                 }}
               >
                 <Box />
-                <GridHeaderCell>Order</GridHeaderCell>
-                <GridHeaderCell>Customer</GridHeaderCell>
-                <GridHeaderCell>Items</GridHeaderCell>
-                <GridHeaderCell>Status</GridHeaderCell>
+                <SortableGridHeader label="Order" sortKey="order" sort={sort} onSort={handleSort} />
+                <SortableGridHeader label="Customer" sortKey="customer" sort={sort} onSort={handleSort} />
+                <SortableGridHeader label="Items" sortKey="items" sort={sort} onSort={handleSort} />
+                <SortableGridHeader label="Status" sortKey="status" sort={sort} onSort={handleSort} />
                 <Box />
               </Box>
 

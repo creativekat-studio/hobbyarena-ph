@@ -24,6 +24,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableSortLabel,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -40,8 +41,15 @@ import { BoxIcon, EditIcon, InventoryIcon, SearchIcon, ShieldIcon, SparkleIcon, 
 import { MAX_FEATURED_PRODUCTS, useInventory } from "../lib/inventoryStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { openOrdersByProductId } from "../data/orderWorkflow.js";
+import { sortRowsBy, toggleSortState } from "../lib/tableSort.js";
 import AddProductDialog from "./AddProductDialog.jsx";
 import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
+
+const SORTABLE_HEADER_SX = {
+  fontWeight: 800,
+  "&.MuiTableSortLabel-root": { color: "inherit" },
+  "& .MuiTableSortLabel-icon": { fontSize: "0.95rem" },
+};
 
 const STATUS_FILTERS = [
   { id: "all", label: "All" },
@@ -69,6 +77,17 @@ function stockStatus(row) {
   if (row.stock <= row.reorderAt) return { label: "Low stock", color: "warning" };
   return { label: "In stock", color: "success" };
 }
+
+const INVENTORY_SORT_ACCESSORS = {
+  sku: (row) => row.sku || "",
+  product: (row) => row.name || "",
+  type: (row) => row.type || "",
+  price: (row) => Number(row.price) || 0,
+  stock: (row) => Number(row.stock) || 0,
+  live: (row) => Boolean(row.published),
+  featured: (row) => Boolean(row.featured),
+  status: (row) => (isDeletedRow(row) ? "Deleted" : stockStatus(row).label),
+};
 
 function StatCard({ panelSx, icon, label, value, accent }) {
   const theme = useTheme();
@@ -144,6 +163,8 @@ function FeaturedCheckbox({ row, featuredCountSealed, featuredCountPreorder, tog
 
 function InventoryTableView({
   rows,
+  sort,
+  onSort,
   togglePublished,
   toggleFeatured,
   featuredCountSealed,
@@ -159,6 +180,22 @@ function InventoryTableView({
   const allSelected = rows.length > 0 && rows.every((row) => selectedIds.has(row.id));
   const someSelected = rows.some((row) => selectedIds.has(row.id));
 
+  function SortHeader({ id, label, align = "left", sx }) {
+    const active = sort.key === id;
+    return (
+      <TableCell align={align} sortDirection={active ? sort.dir : false} sx={{ fontWeight: 800, ...sx }}>
+        <TableSortLabel
+          active={active}
+          direction={active ? sort.dir : "asc"}
+          onClick={() => onSort(id)}
+          sx={SORTABLE_HEADER_SX}
+        >
+          {label}
+        </TableSortLabel>
+      </TableCell>
+    );
+  }
+
   return (
     <TableContainer sx={{ flex: 1, minHeight: 0 }}>
       <Table stickyHeader>
@@ -173,23 +210,30 @@ function InventoryTableView({
               />
             </TableCell>
             <TableCell sx={{ fontWeight: 800, width: 56 }} />
-            <TableCell sx={{ fontWeight: 800 }}>SKU</TableCell>
-            <TableCell sx={{ fontWeight: 800 }}>Product</TableCell>
-            <TableCell sx={{ fontWeight: 800, display: { xs: "none", md: "table-cell" } }}>Type</TableCell>
-            <TableCell sx={{ fontWeight: 800, display: { xs: "none", sm: "table-cell" } }} align="right">Price</TableCell>
-            <TableCell sx={{ fontWeight: 800 }} align="right">Stock</TableCell>
-            <TableCell sx={{ fontWeight: 800 }} align="center">Live</TableCell>
-            <TableCell sx={{ fontWeight: 800 }} align="center">
+            <SortHeader id="sku" label="SKU" />
+            <SortHeader id="product" label="Product" />
+            <SortHeader id="type" label="Type" sx={{ display: { xs: "none", md: "table-cell" } }} />
+            <SortHeader id="price" label="Price" align="right" sx={{ display: { xs: "none", sm: "table-cell" } }} />
+            <SortHeader id="stock" label="Stock" align="right" />
+            <SortHeader id="live" label="Live" align="center" />
+            <TableCell sx={{ fontWeight: 800 }} align="center" sortDirection={sort.key === "featured" ? sort.dir : false}>
               <Tooltip title={`Up to ${MAX_FEATURED_PRODUCTS} in-stock and ${MAX_FEATURED_PRODUCTS} pre-order on the homepage`}>
-                <Box component="span" sx={{ display: "inline-flex", flexDirection: "column", alignItems: "center", lineHeight: 1.2 }}>
-                  <Box component="span">Featured</Box>
-                  <Box component="span" sx={{ fontWeight: 600, fontSize: "0.65rem", color: "text.secondary", fontFamily: MONO_FONT }}>
-                    {featuredCountSealed}/{MAX_FEATURED_PRODUCTS} · {featuredCountPreorder}/{MAX_FEATURED_PRODUCTS}
+                <TableSortLabel
+                  active={sort.key === "featured"}
+                  direction={sort.key === "featured" ? sort.dir : "asc"}
+                  onClick={() => onSort("featured")}
+                  sx={{ ...SORTABLE_HEADER_SX, flexDirection: "column", alignItems: "center" }}
+                >
+                  <Box component="span" sx={{ display: "inline-flex", flexDirection: "column", alignItems: "center", lineHeight: 1.2 }}>
+                    <Box component="span">Featured</Box>
+                    <Box component="span" sx={{ fontWeight: 600, fontSize: "0.65rem", color: "text.secondary", fontFamily: MONO_FONT }}>
+                      {featuredCountSealed}/{MAX_FEATURED_PRODUCTS} · {featuredCountPreorder}/{MAX_FEATURED_PRODUCTS}
+                    </Box>
                   </Box>
-                </Box>
+                </TableSortLabel>
               </Tooltip>
             </TableCell>
-            <TableCell sx={{ fontWeight: 800 }} align="right">Status</TableCell>
+            <SortHeader id="status" label="Status" align="right" />
             <TableCell sx={{ fontWeight: 800, width: 96 }} />
           </TableRow>
         </TableHead>
@@ -464,6 +508,13 @@ export default function InventoryPage() {
   const [deleteTargetIds, setDeleteTargetIds] = useState([]);
   const [deleteBlockAlert, setDeleteBlockAlert] = useState(null);
   const [actionsAnchor, setActionsAnchor] = useState(null);
+  const [sort, setSort] = useState({ key: "product", dir: "asc" });
+
+  function handleSort(key) {
+    setSort((prev) => toggleSortState(prev, key, {
+      defaultDir: key === "price" || key === "stock" ? "desc" : "asc",
+    }));
+  }
 
   function openAddForm() {
     setEditingProduct(null);
@@ -490,7 +541,7 @@ export default function InventoryPage() {
   }
 
   const rows = useMemo(() => {
-    return items.filter((row) => {
+    const filtered = items.filter((row) => {
       const deleted = isDeletedRow(row);
       if (statusFilter === "deleted") {
         if (!deleted) return false;
@@ -534,7 +585,10 @@ export default function InventoryPage() {
           return true;
       }
     });
-  }, [items, statusFilter, catalogFilter, query]);
+    return sortRowsBy(filtered, sort, INVENTORY_SORT_ACCESSORS, (a, b) =>
+      String(a.sku || "").localeCompare(String(b.sku || ""), undefined, { numeric: true }),
+    );
+  }, [items, statusFilter, catalogFilter, query, sort]);
 
   const itemIds = useMemo(() => new Set(items.map((row) => row.id)), [items]);
 
@@ -811,6 +865,8 @@ export default function InventoryPage() {
         <Box sx={{ flex: 1, minHeight: 0, ...panelSx, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <InventoryTableView
             rows={rows}
+            sort={sort}
+            onSort={handleSort}
             togglePublished={togglePublished}
             toggleFeatured={toggleFeatured}
             featuredCountSealed={featuredCountSealed}

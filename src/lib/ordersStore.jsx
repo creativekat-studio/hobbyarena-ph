@@ -29,7 +29,7 @@ import {
   refundedAmountForOrder,
 } from "../data/orderWorkflow.js";
 import { preorderBalanceDue, preorderDueNow } from "./preorder.js";
-import { migrateLegacyOrderId, sortOrdersByOrderNo } from "./orderIds.js";
+import { makeOrderId, migrateLegacyOrderId, sortOrdersByOrderNo } from "./orderIds.js";
 import {
   migrateInlineOrderProof,
   resolveOrderProofUrl,
@@ -161,16 +161,6 @@ export function isUnseenOrder(order) {
   if (migratePaymentStatus(order.payment) === "Pending Verification") return true;
   // Customer-initiated updates explicitly re-flag the order
   return order.notificationSeen === false;
-}
-
-function makeOrderId(orders) {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  const prefix = `HA-${y}${m}${d}`;
-  const todayCount = orders.filter((o) => String(o.id).startsWith(prefix)).length;
-  return `${prefix}${String(todayCount + 1).padStart(4, "0")}`;
 }
 
 function summarizeItems(cartItems) {
@@ -640,6 +630,7 @@ export function OrdersProvider({ children }) {
         guest: Boolean(payload.guest),
         userId: payload.userId || null,
         date: new Date().toISOString().slice(0, 10),
+        createdAt: new Date().toISOString(),
         notificationSeen: false,
         manual: Boolean(payload.manual),
         emails: [acknowledgement],

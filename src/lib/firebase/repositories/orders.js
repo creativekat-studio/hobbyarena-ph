@@ -13,7 +13,8 @@ import { getFirestoreDb } from "../app.js";
 import { sanitizeForFirestore } from "../sanitize.js";
 import { ensureAnonymousAuth } from "../auth.js";
 import { checkoutProofPersisted, stripOrderProofPayload, uploadOrderProofAttachments } from "../../orderProofStorage.js";
-import { sortOrdersByOrderNo } from "../../orderIds.js";
+import { incrementOrderId, sortOrdersByOrderNo } from "../../orderIds.js";
+import { serializeFirestoreTime } from "../../orderTimestamps.js";
 
 const SAVE_TIMEOUT_MS = 25_000;
 
@@ -129,6 +130,7 @@ export function compactOrderForFirestore(order) {
     guest: Boolean(slim.guest),
     userId: slim.userId ?? null,
     date: slim.date,
+    ...(slim.createdAt ? { createdAt: slim.createdAt } : {}),
     notificationSeen: Boolean(slim.notificationSeen),
     manual: Boolean(slim.manual),
     trail,
@@ -143,10 +145,15 @@ function prepareOrderDoc(order) {
 }
 
 function mapSnapshot(snap) {
-  const orders = snap.docs.map((entry) => ({
-    id: entry.id,
-    ...entry.data(),
-  }));
+  const orders = snap.docs.map((entry) => {
+    const data = entry.data();
+    return {
+      id: entry.id,
+      ...data,
+      createdAt: serializeFirestoreTime(data.createdAt) || data.createdAt || null,
+      updatedAt: serializeFirestoreTime(data.updatedAt) || data.updatedAt || null,
+    };
+  });
   return sortOrdersByOrderNo(orders);
 }
 
@@ -182,12 +189,6 @@ export function subscribeCustomerOrders(email, onData, onError) {
   );
 }
 
-function incrementOrderId(id) {
-  const match = String(id).match(/^(HA-\d{8})(\d{4})$/);
-  if (!match) return id;
-  return `${match[1]}${String(Number(match[2]) + 1).padStart(4, "0")}`;
-}
-
 function retagOrderId(order, newId) {
   const oldId = order.id;
   if (!oldId || newId === oldId) return order;
@@ -216,7 +217,7 @@ function isOrderIdCollision(error) {
   return code === "permission-denied" || code === "already-exists";
 }
 
-/** Create a new order — uses create rule (no merge). Retries with the next daily sequence on ID collision. */
+/** Create a new order — uses create rule (no merge). Retries with the next monthly sequence on ID collision. */
 export async function createOrder(order, { maxAttempts = 30 } = {}) {
   const db = getFirestoreDb();
   if (!db || !order?.id) throw new Error("Firestore is not configured.");
@@ -246,7 +247,7 @@ export async function createOrder(order, { maxAttempts = 30 } = {}) {
       await withTimeout(
         setDoc(ref, {
           ...payload,
-          createdAt: serverTimestamp(),
+          createdAt: current.createdAt || serverTimestamp(),
           updatedAt: serverTimestamp(),
         }),
         SAVE_TIMEOUT_MS,
