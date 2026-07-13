@@ -97,7 +97,7 @@ export function buildOrderAcknowledgementEmail(order, options = {}) {
       balance: formatPeso(order.balanceDue),
       refund: formatPeso(order.refundAmount),
       allocated: String(order.allocatedQty ?? 0),
-      qty: String(order.qty ?? lineItems.reduce((sum, item) => sum + (item.quantity || 0), 0) || 1),
+      qty: String((order.qty ?? lineItems.reduce((sum, item) => sum + (item.quantity || 0), 0)) || 1),
       depositPercent: String(dp),
       balancePercent: String(bal),
     },
