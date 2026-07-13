@@ -3,6 +3,7 @@ import {
   Box,
   Button,
   CircularProgress,
+  IconButton,
   Stack,
   Switch,
   Tab,
@@ -20,6 +21,7 @@ import {
 import { alpha, useTheme } from "@mui/material/styles";
 import { useOutletContext, useSearchParams } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
+import { TrashIcon } from "../components/icons.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import { useCatalog } from "../lib/catalogStore.jsx";
 import { useFirebaseData } from "../lib/firebase/config.js";
@@ -34,6 +36,89 @@ function InfoIcon(props) {
     <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden {...props}>
       <path d="M11 7h2v2h-2V7zm0 4h2v6h-2v-6zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" />
     </svg>
+  );
+}
+
+function ClassificationSaveBar({
+  surfaceBorderColor,
+  dirty,
+  saving,
+  saveError,
+  saveOk,
+  hydrated = true,
+  onReset,
+  onSave,
+}) {
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 1,
+        mt: 2.5,
+        px: 1.75,
+        py: 1.25,
+        borderRadius: 1,
+        border: "1px solid",
+        borderColor: surfaceBorderColor,
+        bgcolor: (theme) => alpha(theme.palette.text.primary, theme.palette.mode === "dark" ? 0.04 : 0.02),
+      }}
+    >
+      <Typography
+        sx={{
+          color: saveError ? "error.main" : dirty ? "warning.main" : saveOk ? "success.main" : "text.secondary",
+          fontSize: "0.78rem",
+          fontWeight: dirty || saveError || saveOk ? 600 : 500,
+          lineHeight: 1.4,
+        }}
+      >
+        {saveError
+          ? saveError
+          : dirty
+            ? "Unsaved changes"
+            : saveOk
+              ? "Saved"
+              : "Edits stay local until you save"}
+      </Typography>
+      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+        <Button
+          variant="outlined"
+          color="inherit"
+          disabled={saving || !dirty}
+          onClick={onReset}
+          sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
+        >
+          Reset
+        </Button>
+        <Button
+          variant="contained"
+          color="primary"
+          disabled={!hydrated || !dirty || saving}
+          onClick={onSave}
+          sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
+        >
+          {saving ? "Saving…" : "Save"}
+        </Button>
+      </Stack>
+    </Box>
+  );
+}
+
+function CatalogTabSaveBar({ surfaceBorderColor }) {
+  const { dirty, saving, saveError, saveOk, hydrated, discardChanges, saveCatalog } = useCatalog();
+  return (
+    <ClassificationSaveBar
+      surfaceBorderColor={surfaceBorderColor}
+      dirty={dirty}
+      saving={saving}
+      saveError={saveError}
+      saveOk={saveOk}
+      hydrated={hydrated}
+      onReset={discardChanges}
+      onSave={() => saveCatalog()}
+    />
   );
 }
 
@@ -181,15 +266,16 @@ function LineLogoUpload({ line, onChange, surfaceBorderColor }) {
           </Tooltip>
         </Stack>
         {line.logo ? (
-          <Button
+          <IconButton
             size="small"
-            color="inherit"
+            color="error"
             disabled={uploading}
+            aria-label="Remove logo"
             onClick={() => onChange("")}
-            sx={{ fontSize: "0.62rem", minWidth: 0, px: 1, py: 0, color: "text.secondary", alignSelf: "flex-start" }}
+            sx={{ alignSelf: "flex-start" }}
           >
-            Remove
-          </Button>
+            <TrashIcon sx={{ fontSize: 16 }} />
+          </IconButton>
         ) : null}
         {error ? (
           <Typography variant="caption" color="error.main" sx={{ lineHeight: 1.4, textTransform: "none" }}>
@@ -220,24 +306,52 @@ function ActiveSwitch({ checked, onChange }) {
   );
 }
 
-function ProductLinesTab({ panelSx, surfaceBorderColor, lines, addLine, updateLine, removeLine }) {
-  const [newLabel, setNewLabel] = useState("");
-  const [newMatch, setNewMatch] = useState("");
+function ListSectionHeader({ title, summary, action }) {
+  return (
+    <Stack
+      direction="row"
+      alignItems="center"
+      justifyContent="space-between"
+      spacing={1.5}
+      sx={{ mb: 2, gap: 1.5, flexWrap: "wrap" }}
+    >
+      <Box sx={{ minWidth: 0 }}>
+        <Typography sx={{ fontWeight: 800, fontSize: "0.95rem", lineHeight: 1.3 }}>{title}</Typography>
+        {summary ? (
+          <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", mt: 0.35, lineHeight: 1.4 }}>
+            {summary}
+          </Typography>
+        ) : null}
+      </Box>
+      {action || null}
+    </Stack>
+  );
+}
 
-  function handleAdd() {
-    const label = newLabel.trim();
-    if (!label) return;
-    addLine({ label, match: newMatch.trim() || label });
-    setNewLabel("");
-    setNewMatch("");
-  }
+function ProductLinesTab({ panelSx, surfaceBorderColor, lines, addLine, updateLine, removeLine }) {
+  const activeCount = lines.filter((line) => line.active !== false).length;
 
   return (
     <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
+      <ListSectionHeader
+        title="Product lines"
+        summary={`${lines.length} line${lines.length === 1 ? "" : "s"} · ${activeCount} active`}
+        action={(
+          <Button
+            size="small"
+            variant="contained"
+            color="primary"
+            onClick={() => addLine({})}
+            sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.68rem", flexShrink: 0 }}
+          >
+            + Add line
+          </Button>
+        )}
+      />
       <TabIntro>
-        Product lines are the game or franchise groupings shoppers filter by — for example Pokémon TCG or One Piece.
-        Each product in Inventory must use a <strong>Line</strong> value that matches the inventory match text below.
-        Upload a logo to show on the shop filters; without one, a built-in fallback is used when available.
+        Game or franchise groupings shoppers filter by — for example Pokémon TCG or One Piece.
+        Each Inventory product <strong>Line</strong> must match the inventory match text.
+        Upload a logo for shop filters; without one, a built-in fallback is used when available.
       </TabIntro>
 
       <TableContainer sx={{ display: { xs: "none", md: "block" } }}>
@@ -285,9 +399,9 @@ function ProductLinesTab({ panelSx, surfaceBorderColor, lines, addLine, updateLi
                   <ActiveSwitch checked={line.active !== false} onChange={(v) => updateLine(line.id, { active: v })} />
                 </TableCell>
                 <TableCell align="right" sx={{ width: 88 }}>
-                  <Button size="small" color="inherit" onClick={() => removeLine(line.id)} sx={{ fontSize: "0.72rem", minWidth: 0 }}>
-                    Remove
-                  </Button>
+                  <IconButton size="small" color="error" aria-label="Remove line" onClick={() => removeLine(line.id)}>
+                    <TrashIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
                 </TableCell>
               </TableRow>
             ))}
@@ -312,41 +426,47 @@ function ProductLinesTab({ panelSx, surfaceBorderColor, lines, addLine, updateLi
                 <ActiveSwitch checked={line.active !== false} onChange={(v) => updateLine(line.id, { active: v })} />
                 <Typography sx={{ fontSize: "0.82rem" }}>Active</Typography>
               </Stack>
-              <Button size="small" color="inherit" onClick={() => removeLine(line.id)} sx={{ fontSize: "0.72rem" }}>
-                Remove
-              </Button>
+              <IconButton size="small" color="error" aria-label="Remove line" onClick={() => removeLine(line.id)}>
+                <TrashIcon sx={{ fontSize: 18 }} />
+              </IconButton>
             </Stack>
           </Box>
         ))}
       </Stack>
 
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 2.5 }}>
-        <TextField size="small" label="New shop label" placeholder="Gundam" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} sx={{ flex: 1 }} />
-        <TextField size="small" label="Inventory match (optional)" placeholder="Same as label if blank" value={newMatch} onChange={(e) => setNewMatch(e.target.value)} sx={{ flex: 1 }} />
-        <Button variant="contained" onClick={handleAdd} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase", flexShrink: 0 }}>
-          Add line
-        </Button>
-      </Stack>
+      {lines.length === 0 ? (
+        <Box sx={{ py: 4, textAlign: "center", color: "text.secondary", fontSize: "0.88rem" }}>
+          No product lines yet. Click + Add line to create one.
+        </Box>
+      ) : null}
+
+      <CatalogTabSaveBar surfaceBorderColor={surfaceBorderColor} />
     </Box>
   );
 }
 
 function ProductTypesTab({ panelSx, surfaceBorderColor, categories, addCategory, updateCategory, removeCategory }) {
-  const [newLabel, setNewLabel] = useState("");
-  const [newDescription, setNewDescription] = useState("");
-
-  function handleAdd() {
-    const label = newLabel.trim();
-    if (!label) return;
-    addCategory({ label, description: newDescription.trim() });
-    setNewLabel("");
-    setNewDescription("");
-  }
+  const activeCount = categories.filter((cat) => cat.active !== false).length;
 
   return (
     <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
+      <ListSectionHeader
+        title="Product types"
+        summary={`${categories.length} type${categories.length === 1 ? "" : "s"} · ${activeCount} active`}
+        action={(
+          <Button
+            size="small"
+            variant="contained"
+            color="primary"
+            onClick={() => addCategory({})}
+            sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.68rem", flexShrink: 0 }}
+          >
+            + Add type
+          </Button>
+        )}
+      />
       <TabIntro>
-        Product types classify <strong>in-stock</strong> items on the Products page — TCG sealed products, accessories, figures, and so on.
+        Types classify <strong>in-stock</strong> items on the Products page — TCG sealed products, accessories, figures, and so on.
         Pre-orders are filtered by line only and do not use these types.
       </TabIntro>
 
@@ -369,6 +489,7 @@ function ProductTypesTab({ panelSx, surfaceBorderColor, categories, addCategory,
                     fullWidth
                     value={cat.label}
                     onChange={(e) => updateCategory(cat.id, { label: e.target.value })}
+                    placeholder="Card Accessories"
                   />
                 </TableCell>
                 <TableCell>
@@ -384,9 +505,9 @@ function ProductTypesTab({ panelSx, surfaceBorderColor, categories, addCategory,
                   <ActiveSwitch checked={cat.active !== false} onChange={(v) => updateCategory(cat.id, { active: v })} />
                 </TableCell>
                 <TableCell align="right" sx={{ width: 88 }}>
-                  <Button size="small" color="inherit" onClick={() => removeCategory(cat.id)} sx={{ fontSize: "0.72rem", minWidth: 0 }}>
-                    Remove
-                  </Button>
+                  <IconButton size="small" color="error" aria-label="Remove category" onClick={() => removeCategory(cat.id)}>
+                    <TrashIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
                 </TableCell>
               </TableRow>
             ))}
@@ -404,21 +525,21 @@ function ProductTypesTab({ panelSx, surfaceBorderColor, categories, addCategory,
                 <ActiveSwitch checked={cat.active !== false} onChange={(v) => updateCategory(cat.id, { active: v })} />
                 <Typography sx={{ fontSize: "0.82rem" }}>Active</Typography>
               </Stack>
-              <Button size="small" color="inherit" onClick={() => removeCategory(cat.id)} sx={{ fontSize: "0.72rem" }}>
-                Remove
-              </Button>
+              <IconButton size="small" color="error" aria-label="Remove category" onClick={() => removeCategory(cat.id)}>
+                <TrashIcon sx={{ fontSize: 18 }} />
+              </IconButton>
             </Stack>
           </Box>
         ))}
       </Stack>
 
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 2.5 }}>
-        <TextField size="small" label="New type name" placeholder="Card Accessories" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} sx={{ flex: 1 }} />
-        <TextField size="small" label="Description" placeholder="Sleeves, binders, deck boxes" value={newDescription} onChange={(e) => setNewDescription(e.target.value)} sx={{ flex: 1.4 }} />
-        <Button variant="contained" onClick={handleAdd} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase", flexShrink: 0 }}>
-          Add type
-        </Button>
-      </Stack>
+      {categories.length === 0 ? (
+        <Box sx={{ py: 4, textAlign: "center", color: "text.secondary", fontSize: "0.88rem" }}>
+          No product types yet. Click + Add type to create one.
+        </Box>
+      ) : null}
+
+      <CatalogTabSaveBar surfaceBorderColor={surfaceBorderColor} />
     </Box>
   );
 }
@@ -434,9 +555,10 @@ function PreorderTermsTab({ panelSx, surfaceBorderColor, terms, setTerms }) {
         title="Pre-order terms"
         subtitle="Customers must accept these when placing a pre-order."
         value={terms.preorder}
-        onSave={(lines) => setTerms("preorder", lines)}
+        onChange={(lines) => setTerms("preorder", lines)}
         surfaceBorderColor={surfaceBorderColor}
       />
+      <CatalogTabSaveBar surfaceBorderColor={surfaceBorderColor} />
     </Box>
   );
 }
@@ -452,10 +574,11 @@ function InstockTermsTab({ panelSx, surfaceBorderColor, terms, setTerms }) {
         title="In-stock product terms"
         subtitle="Displayed on regular product detail pages."
         value={terms.generic}
-        onSave={(lines) => setTerms("generic", lines)}
+        onChange={(lines) => setTerms("generic", lines)}
         surfaceBorderColor={surfaceBorderColor}
         mode="lines"
       />
+      <CatalogTabSaveBar surfaceBorderColor={surfaceBorderColor} />
     </Box>
   );
 }

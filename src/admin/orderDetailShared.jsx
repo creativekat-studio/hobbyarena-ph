@@ -26,6 +26,7 @@ import {
   resolveOrderStatusEmailTypeForCurrentState,
 } from "../lib/orderEmailTriggers.js";
 import { MONO_FONT } from "../theme.js";
+import { TrashIcon } from "../components/icons.jsx";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
 import {
@@ -946,9 +947,9 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
               <Typography variant="caption" color="text.secondary" sx={{ fontFamily: MONO_FONT, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {draftAttachment.name}
               </Typography>
-              <Button size="small" variant="text" onClick={() => setDraftAttachment(null)} sx={{ minWidth: 0, px: 0.5 }}>
-                Remove
-              </Button>
+              <IconButton size="small" color="error" aria-label="Remove attachment" onClick={() => setDraftAttachment(null)}>
+                <TrashIcon sx={{ fontSize: 18 }} />
+              </IconButton>
             </>
           ) : (
             <Typography variant="caption" color="text.secondary">

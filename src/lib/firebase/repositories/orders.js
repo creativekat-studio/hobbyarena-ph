@@ -11,6 +11,7 @@ import {
 import { COLLECTIONS } from "../../../data/firestoreSchema.js";
 import { getFirestoreDb } from "../app.js";
 import { sanitizeForFirestore } from "../sanitize.js";
+import { ensureAnonymousAuth } from "../auth.js";
 import { checkoutProofPersisted, stripOrderProofPayload, uploadOrderProofAttachments } from "../../orderProofStorage.js";
 import { sortOrdersByOrderNo } from "../../orderIds.js";
 
@@ -223,6 +224,13 @@ export async function createOrder(order, { maxAttempts = 30 } = {}) {
   let current = order;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (order.hasProof) {
+      try {
+        await ensureAnonymousAuth();
+      } catch (authError) {
+        console.warn("[orders] Auth before proof upload:", authError);
+      }
+    }
     current = await uploadOrderProofAttachments(current);
     // Don't silently save an order whose proof only lives in the customer's
     // browser — surface the failure so checkout can retry.

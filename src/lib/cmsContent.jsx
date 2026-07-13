@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { BRAND } from "../data/brand.js";
+import { MARQUEE_BANNERS } from "../data/mediaAssets.js";
 import { useFirebaseData } from "./firebase/config.js";
 import { useAdminFirestoreWrite } from "./firebase/adminWriteAccess.js";
 import { saveCmsContent, subscribeCmsContent } from "./firebase/repositories/cms.js";
@@ -33,6 +34,11 @@ const DEFAULT_CONTENT = {
     },
   },
   banners: [],
+  marqueeBanners: MARQUEE_BANNERS.map((imageUrl, index) => ({
+    id: `mq_${index + 1}`,
+    imageUrl,
+    active: true,
+  })),
   featureDrops: [],
   announcements: [],
   testimonials: {
@@ -227,6 +233,13 @@ function mergeCmsPayload(parsed) {
       : [],
     featureDrops: Array.isArray(parsed.featureDrops) ? parsed.featureDrops : [],
     announcements: Array.isArray(parsed.announcements) ? parsed.announcements : [],
+    marqueeBanners: Array.isArray(parsed.marqueeBanners)
+      ? parsed.marqueeBanners.map((banner, index) => ({
+          id: banner.id || `mq_${index + 1}`,
+          imageUrl: banner.imageUrl || banner.src || "",
+          active: banner.active !== false,
+        })).filter((banner) => banner.imageUrl)
+      : DEFAULT_CONTENT.marqueeBanners,
   };
 }
 
@@ -557,9 +570,30 @@ export function CmsProvider({ children }) {
       setContent((c) => ({ ...c, announcements: c.announcements.filter((a) => a.id !== id) }));
     };
 
-    const reset = () => {
+
+    const addMarqueeBanner = (banner) => {
       markDirty();
-      setContent(cloneContent(DEFAULT_CONTENT));
+      setContent((c) => ({
+        ...c,
+        marqueeBanners: [
+          ...(c.marqueeBanners || []),
+          { id: `mq_${Date.now()}`, active: true, imageUrl: "", ...banner },
+        ],
+      }));
+    };
+    const updateMarqueeBanner = (id, patch) => {
+      markDirty();
+      setContent((c) => ({
+        ...c,
+        marqueeBanners: (c.marqueeBanners || []).map((b) => (b.id === id ? { ...b, ...patch } : b)),
+      }));
+    };
+    const removeMarqueeBanner = (id) => {
+      markDirty();
+      setContent((c) => ({
+        ...c,
+        marqueeBanners: (c.marqueeBanners || []).filter((b) => b.id !== id),
+      }));
     };
 
     return {
@@ -590,7 +624,9 @@ export function CmsProvider({ children }) {
       addAnnouncement,
       updateAnnouncement,
       removeAnnouncement,
-      reset,
+      addMarqueeBanner,
+      updateMarqueeBanner,
+      removeMarqueeBanner,
       saveContent,
       discardChanges,
     };

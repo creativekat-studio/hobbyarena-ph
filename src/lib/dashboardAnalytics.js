@@ -386,6 +386,9 @@ export function computeDashboardAnalytics(orders, period = "1M", now = new Date(
       total: o.total,
       status: o.status,
       date: o.date,
+      type: o.type,
+      items: o.items,
+      qty: o.qty,
     }));
 
   return {

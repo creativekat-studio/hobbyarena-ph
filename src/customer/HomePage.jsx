@@ -22,6 +22,7 @@ import { wider } from "../lib/layout.js";
 import { marqueeDuration, marqueeLoop } from "../lib/marquee.js";
 import { useCms } from "../lib/cmsContent.jsx";
 import { useInquiries } from "../lib/inquiriesStore.jsx";
+import { sendNewsletterSubscribe } from "../lib/emailService.js";
 import ProductCard, { PESO } from "../components/ProductCard.jsx";
 import PreorderCountdown from "../components/PreorderCountdown.jsx";
 import PreorderPricing from "../components/PreorderPricing.jsx";
@@ -32,6 +33,8 @@ import TestimonialsShowcase from "../components/TestimonialsShowcase.jsx";
 import {
   BoxIcon,
   CardIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   FacebookIcon,
   InstagramIcon,
   PokeballIcon,
@@ -419,8 +422,18 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
   const product = current.product;
   const drop = current.drop;
   const isPreorder = product.tag === "Pre-order";
-  const accent = resolveProductAccent(product, theme);
   const Glyph = product.line?.startsWith("Pokémon") ? PokeballIcon : CardIcon;
+  const hasMultiple = slides.length > 1;
+
+  function goPrev() {
+    setPaused(true);
+    setIndex((i) => (i - 1 + slides.length) % slides.length);
+  }
+
+  function goNext() {
+    setPaused(true);
+    setIndex((i) => (i + 1) % slides.length);
+  }
 
   function handleMouseMove(event) {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -432,6 +445,25 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
     setTilt({ x: -5, y: 3, hovered: false });
     setPaused(false);
   }
+
+  const navButtonSx = {
+    position: "absolute",
+    top: "50%",
+    transform: "translateY(-50%)",
+    zIndex: 3,
+    width: 40,
+    height: 40,
+    borderRadius: 1,
+    border: "1px solid",
+    borderColor: alpha("#fff", 0.35),
+    bgcolor: alpha("#0B1538", 0.72),
+    color: OFF_WHITE.textBright,
+    backdropFilter: "blur(6px)",
+    "&:hover": {
+      bgcolor: alpha("#0B1538", 0.9),
+      borderColor: alpha("#fff", 0.55),
+    },
+  };
 
   return (
     <Box
@@ -487,28 +519,33 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
             },
           }}
         >
-          {product.image ? (
-            <Box
-              component="img"
-              src={product.image}
-              alt={product.name}
-              decoding="async"
-              fetchpriority="high"
-              sx={{
-                position: "absolute",
-                inset: 0,
-                zIndex: 0,
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                objectPosition: "center",
-              }}
-            />
-          ) : (
-            <Box sx={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}>
-              <Glyph sx={{ fontSize: 140, color: OFF_WHITE.glyph }} />
-            </Box>
-          )}
+          <Box
+            component={RouterLink}
+            to={`/shop/${product.id}`}
+            aria-label={`View ${product.name}`}
+            sx={{ position: "absolute", inset: 0, zIndex: 0 }}
+          >
+            {product.image ? (
+              <Box
+                component="img"
+                src={product.image}
+                alt={product.name}
+                decoding="async"
+                fetchpriority="high"
+                sx={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  objectPosition: "center",
+                  display: "block",
+                }}
+              />
+            ) : (
+              <Box sx={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Glyph sx={{ fontSize: 140, color: OFF_WHITE.glyph }} />
+              </Box>
+            )}
+          </Box>
           <Chip
             label={drop.badge || (isPreorder ? "PRE-ORDER" : "FEATURED DROP")}
             size="small"
@@ -523,8 +560,29 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
               letterSpacing: 1,
               backdropFilter: "blur(4px)",
               border: drop.color ? `1px solid ${alpha(drop.color, 0.5)}` : "none",
+              pointerEvents: "none",
             }}
           />
+          {hasMultiple ? (
+            <>
+              <IconButton
+                type="button"
+                aria-label="Previous featured drop"
+                onClick={goPrev}
+                sx={{ ...navButtonSx, left: 10 }}
+              >
+                <ChevronLeftIcon />
+              </IconButton>
+              <IconButton
+                type="button"
+                aria-label="Next featured drop"
+                onClick={goNext}
+                sx={{ ...navButtonSx, right: 10 }}
+              >
+                <ChevronRightIcon />
+              </IconButton>
+            </>
+          ) : null}
           {isPreorder && product.preorderEndsAt ? (
             <Box
               sx={{
@@ -535,6 +593,7 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
                 zIndex: 2,
                 display: "flex",
                 justifyContent: "center",
+                pointerEvents: "none",
                 "& > *": { width: "100%" },
               }}
             >
@@ -546,7 +605,22 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
         <Stack spacing={1} key={`${drop.id}-meta`} sx={{ animation: `${fadeSlide} 480ms ease-out` }}>
           <Stack direction="row" alignItems="flex-end" justifyContent="space-between">
             <Box sx={{ minWidth: 0, pr: 1 }}>
-              <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.15, fontSize: "1rem" }}>{product.name}</Typography>
+              <Typography
+                component={RouterLink}
+                to={`/shop/${product.id}`}
+                variant="h6"
+                sx={{
+                  fontWeight: 800,
+                  lineHeight: 1.15,
+                  fontSize: "1rem",
+                  color: "inherit",
+                  textDecoration: "none",
+                  display: "block",
+                  "&:hover": { color: "primary.main" },
+                }}
+              >
+                {product.name}
+              </Typography>
               <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5, flexWrap: "wrap" }}>
                 <ProductRating product={product} />
                 <Typography sx={{ color: "text.secondary", fontSize: "0.75rem" }}>{product.line}</Typography>
@@ -559,17 +633,31 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
           {isPreorder ? (
             <PreorderPricing product={product} compact showFullPrice />
           ) : null}
+          <Button
+            component={RouterLink}
+            to={`/shop/${product.id}`}
+            variant="contained"
+            color="primary"
+            fullWidth
+            sx={{ mt: 0.5, fontFamily: MONO_FONT, letterSpacing: 0.8, textTransform: "uppercase", fontSize: "0.72rem" }}
+          >
+            View product details
+          </Button>
         </Stack>
 
-        {slides.length > 1 ? (
+        {hasMultiple ? (
           <Stack direction="row" spacing={0.75} justifyContent="center" alignItems="center">
             {slides.map((slide, i) => (
               <Box
-                key={slide.id}
+                key={slide.drop.id}
                 component="button"
                 type="button"
                 aria-label={`Show feature drop ${i + 1}`}
-                onClick={() => setIndex(i)}
+                aria-current={i === index ? "true" : undefined}
+                onClick={() => {
+                  setPaused(true);
+                  setIndex(i);
+                }}
                 sx={{
                   width: i === index ? 22 : 8,
                   height: 8,
@@ -593,12 +681,21 @@ function NewsletterForm({ panelSx }) {
   const theme = useTheme();
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState("idle");
+  const [error, setError] = useState("");
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     if (!email.trim()) return;
-    setStatus("sent");
-    setEmail("");
+    setStatus("sending");
+    setError("");
+    try {
+      await sendNewsletterSubscribe(email.trim());
+      setStatus("sent");
+      setEmail("");
+    } catch (err) {
+      setStatus("idle");
+      setError(err.message || "Could not subscribe. Please try again.");
+    }
   }
 
   return (
@@ -611,9 +708,12 @@ function NewsletterForm({ panelSx }) {
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
           {status === "sent" ? <Alert severity="success" sx={{ mb: 2 }}>You&apos;re in! Watch your inbox for the next drop.</Alert> : null}
+          {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-            <TextField fullWidth type="email" placeholder="you@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            <Button type="submit" variant="contained" color="primary" sx={{ px: 4, whiteSpace: "nowrap", fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase" }}>Subscribe</Button>
+            <TextField fullWidth type="email" placeholder="you@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={status === "sending"} />
+            <Button type="submit" variant="contained" color="primary" disabled={status === "sending"} sx={{ px: 4, whiteSpace: "nowrap", fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase" }}>
+              {status === "sending" ? "…" : "Subscribe"}
+            </Button>
           </Stack>
         </Grid>
       </Grid>
@@ -725,15 +825,33 @@ export default function HomePage() {
 
                 <Typography variant="h6" sx={{ fontWeight: 400, color: "text.secondary", maxWidth: wider(540) }}>{hero.subtitle}</Typography>
 
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems="flex-start">
-                  <Button size="large" variant="contained" color="primary" onClick={() => scrollToId(sections.products.anchorId)} sx={{ px: 4, py: 1.4, fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase" }}>▶ {hero.cta}</Button>
-                  <Button size="large" variant="outlined" color="inherit" onClick={() => scrollToId(sections.preorders.anchorId)} sx={{ px: 4, py: 1.4, borderColor: surfaceBorderColor }}>View pre-orders</Button>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems="stretch" sx={{ width: { xs: "100%", sm: "auto" } }}>
+                  <Button
+                    size="large"
+                    variant="contained"
+                    color="primary"
+                    component={RouterLink}
+                    to="/products"
+                    sx={{ px: 4, py: 1.4, fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase", width: { xs: "100%", sm: "auto" } }}
+                  >
+                    ▶ {hero.cta || "Shop products"}
+                  </Button>
+                  <Button
+                    size="large"
+                    variant="outlined"
+                    color="inherit"
+                    component={RouterLink}
+                    to="/preorders"
+                    sx={{ px: 4, py: 1.4, borderColor: surfaceBorderColor, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", width: { xs: "100%", sm: "auto" } }}
+                  >
+                    Shop pre-orders
+                  </Button>
                 </Stack>
               </Stack>
             </Grid>
 
             {hasHeroShowcase ? (
-              <Grid size={{ xs: 12, md: 6 }}>
+              <Grid size={{ xs: 12, md: 6 }} sx={{ display: { xs: "none", md: "block" } }}>
                 <HeroShowcase panelSx={panelSx} isDarkMode={isDarkMode} featureDrops={content.featureDrops} />
               </Grid>
             ) : null}

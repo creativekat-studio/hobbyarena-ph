@@ -10,6 +10,7 @@ import {
   DialogContent,
   DialogTitle,
   FormControl,
+  IconButton,
   InputLabel,
   MenuItem,
   Select,
@@ -29,6 +30,7 @@ import {
 import { alpha, useTheme } from "@mui/material/styles";
 import { useOutletContext } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
+import { TrashIcon } from "../components/icons.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { ORDER_STATUS_EMAIL_LABELS } from "../lib/orderEmailTriggers.js";
 import { sendOrderStatusEmail } from "../lib/emailService.js";
@@ -39,7 +41,6 @@ import {
   EMAIL_TYPES,
   PREORDER_REMINDER_PLACEHOLDERS,
   addEmailFooter,
-  clearEmailBodyOverride,
   getEditableEmailBody,
   getPreorderReminderConfig,
   removeEmailFooter,
@@ -211,7 +212,7 @@ function EmailEditor({
   }
 
   function handleReset() {
-    clearEmailBodyOverride(emailType);
+    // Restore the last saved body (custom override or built-in default) — do not wipe saved customizations.
     onDraftChange(getEditableEmailBody(emailType));
     setSaved(false);
   }
@@ -331,7 +332,7 @@ function EmailEditor({
           onClick={handleReset}
           sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem" }}
         >
-          Reset to default
+          Reset
         </Button>
         <Box sx={{ flex: 1 }} />
         <Button
@@ -463,14 +464,15 @@ function FooterEditModal({
                   update({ lines });
                 }}
               />
-              <Button
-                color="inherit"
+              <IconButton
+                color="error"
                 disabled={form.lines.length <= 1}
+                aria-label="Remove line"
                 onClick={() => removeLine(index)}
-                sx={{ mt: 1, minWidth: 0, px: 1, fontFamily: MONO_FONT, fontSize: "0.68rem" }}
+                sx={{ mt: 1 }}
               >
-                Remove
-              </Button>
+                <TrashIcon sx={{ fontSize: 18 }} />
+              </IconButton>
             </Stack>
           ))}
           <Button

@@ -11,8 +11,13 @@ export function isEmailSimulate() {
   const flag = String(process.env.EMAIL_SIMULATE || "").trim().toLowerCase();
   if (flag === "true" || flag === "1" || flag === "yes") return true;
   if (flag === "false" || flag === "0" || flag === "no") return false;
+  // Auto-capture only in local/dev. On Vercel production, attempt real Resend
+  // delivery — sandbox restrictions still fall back in dispatchEmail.
   const from = process.env.RESEND_FROM_EMAIL || "";
-  return from.includes("onboarding@resend.dev");
+  if (!from.includes("onboarding@resend.dev")) return false;
+  if (process.env.VERCEL_ENV === "production") return false;
+  if (process.env.NODE_ENV === "production" && process.env.VERCEL) return false;
+  return true;
 }
 
 function readIndex() {

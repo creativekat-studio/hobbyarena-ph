@@ -10,6 +10,7 @@ import {
   Divider,
   FormControlLabel,
   Grid,
+  IconButton,
   InputAdornment,
   LinearProgress,
   Link,
@@ -26,7 +27,7 @@ import { MONO_FONT, getStatAccents } from "../theme.js";
 import { avatarStyles } from "../lib/surfaces.js";
 import { wider } from "../lib/layout.js";
 import { PESO } from "../components/ProductCard.jsx";
-import { CardIcon, HeartIcon, SearchIcon, SparkleIcon, UserIcon } from "../components/icons.jsx";
+import { CardIcon, HeartIcon, SearchIcon, SparkleIcon, TrashIcon, UserIcon } from "../components/icons.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { getCustomerProfile, useCustomers } from "../lib/customersStore.jsx";
 import { useOrders, getOrdersForEmail } from "../lib/ordersStore.jsx";
@@ -420,7 +421,7 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
       sx={{
         flex: 1,
         minHeight: 0,
-        overflow: "hidden",
+        overflow: { xs: "visible", md: "hidden" },
       }}
     >
       <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 }, flexShrink: 0 }}>
@@ -475,7 +476,7 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
           minHeight: 0,
           display: "flex",
           flexDirection: "column",
-          overflow: "hidden",
+          overflow: { xs: "visible", md: "hidden" },
         }}
       >
         <Tabs
@@ -492,7 +493,7 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
           sx={{
             flex: 1,
             minHeight: 0,
-            overflowY: "auto",
+            overflowY: { xs: "visible", md: "auto" },
             overscrollBehavior: "contain",
           }}
         >
@@ -577,9 +578,9 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
                             Out of stock
                           </Button>
                         )}
-                        <Button size="small" color="error" onClick={() => removeFromWishlist(item.id)}>
-                          Remove
-                        </Button>
+                        <IconButton size="small" color="error" aria-label="Remove from wishlist" onClick={() => removeFromWishlist(item.id)}>
+                          <TrashIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
                       </Stack>
                     </Stack>
                   );
@@ -621,7 +622,7 @@ export default function AccountPage() {
         width: "100%",
         display: "flex",
         flexDirection: "column",
-        overflow: "hidden",
+        overflow: { xs: "visible", md: "hidden" },
       }}
     >
       {isCustomer || loading ? (

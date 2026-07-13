@@ -37,6 +37,7 @@ import { compressProductImageFile } from "../lib/imageCompression.js";
 import { UPLOAD_SIZE_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLimits.js";
 import { PREVIEW_STOREFRONT_URL } from "../lib/siteAccess.js";
 import { useInventory } from "../lib/inventoryStore.jsx";
+import { useAccordionExpanded } from "../lib/mobileUi.js";
 import CmsPreviewMockup from "../components/CmsPreviewMockup.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
@@ -235,12 +236,10 @@ function BankAssetUpload({ label, value, onChange, surfaceBorderColor, kind }) {
                 bgcolor: alpha("#000", 0.45),
                 border: "1px solid",
                 borderColor: alpha("#fff", 0.18),
-                fontSize: "0.85rem",
-                lineHeight: 1,
                 "&:hover": { bgcolor: alpha(theme.palette.error.main, 0.22), color: "error.light" },
               }}
             >
-              ✕
+              <TrashIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Stack>
         ) : null}
@@ -379,7 +378,7 @@ function CmsSectionAccordion({
 
 /** Save control shown at the bottom of each CMS tab. */
 function CmsTabSaveBar({ surfaceBorderColor }) {
-  const { dirty, saving, saveError, saveOk, saveContent, hydrated, reset } = useCms();
+  const { dirty, saving, saveError, saveOk, saveContent, hydrated, discardChanges } = useCms();
 
   return (
     <Box
@@ -417,11 +416,11 @@ function CmsTabSaveBar({ surfaceBorderColor }) {
         <Button
           variant="outlined"
           color="inherit"
-          disabled={saving}
-          onClick={reset}
+          disabled={saving || !dirty}
+          onClick={discardChanges}
           sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
         >
-          Reset to defaults
+          Reset
         </Button>
         <Button
           variant="contained"
@@ -603,7 +602,6 @@ function PerkIconPicker({ pickerId, value, accent, onChange, surfaceBorderColor,
 }
 
 function SiteModeTab({ panelSx, surfaceBorderColor }) {
-  const theme = useTheme();
   const { content, setStorefront } = useCms();
   const storefront = content.storefront;
 
@@ -666,31 +664,6 @@ function SiteModeTab({ panelSx, surfaceBorderColor }) {
         </Stack>
       </Box>
 
-      <Box
-        sx={{
-          ...panelSx,
-          p: { xs: 2, md: 2.5 },
-          borderColor: alpha(theme.palette.info.main, 0.35),
-          bgcolor: alpha(theme.palette.info.main, 0.06),
-        }}
-      >
-        <Typography sx={{ fontWeight: 800, fontSize: "0.88rem", mb: 0.75 }}>How it works</Typography>
-        <Stack spacing={0.75} sx={{ color: "text.secondary", fontSize: "0.84rem", lineHeight: 1.5 }}>
-          <Typography sx={{ fontSize: "inherit" }}>
-            <strong style={{ color: theme.palette.text.primary }}>hobbyarena.ph</strong> — shows landing page when toggle is on
-          </Typography>
-          <Typography sx={{ fontSize: "inherit" }}>
-            <strong style={{ color: theme.palette.text.primary }}>localhost</strong> — follows the toggle (use{" "}
-            <code>?storefront=1</code> to bypass landing locally)
-          </Typography>
-          <Typography sx={{ fontSize: "inherit" }}>
-            <strong style={{ color: theme.palette.text.primary }}>hobbyarena.vercel.app</strong> — always shows full shop for testing
-          </Typography>
-          <Typography sx={{ fontSize: "inherit" }}>
-            <strong style={{ color: theme.palette.text.primary }}>/admin</strong> — always accessible on any domain
-          </Typography>
-        </Stack>
-      </Box>
       <CmsTabSaveBar surfaceBorderColor={surfaceBorderColor} />
     </Stack>
   );
@@ -839,7 +812,7 @@ function HomepageTab({ panelSx, surfaceBorderColor }) {
   const sections = content.homepageSections;
   const perks = content.perks ?? { enabled: true, overline: "", title: "", items: [] };
   const theme = useTheme();
-  const [expanded, setExpanded] = useState("hero");
+  const [expanded, setExpanded] = useAccordionExpanded("hero");
 
   const handleAccordionChange = (panel) => (_event, isExpanded) => {
     setExpanded(isExpanded ? panel : false);
@@ -988,10 +961,19 @@ function HomepageTab({ panelSx, surfaceBorderColor }) {
                           <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>Active</Typography>
                           <IconButton
                             size="small"
+                            color="error"
+                            aria-label="Delete featured drop"
                             onClick={() => removeFeatureDrop(drop.id)}
-                            sx={{ color: "text.secondary", border: "1px solid", borderColor: surfaceBorderColor }}
+                            sx={{
+                              border: "1px solid",
+                              borderColor: surfaceBorderColor,
+                              "&:hover": {
+                                borderColor: "error.main",
+                                bgcolor: (t) => alpha(t.palette.error.main, 0.1),
+                              },
+                            }}
                           >
-                            ✕
+                            <TrashIcon sx={{ fontSize: 18 }} />
                           </IconButton>
                         </Stack>
                       </Stack>
@@ -1209,7 +1191,22 @@ function BannerCard({ banner, panelSx, surfaceBorderColor, updateBanner, removeB
           />
           <Stack direction="row" spacing={0.5} alignItems="center">
             <Switch checked={banner.active} onChange={(e) => updateBanner(banner.id, { active: e.target.checked })} color="primary" />
-            <IconButton size="small" onClick={() => removeBanner(banner.id)} sx={{ color: "text.secondary", border: "1px solid", borderColor: surfaceBorderColor }}>✕</IconButton>
+            <IconButton
+            size="small"
+            color="error"
+            aria-label="Delete banner"
+            onClick={() => removeBanner(banner.id)}
+            sx={{
+              border: "1px solid",
+              borderColor: surfaceBorderColor,
+              "&:hover": {
+                borderColor: "error.main",
+                bgcolor: (t) => alpha(t.palette.error.main, 0.1),
+              },
+            }}
+          >
+            <TrashIcon sx={{ fontSize: 18 }} />
+          </IconButton>
           </Stack>
         </Stack>
       </Stack>
@@ -1218,30 +1215,184 @@ function BannerCard({ banner, panelSx, surfaceBorderColor, updateBanner, removeB
 }
 
 function BannersTab({ panelSx, surfaceBorderColor }) {
-  const { content, addBanner, updateBanner, removeBanner } = useCms();
+  const {
+    content,
+    addBanner,
+    updateBanner,
+    removeBanner,
+    addMarqueeBanner,
+    updateMarqueeBanner,
+    removeMarqueeBanner,
+  } = useCms();
+  const firebaseEnabled = useFirebaseData();
+  const marqueeInputRef = useRef(null);
+  const [uploadingMarquee, setUploadingMarquee] = useState(false);
+  const [marqueeError, setMarqueeError] = useState("");
+  const [expanded, setExpanded] = useAccordionExpanded("marquee");
+
+  const marqueeBanners = content.marqueeBanners || [];
+  const activeMarquee = marqueeBanners.filter((banner) => banner.active !== false).length;
+  const activePromo = content.banners.filter((banner) => banner.active).length;
+
+  const handleAccordionChange = (panel) => (_event, isExpanded) => {
+    setExpanded(isExpanded ? panel : false);
+  };
+
+  async function handleMarqueeUpload(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setMarqueeError("");
+    const sizeError = validateUploadFileSize(file);
+    if (sizeError) {
+      setMarqueeError(sizeError);
+      return;
+    }
+    setUploadingMarquee(true);
+    try {
+      let imageUrl;
+      if (firebaseEnabled) {
+        imageUrl = await uploadCmsAsset(file, "marquee");
+      } else {
+        imageUrl = await readAsDataUrl(file);
+      }
+      addMarqueeBanner({ imageUrl, active: true });
+    } catch (err) {
+      setMarqueeError(err.message || "Could not upload image.");
+    } finally {
+      setUploadingMarquee(false);
+    }
+  }
 
   return (
-    <Stack spacing={2.5}>
-      <SectionHeader
+    <Stack spacing={1.5}>
+      <input ref={marqueeInputRef} type="file" accept="image/*" hidden onChange={handleMarqueeUpload} />
+
+      <CmsSectionAccordion
+        id="marquee"
+        title="Moving logo banners"
+        summary={`${marqueeBanners.length} image${marqueeBanners.length === 1 ? "" : "s"} · ${activeMarquee} active`}
+        expanded={expanded}
+        onChange={handleAccordionChange}
+        panelSx={panelSx}
+        surfaceBorderColor={surfaceBorderColor}
+        action={(
+          <Button
+            size="small"
+            variant="contained"
+            color="primary"
+            disabled={uploadingMarquee}
+            onClick={() => marqueeInputRef.current?.click()}
+            sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.68rem" }}
+          >
+            {uploadingMarquee ? "Uploading…" : "+ Add image"}
+          </Button>
+        )}
+      >
+        <Stack spacing={2} sx={{ pt: 2 }}>
+          <Typography sx={{ color: "text.secondary", fontSize: "0.85rem" }}>
+            Images that scroll under the announcement bar on the homepage. {UPLOAD_SIZE_DISCLAIMER}
+          </Typography>
+          {marqueeError ? (
+            <Typography color="error" sx={{ fontSize: "0.82rem" }}>{marqueeError}</Typography>
+          ) : null}
+          {marqueeBanners.length === 0 ? (
+            <Box sx={{ ...panelSx, p: 4, textAlign: "center", color: "text.secondary" }}>
+              No marquee images yet. Add logos or promo art to scroll on the homepage.
+            </Box>
+          ) : (
+            <Grid container spacing={2}>
+              {marqueeBanners.map((banner) => (
+                <Grid size={{ xs: 12, sm: 6 }} key={banner.id}>
+                  <Box sx={{ ...panelSx, p: 1.5, opacity: banner.active !== false ? 1 : 0.55 }}>
+                    <Box
+                      component="img"
+                      src={banner.imageUrl}
+                      alt="Marquee banner"
+                      sx={{ width: "100%", height: 96, objectFit: "cover", borderRadius: 1, display: "block", mb: 1 }}
+                    />
+                    <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="space-between">
+                      <Stack direction="row" spacing={0.5} alignItems="center">
+                        <Switch
+                          checked={banner.active !== false}
+                          onChange={(e) => updateMarqueeBanner(banner.id, { active: e.target.checked })}
+                          color="primary"
+                        />
+                        <Typography sx={{ fontSize: "0.75rem", color: "text.secondary" }}>
+                          {banner.active !== false ? "Active" : "Hidden"}
+                        </Typography>
+                      </Stack>
+                      <IconButton
+                        size="small"
+                        color="error"
+                        aria-label="Delete marquee image"
+                        onClick={() => removeMarqueeBanner(banner.id)}
+                        sx={{
+                          border: "1px solid",
+                          borderColor: surfaceBorderColor,
+                          "&:hover": {
+                            borderColor: "error.main",
+                            bgcolor: (t) => alpha(t.palette.error.main, 0.1),
+                          },
+                        }}
+                      >
+                        <TrashIcon sx={{ fontSize: 18 }} />
+                      </IconButton>
+                    </Stack>
+                  </Box>
+                </Grid>
+              ))}
+            </Grid>
+          )}
+        </Stack>
+      </CmsSectionAccordion>
+
+      <CmsSectionAccordion
+        id="promo"
         title="Promo banners"
-        action={
-          <Button variant="contained" color="primary" onClick={() => addBanner({ title: "New banner", subtitle: "Describe this promo." })} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
+        summary={`${content.banners.length} banner${content.banners.length === 1 ? "" : "s"} · ${activePromo} active`}
+        expanded={expanded}
+        onChange={handleAccordionChange}
+        panelSx={panelSx}
+        surfaceBorderColor={surfaceBorderColor}
+        action={(
+          <Button
+            size="small"
+            variant="contained"
+            color="primary"
+            onClick={() => addBanner({ title: "New banner", subtitle: "Describe this promo." })}
+            sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.68rem" }}
+          >
             + Add banner
           </Button>
-        }
-      />
-      <Grid container spacing={2.5}>
-        {content.banners.map((banner) => (
-          <Grid size={{ xs: 12, md: 6 }} key={banner.id}>
-            <BannerCard banner={banner} panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} updateBanner={updateBanner} removeBanner={removeBanner} />
-          </Grid>
-        ))}
-        {content.banners.length === 0 ? (
-          <Grid size={{ xs: 12 }}>
-            <Box sx={{ ...panelSx, p: 5, textAlign: "center", color: "text.secondary" }}>No banners yet. Add one to show a promo on the homepage.</Box>
-          </Grid>
-        ) : null}
-      </Grid>
+        )}
+      >
+        <Stack spacing={2} sx={{ pt: 2 }}>
+          <Typography sx={{ color: "text.secondary", fontSize: "0.85rem" }}>
+            Promo cards on the homepage between the hero and product sections.
+          </Typography>
+          {content.banners.length === 0 ? (
+            <Box sx={{ ...panelSx, p: 4, textAlign: "center", color: "text.secondary" }}>
+              No banners yet. Add one to show a promo on the homepage.
+            </Box>
+          ) : (
+            <Grid container spacing={2.5}>
+              {content.banners.map((banner) => (
+                <Grid size={{ xs: 12, md: 6 }} key={banner.id}>
+                  <BannerCard
+                    banner={banner}
+                    panelSx={panelSx}
+                    surfaceBorderColor={surfaceBorderColor}
+                    updateBanner={updateBanner}
+                    removeBanner={removeBanner}
+                  />
+                </Grid>
+              ))}
+            </Grid>
+          )}
+        </Stack>
+      </CmsSectionAccordion>
+
       <CmsTabSaveBar surfaceBorderColor={surfaceBorderColor} />
     </Stack>
   );
@@ -1269,7 +1420,22 @@ function AnnouncementsTab({ panelSx, surfaceBorderColor }) {
             <Stack key={item.id} direction="row" alignItems="center" spacing={1.5} sx={{ p: 1.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}>
               <Switch checked={item.active} onChange={(e) => updateAnnouncement(item.id, { active: e.target.checked })} color="primary" />
               <TextField variant="standard" fullWidth value={item.text} onChange={(e) => updateAnnouncement(item.id, { text: e.target.value })} sx={{ opacity: item.active ? 1 : 0.5 }} InputProps={{ disableUnderline: true, sx: { fontWeight: 600 } }} />
-              <IconButton size="small" color="inherit" onClick={() => removeAnnouncement(item.id)} sx={{ color: "text.secondary" }}>✕</IconButton>
+              <IconButton
+                size="small"
+                color="error"
+                aria-label="Delete announcement"
+                onClick={() => removeAnnouncement(item.id)}
+                sx={{
+                  border: "1px solid",
+                  borderColor: surfaceBorderColor,
+                  "&:hover": {
+                    borderColor: "error.main",
+                    bgcolor: (t) => alpha(t.palette.error.main, 0.1),
+                  },
+                }}
+              >
+                <TrashIcon sx={{ fontSize: 18 }} />
+              </IconButton>
             </Stack>
           ))}
         </Stack>
@@ -1342,7 +1508,22 @@ function TestimonialsTab({ panelSx, surfaceBorderColor }) {
                   <Switch checked={item.active !== false} onChange={(e) => updateTestimonial(item.id, { active: e.target.checked })} color="primary" />
                   <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>Active</Typography>
                 </Stack>
-                <IconButton size="small" onClick={() => removeTestimonial(item.id)} sx={{ color: "text.secondary", border: "1px solid", borderColor: surfaceBorderColor }}>✕</IconButton>
+                <IconButton
+                  size="small"
+                  color="error"
+                  aria-label="Delete testimonial"
+                  onClick={() => removeTestimonial(item.id)}
+                  sx={{
+                    border: "1px solid",
+                    borderColor: surfaceBorderColor,
+                    "&:hover": {
+                      borderColor: "error.main",
+                      bgcolor: (t) => alpha(t.palette.error.main, 0.1),
+                    },
+                  }}
+                >
+                  <TrashIcon sx={{ fontSize: 18 }} />
+                </IconButton>
               </Stack>
             </Stack>
           </Box>
@@ -1356,7 +1537,7 @@ function TestimonialsTab({ panelSx, surfaceBorderColor }) {
 function BankDetailsTab({ panelSx, surfaceBorderColor }) {
   const { content, setBankDetails, updateBankAccount, addBankAccount, removeBankAccount } = useCms();
   const bank = content.bankDetails;
-  const [expanded, setExpanded] = useState("section");
+  const [expanded, setExpanded] = useAccordionExpanded("section");
   const activeAccounts = bank.accounts.filter((account) => account.active !== false).length;
 
   const handleAccordionChange = (panel) => (_event, isExpanded) => {
@@ -1488,7 +1669,7 @@ function SocialContactTab({ panelSx, surfaceBorderColor }) {
   const { content, setSocial, setContact } = useCms();
   const social = content.social;
   const contact = content.contact;
-  const [expanded, setExpanded] = useState("social");
+  const [expanded, setExpanded] = useAccordionExpanded("social");
 
   const handleAccordionChange = (panel) => (_event, isExpanded) => {
     setExpanded(isExpanded ? panel : false);

@@ -664,13 +664,13 @@ export function OrdersProvider({ children }) {
       if (firebaseEnabled) {
         placingOrderRef.current = true;
         try {
-          // Guests have no session; sign in anonymously so proof of payment can
-          // be written to Storage (order-proofs rule requires an authenticated user).
+          // Guests have no session; prefer anonymous Auth before proof upload.
+          // Storage rules also allow constrained guest writes as a fallback.
           if (proofUrl && !payload.manual) {
             try {
               await ensureAnonymousAuth();
             } catch (authError) {
-              console.error("[orders] Anonymous sign-in for proof upload failed:", authError);
+              console.warn("[orders] Anonymous sign-in for proof upload failed:", authError);
             }
           }
           const saved = await createOrder(created);

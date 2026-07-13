@@ -178,15 +178,24 @@ export async function firebaseSignOut() {
 }
 
 /**
- * Ensure there is a Firebase auth session so guest checkout can write proof of
- * payment to Storage (the order-proofs rule requires request.auth != null).
- * If someone is already signed in (member/guest), reuse that session.
- * Returns the current uid, or null when Auth is unavailable.
+ * Ensure there is a Firebase auth session for guest checkout proof uploads.
+ * Reuses any existing session (member or anonymous). Returns the uid, or null
+ * when Auth is unavailable. Throws when Anonymous Auth is disabled / blocked.
  */
 export async function ensureAnonymousAuth() {
   const auth = getFirebaseAuth();
   if (!auth) return null;
   if (auth.currentUser) return auth.currentUser.uid;
-  const credential = await signInAnonymously(auth);
-  return credential.user?.uid || null;
+  try {
+    const credential = await signInAnonymously(auth);
+    return credential.user?.uid || null;
+  } catch (error) {
+    const code = error?.code || "";
+    if (code === "auth/admin-restricted-operation" || code === "auth/operation-not-allowed") {
+      throw new Error(
+        "Guest checkout needs Anonymous Auth enabled in Firebase Console (Authentication → Sign-in method).",
+      );
+    }
+    throw new Error(mapAuthError(error));
+  }
 }

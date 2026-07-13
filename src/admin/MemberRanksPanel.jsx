@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import {
   Box,
   Button,
+  IconButton,
   Stack,
   Switch,
   Table,
@@ -14,13 +15,74 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import { MONO_FONT } from "../theme.js";
+import { TrashIcon } from "../components/icons.jsx";
 import { PESO } from "../components/ProductCard.jsx";
-import AdminColorPicker, { normalizeHex } from "../components/AdminColorPicker.jsx";
+import AdminColorPicker from "../components/AdminColorPicker.jsx";
 import { useClientTiers } from "../lib/clientTiersStore.jsx";
 import { resolveClientTier } from "../lib/clientTier.js";
 
 const FALLBACK_COLORS = ["#64748b", "#2563EB", "#C9A227", "#22c55e", "#f43f5e", "#7c3aed", "#ec4899", "#06b6d4"];
+
+function MemberRanksSaveBar({ surfaceBorderColor }) {
+  const { dirty, saving, saveError, saveOk, hydrated, discardChanges, saveTiers } = useClientTiers();
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 1,
+        mt: 2.5,
+        px: 1.75,
+        py: 1.25,
+        borderRadius: 1,
+        border: "1px solid",
+        borderColor: surfaceBorderColor,
+        bgcolor: (theme) => alpha(theme.palette.text.primary, theme.palette.mode === "dark" ? 0.04 : 0.02),
+      }}
+    >
+      <Typography
+        sx={{
+          color: saveError ? "error.main" : dirty ? "warning.main" : saveOk ? "success.main" : "text.secondary",
+          fontSize: "0.78rem",
+          fontWeight: dirty || saveError || saveOk ? 600 : 500,
+          lineHeight: 1.4,
+        }}
+      >
+        {saveError
+          ? saveError
+          : dirty
+            ? "Unsaved changes"
+            : saveOk
+              ? "Saved"
+              : "Edits stay local until you save"}
+      </Typography>
+      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+        <Button
+          variant="outlined"
+          color="inherit"
+          disabled={saving || !dirty}
+          onClick={discardChanges}
+          sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
+        >
+          Reset
+        </Button>
+        <Button
+          variant="contained"
+          color="primary"
+          disabled={!hydrated || !dirty || saving}
+          onClick={() => saveTiers()}
+          sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
+        >
+          {saving ? "Saving…" : "Save"}
+        </Button>
+      </Stack>
+    </Box>
+  );
+}
 
 function nextRankDefaults(tiers) {
   const sorted = [...tiers].sort((a, b) => (a.minSpend ?? 0) - (b.minSpend ?? 0));
@@ -32,7 +94,7 @@ function nextRankDefaults(tiers) {
   const badgeColor = FALLBACK_COLORS.find((c) => !used.has(c.toLowerCase()))
     || FALLBACK_COLORS[tiers.length % FALLBACK_COLORS.length];
   return {
-    name: "",
+    name: "New rank",
     badgeColor,
     minSpend: floor,
     maxSpend: null,
@@ -52,12 +114,8 @@ function ActiveSwitch({ checked, onChange }) {
 
 /** Member ranks editor — matches Product lines layout inside Classifications. */
 export function MemberRanksPanel({ panelSx, surfaceBorderColor }) {
-  const { tiers, addTier, updateTier, removeTier, resetTiers } = useClientTiers();
+  const { tiers, addTier, updateTier, removeTier } = useClientTiers();
   const [previewSpend, setPreviewSpend] = useState("15000");
-  const [newName, setNewName] = useState("");
-  const [newFloor, setNewFloor] = useState("");
-  const [newCeiling, setNewCeiling] = useState("");
-  const [newColor, setNewColor] = useState("#7c3aed");
 
   const sorted = useMemo(
     () => [...tiers].sort((a, b) => (a.minSpend ?? 0) - (b.minSpend ?? 0)),
@@ -69,32 +127,45 @@ export function MemberRanksPanel({ panelSx, surfaceBorderColor }) {
     [previewSpend, tiers],
   );
 
+  const activeCount = tiers.filter((tier) => tier.active !== false).length;
+
   function handleAdd() {
-    const name = newName.trim();
-    if (!name) return;
     const defaults = nextRankDefaults(tiers);
-    const minSpend = newFloor === "" ? defaults.minSpend : Math.max(0, Number(newFloor) || 0);
-    const maxSpend = newCeiling === "" ? null : Math.max(0, Number(newCeiling) || 0);
     const openTop = sorted.find((t) => t.maxSpend == null);
-    if (openTop && minSpend > (openTop.minSpend ?? 0)) {
-      updateTier(openTop.id, { maxSpend: minSpend - 1 });
+    if (openTop && defaults.minSpend > (openTop.minSpend ?? 0)) {
+      updateTier(openTop.id, { maxSpend: defaults.minSpend - 1 });
     }
-    addTier({
-      name,
-      badgeColor: normalizeHex(newColor) || defaults.badgeColor,
-      minSpend,
-      maxSpend,
-    });
-    setNewName("");
-    setNewFloor("");
-    setNewCeiling("");
-    setNewColor(FALLBACK_COLORS[(tiers.length + 1) % FALLBACK_COLORS.length]);
+    addTier(defaults);
   }
 
   return (
     <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
+      <Stack
+        direction="row"
+        alignItems="center"
+        justifyContent="space-between"
+        spacing={1.5}
+        sx={{ mb: 2, gap: 1.5, flexWrap: "wrap" }}
+      >
+        <Box sx={{ minWidth: 0 }}>
+          <Typography sx={{ fontWeight: 800, fontSize: "0.95rem", lineHeight: 1.3 }}>Member ranks</Typography>
+          <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", mt: 0.35, lineHeight: 1.4 }}>
+            {tiers.length} rank{tiers.length === 1 ? "" : "s"} · {activeCount} active
+          </Typography>
+        </Box>
+        <Button
+          size="small"
+          variant="contained"
+          color="primary"
+          onClick={handleAdd}
+          sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.68rem", flexShrink: 0 }}
+        >
+          + Add rank
+        </Button>
+      </Stack>
+
       <Typography sx={{ fontSize: "0.84rem", color: "text.secondary", lineHeight: 1.55, mb: 2 }}>
-        Member ranks are loyalty badges based on total <strong>fulfilled</strong> order spend.
+        Loyalty badges based on total <strong>fulfilled</strong> order spend.
         Shoppers see their rank on Account; admins see it on Customers.
       </Typography>
 
@@ -180,15 +251,15 @@ export function MemberRanksPanel({ panelSx, surfaceBorderColor }) {
                   />
                 </TableCell>
                 <TableCell align="right" sx={{ width: 88 }}>
-                  <Button
+                  <IconButton
                     size="small"
-                    color="inherit"
+                    color="error"
                     disabled={tiers.length <= 1}
+                    aria-label="Remove rank"
                     onClick={() => removeTier(tier.id)}
-                    sx={{ fontSize: "0.72rem", minWidth: 0 }}
                   >
-                    Remove
-                  </Button>
+                    <TrashIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
                 </TableCell>
               </TableRow>
             ))}
@@ -222,59 +293,20 @@ export function MemberRanksPanel({ panelSx, surfaceBorderColor }) {
                 <Typography sx={{ fontSize: "0.82rem" }}>Active</Typography>
               </Stack>
             </Stack>
-            <Button size="small" color="inherit" disabled={tiers.length <= 1} onClick={() => removeTier(tier.id)} sx={{ fontSize: "0.72rem" }}>
-              Remove
-            </Button>
+            <IconButton size="small" color="error" disabled={tiers.length <= 1} aria-label="Remove rank" onClick={() => removeTier(tier.id)}>
+              <TrashIcon sx={{ fontSize: 18 }} />
+            </IconButton>
           </Box>
         ))}
       </Stack>
 
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 2.5 }} alignItems={{ sm: "flex-start" }}>
-        <TextField
-          size="small"
-          label="New rank name"
-          placeholder="Arena Legend"
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          sx={{ flex: 1.2 }}
-        />
-        <TextField
-          size="small"
-          type="number"
-          label="Floor"
-          placeholder="Auto"
-          value={newFloor}
-          onChange={(e) => setNewFloor(e.target.value)}
-          sx={{ width: { sm: 110 } }}
-        />
-        <TextField
-          size="small"
-          type="number"
-          label="Ceiling"
-          placeholder="∞"
-          value={newCeiling}
-          onChange={(e) => setNewCeiling(e.target.value)}
-          sx={{ width: { sm: 110 } }}
-        />
-        <Box sx={{ pt: { sm: 0.5 } }}>
-          <AdminColorPicker value={newColor} onChange={setNewColor} />
+      {tiers.length === 0 ? (
+        <Box sx={{ py: 4, textAlign: "center", color: "text.secondary", fontSize: "0.88rem" }}>
+          No ranks yet. Click + Add rank to create one.
         </Box>
-        <Button
-          variant="contained"
-          onClick={handleAdd}
-          sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase", flexShrink: 0 }}
-        >
-          Add rank
-        </Button>
-        <Button
-          variant="outlined"
-          color="inherit"
-          onClick={resetTiers}
-          sx={{ borderColor: surfaceBorderColor, flexShrink: 0 }}
-        >
-          Reset defaults
-        </Button>
-      </Stack>
+      ) : null}
+
+      <MemberRanksSaveBar surfaceBorderColor={surfaceBorderColor} />
     </Box>
   );
 }

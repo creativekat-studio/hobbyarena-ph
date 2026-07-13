@@ -81,6 +81,10 @@ export async function sendInquiryEmails(inquiry) {
   });
 }
 
+export async function sendNewsletterSubscribe(email) {
+  return postJson("/api/newsletter-subscribe", { email });
+}
+
 export async function fetchEmailOutboxStatus() {
   const response = await fetch("/api/email-outbox?status=1");
   if (!response.ok) return { simulate: false, count: 0 };

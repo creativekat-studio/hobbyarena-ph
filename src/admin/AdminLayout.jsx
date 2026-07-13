@@ -28,6 +28,7 @@ import {
   CogIcon,
   InventoryIcon,
   MailIcon,
+  MenuIcon,
   MoonIcon,
   SparkleIcon,
   SunIcon,
@@ -68,18 +69,15 @@ export default function AdminLayout() {
   const surfaces = getSurfaces(theme, isDarkMode);
   const { surfaceBorderColor, navbarBackground } = surfaces;
   const [healthOpen, setHealthOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   async function handleSignOut() {
     await signOutAdmin();
     navigate("/admin/login", { replace: true });
   }
 
-  const drawerContent = (
-    <Box sx={{ height: "100%", display: "flex", flexDirection: "column", p: 2 }}>
-      <Stack alignItems="center" justifyContent="center" sx={{ px: 1, py: 2.5, mb: 1.5 }}>
-        <BrandLogo sx={{ fontSize: 62, color: "primary.main" }} imageSx={{ height: 83 }} />
-      </Stack>
-
+  function renderNav(onNavigate) {
+    return (
       <List sx={{ flexGrow: 1 }}>
         {NAV.map((item) => {
           const Icon = item.icon;
@@ -89,6 +87,7 @@ export default function AdminLayout() {
               component={NavLink}
               to={item.to}
               end={item.end}
+              onClick={onNavigate}
               sx={{
                 borderRadius: 1,
                 mb: 0.5,
@@ -113,6 +112,16 @@ export default function AdminLayout() {
           );
         })}
       </List>
+    );
+  }
+
+  const drawerContent = (onNavigate) => (
+    <Box sx={{ height: "100%", display: "flex", flexDirection: "column", p: 2 }}>
+      <Stack alignItems="center" justifyContent="center" sx={{ px: 1, py: 2.5, mb: 1.5 }}>
+        <BrandLogo sx={{ fontSize: 62, color: "primary.main" }} imageSx={{ height: 83 }} />
+      </Stack>
+
+      {renderNav(onNavigate)}
 
       <Box sx={{ ...surfaces.panelSx, p: 1.5 }}>
         <Stack direction="row" spacing={1} alignItems="center">
@@ -157,28 +166,44 @@ export default function AdminLayout() {
         }}
         open
       >
-        {drawerContent}
+        {drawerContent()}
       </Drawer>
 
-      {/* Right pane: flex column filling remaining viewport height.
-          The permanent Drawer already reserves DRAWER_WIDTH in the flex row, so no left margin here. */}
+      <Drawer
+        variant="temporary"
+        open={mobileNavOpen}
+        onClose={() => setMobileNavOpen(false)}
+        ModalProps={{ keepMounted: true }}
+        sx={{
+          display: { xs: "block", md: "none" },
+          "& .MuiDrawer-paper": {
+            width: Math.min(DRAWER_WIDTH, 300),
+            boxSizing: "border-box",
+            border: "none",
+            bgcolor: navbarBackground,
+            backdropFilter: "blur(20px)",
+          },
+        }}
+      >
+        {drawerContent(() => setMobileNavOpen(false))}
+      </Drawer>
+
       <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <AdminPageHeaderProvider>
-          {/* Top bar — static inside the fixed-height pane, no longer needs sticky */}
           <AppBar position="static" color="transparent" elevation={0} sx={{ flexShrink: 0, bgcolor: navbarBackground, backdropFilter: "blur(20px)", borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
             <Toolbar disableGutters sx={{ px: { xs: 1.5, md: 2.5 }, minHeight: { xs: 64, md: 76 } }}>
+              <IconButton
+                size="small"
+                color="inherit"
+                aria-label="Open admin menu"
+                onClick={() => setMobileNavOpen(true)}
+                sx={{ display: { xs: "inline-flex", md: "none" }, mr: 1 }}
+              >
+                <MenuIcon />
+              </IconButton>
               <AdminPageHeaderToolbar
                 surfaceBorderColor={surfaceBorderColor}
                 notificationBell={<AdminNotificationBell surfaceBorderColor={surfaceBorderColor} />}
-                storefrontButton={(
-                  <Box sx={{ display: { xs: "inline-flex", md: "none" } }}>
-                    <Tooltip title="View storefront">
-                      <span>
-                        <AdminStorefrontButton />
-                      </span>
-                    </Tooltip>
-                  </Box>
-                )}
                 themeToggle={(
                   <Tooltip title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}>
                     <IconButton size="small" onClick={toggle} color="inherit">{isDarkMode ? <SunIcon /> : <MoonIcon />}</IconButton>
@@ -193,24 +218,23 @@ export default function AdminLayout() {
             </Toolbar>
           </AppBar>
 
-          {/*
-            Scrollable content area. overflow: auto so non-grid pages scroll naturally.
-            display: flex + flex-direction: column so grid pages can use flex: 1
-            on their root element and have the grid section fill remaining height.
-          */}
           <Box
             sx={{
               flex: 1,
               minHeight: 0,
+              minWidth: 0,
               overflow: "auto",
               display: "flex",
               flexDirection: "column",
+              alignItems: "stretch",
               py: { xs: 1.25, md: 1.5 },
               px: { xs: 1.5, md: 2.5 },
             }}
           >
             <AdminPageHeaderMobileMeta />
-            <Outlet context={{ surfaces, isDarkMode }} />
+            <Box sx={{ flexShrink: 0, width: "100%", minWidth: 0, pb: 1 }}>
+              <Outlet context={{ surfaces, isDarkMode }} />
+            </Box>
           </Box>
         </AdminPageHeaderProvider>
       </Box>

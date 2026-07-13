@@ -16,17 +16,27 @@ import { wider } from "../lib/layout.js";
 import { FacebookIcon, InstagramIcon, TiktokIcon } from "../components/icons.jsx";
 import { useCms } from "../lib/cmsContent.jsx";
 import { useInquiries } from "../lib/inquiriesStore.jsx";
+import { sendNewsletterSubscribe } from "../lib/emailService.js";
 import { resolveContactMapUrls } from "../data/catalogDefaults.js";
 
 function NewsletterForm({ panelSx }) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState("idle");
+  const [error, setError] = useState("");
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     if (!email.trim()) return;
-    setStatus("sent");
-    setEmail("");
+    setStatus("sending");
+    setError("");
+    try {
+      await sendNewsletterSubscribe(email.trim());
+      setStatus("sent");
+      setEmail("");
+    } catch (err) {
+      setStatus("idle");
+      setError(err.message || "Could not subscribe. Please try again.");
+    }
   }
 
   return (
@@ -39,9 +49,12 @@ function NewsletterForm({ panelSx }) {
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
           {status === "sent" ? <Alert severity="success" sx={{ mb: 2 }}>You&apos;re in! Watch your inbox for the next drop.</Alert> : null}
+          {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-            <TextField fullWidth type="email" placeholder="you@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            <Button type="submit" variant="contained" color="primary" sx={{ px: 4, whiteSpace: "nowrap", fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase" }}>Subscribe</Button>
+            <TextField fullWidth type="email" placeholder="you@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={status === "sending"} />
+            <Button type="submit" variant="contained" color="primary" disabled={status === "sending"} sx={{ px: 4, whiteSpace: "nowrap", fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase" }}>
+              {status === "sending" ? "…" : "Subscribe"}
+            </Button>
           </Stack>
         </Grid>
       </Grid>

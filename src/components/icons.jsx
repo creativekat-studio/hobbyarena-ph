@@ -109,6 +109,30 @@ export function BellIcon(props) {
   );
 }
 
+export function MenuIcon(props) {
+  return (
+    <SvgIcon viewBox="0 0 24 24" {...props}>
+      <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </SvgIcon>
+  );
+}
+
+export function ChevronLeftIcon(props) {
+  return (
+    <SvgIcon viewBox="0 0 24 24" {...props}>
+      <path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </SvgIcon>
+  );
+}
+
+export function ChevronRightIcon(props) {
+  return (
+    <SvgIcon viewBox="0 0 24 24" {...props}>
+      <path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </SvgIcon>
+  );
+}
+
 export function HeartIcon({ solid = false, ...props }) {
   return (
     <SvgIcon viewBox="0 0 24 24" {...props}>

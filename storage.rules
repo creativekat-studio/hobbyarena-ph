@@ -14,11 +14,13 @@ service firebase.storage {
       );
     }
 
-    // Payment proof uploads — customer who owns the order or admin
+    // Payment proof uploads — guests and members may upload at checkout.
+    // Auth is preferred (anonymous or signed-in), but writes stay open with
+    // size/type limits so guest checkout still works if Anonymous Auth is off.
+    // Matches Firestore orders create: if true (guest checkout).
     match /order-proofs/{orderId}/{fileName} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn()
-        && request.resource.size < 5 * 1024 * 1024
+      allow write: if request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*|application/pdf');
     }
 

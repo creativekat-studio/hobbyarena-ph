@@ -2,6 +2,7 @@ import { Box } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { keyframes } from "@mui/system";
 import { MARQUEE_BANNERS } from "../data/mediaAssets.js";
+import { useCms } from "../lib/cmsContent.jsx";
 import { marqueeDuration, marqueeLoop } from "../lib/marquee.js";
 
 const TRACK_REPEATS = 8;
@@ -36,9 +37,14 @@ function BannerSlide({ src, alt }) {
 
 export default function BannerMarquee() {
   const theme = useTheme();
-  if (!MARQUEE_BANNERS.length) return null;
+  const { content } = useCms();
+  const images = (content.marqueeBanners || [])
+    .filter((banner) => banner.active && banner.imageUrl)
+    .map((banner) => banner.imageUrl);
+  const sources = images.length ? images : MARQUEE_BANNERS;
+  if (!sources.length) return null;
 
-  const loop = marqueeLoop(MARQUEE_BANNERS, TRACK_REPEATS);
+  const loop = marqueeLoop(sources, TRACK_REPEATS);
   const duration = marqueeDuration(TRACK_BASE_SECONDS, TRACK_REPEATS);
 
   return (
@@ -85,7 +91,7 @@ export default function BannerMarquee() {
           <BannerSlide
             key={`${src}-${index}`}
             src={src}
-            alt={`Hobby Arena promo ${(index % MARQUEE_BANNERS.length) + 1}`}
+            alt={`Hobby Arena promo ${(index % sources.length) + 1}`}
           />
         ))}
       </Box>

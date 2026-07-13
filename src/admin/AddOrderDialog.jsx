@@ -9,6 +9,7 @@ import {
   DialogContent,
   DialogTitle,
   FormControlLabel,
+  IconButton,
   MenuItem,
   Stack,
   TextField,
@@ -17,6 +18,7 @@ import {
   Typography,
 } from "@mui/material";
 import { MONO_FONT } from "../theme.js";
+import { TrashIcon } from "../components/icons.jsx";
 import { PESO } from "../components/ProductCard.jsx";
 import {
   getPaymentOptionsForKind,
@@ -292,7 +294,9 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
                         {item.tag} · Qty {item.quantity} · {PESO.format(item.price)} each
                       </Typography>
                     </Box>
-                    <Button size="small" color="error" onClick={() => removeLineItem(item.id)}>Remove</Button>
+                    <IconButton size="small" color="error" aria-label="Remove item" onClick={() => removeLineItem(item.id)}>
+                      <TrashIcon sx={{ fontSize: 18 }} />
+                    </IconButton>
                   </Stack>
                 ))}
                 <Stack direction="row" justifyContent="flex-end" spacing={2} sx={{ pt: 1 }}>

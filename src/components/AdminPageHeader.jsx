@@ -52,7 +52,6 @@ function useAdminPageHeaderContext() {
 export function AdminPageHeaderToolbar({
   surfaceBorderColor,
   notificationBell,
-  storefrontButton,
   themeToggle,
   healthButton,
 }) {
@@ -62,12 +61,12 @@ export function AdminPageHeaderToolbar({
     <Stack
       direction="row"
       alignItems="center"
-      spacing={{ xs: 1.5, md: 2 }}
-      sx={{ width: "100%", minHeight: { xs: 72, md: 96 }, py: { xs: 1.5, md: 2.25 } }}
+      spacing={{ xs: 1, md: 2 }}
+      sx={{ width: "100%", minWidth: 0, minHeight: { xs: 56, md: 96 }, py: { xs: 1, md: 2.25 } }}
     >
-      <Box sx={{ flex: 1, minWidth: 0, pr: { md: 2 }, py: { xs: 0.5, md: 0.75 } }}>
+      <Box sx={{ flex: 1, minWidth: 0, pr: { md: 2 }, py: { xs: 0.25, md: 0.75 } }}>
         {header ? (
-          <Box>
+          <Box sx={{ minWidth: 0 }}>
             {header.eyebrow ? (
               <Typography
                 variant="overline"
@@ -88,9 +87,12 @@ export function AdminPageHeaderToolbar({
               component="h1"
               sx={{
                 fontWeight: 800,
-                fontSize: { xs: "1.28rem", md: "1.55rem" },
+                fontSize: { xs: "1.15rem", md: "1.55rem" },
                 lineHeight: 1.15,
                 m: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
               }}
             >
               {header.title}
@@ -124,10 +126,9 @@ export function AdminPageHeaderToolbar({
       <Stack
         direction="row"
         alignItems="center"
-        spacing={0.75}
+        spacing={0.5}
         sx={{ flexShrink: 0, pl: { xs: 0, sm: 1 }, borderLeft: { sm: "1px solid" }, borderColor: { sm: surfaceBorderColor } }}
       >
-        {storefrontButton}
         {notificationBell}
         {themeToggle}
         {healthButton}

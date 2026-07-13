@@ -57,7 +57,20 @@ function mergeCatalogPayload(parsed) {
   };
 }
 
-function loadCatalog() {
+function cloneCatalog(payload) {
+  return JSON.parse(JSON.stringify(payload));
+}
+
+function cacheCatalogLocally(payload) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...payload, version: CATALOG_VERSION }));
+  } catch {
+    // ignore
+  }
+}
+
+function loadCachedCatalog() {
   const defaults = defaultCatalog();
   if (typeof window === "undefined") return defaults;
   try {
@@ -74,64 +87,85 @@ const CatalogContext = createContext(null);
 export function CatalogProvider({ children }) {
   const firebaseEnabled = useFirebaseData();
   const adminWrite = useAdminFirestoreWrite();
-  const [catalog, setCatalog] = useState(() => (firebaseEnabled ? defaultCatalog() : loadCatalog()));
-  const syncingRemote = useRef(false);
-  const saveTimer = useRef(null);
-  const pendingSeed = useRef(null);
+  const [catalog, setCatalog] = useState(() => loadCachedCatalog());
+  const [hydrated, setHydrated] = useState(!firebaseEnabled);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [saveOk, setSaveOk] = useState(false);
+  const catalogRef = useRef(catalog);
+  const dirtyRef = useRef(false);
+  const baselineRef = useRef(cloneCatalog(catalog));
+
+  catalogRef.current = catalog;
+  dirtyRef.current = dirty;
+
+  const markDirty = useCallback(() => {
+    setDirty(true);
+    dirtyRef.current = true;
+    setSaveOk(false);
+    setSaveError("");
+  }, []);
 
   useEffect(() => {
-    if (!firebaseEnabled) return undefined;
+    if (!firebaseEnabled) {
+      setHydrated(true);
+      return undefined;
+    }
 
     return subscribeCatalogSettings(
       (remote) => {
-        syncingRemote.current = true;
-        if (!remote) {
-          const local = loadCatalog();
-          setCatalog(local);
-          pendingSeed.current = local;
-        } else {
-          pendingSeed.current = null;
-          setCatalog(mergeCatalogPayload(remote));
+        if (remote) {
+          if (!dirtyRef.current) {
+            const next = mergeCatalogPayload(remote);
+            setCatalog(next);
+            baselineRef.current = cloneCatalog(next);
+            cacheCatalogLocally(next);
+          }
         }
+        setHydrated(true);
       },
       (error) => console.error("[catalog] Firestore sync failed:", error),
     );
   }, [firebaseEnabled]);
 
-  useEffect(() => {
-    if (!firebaseEnabled || !adminWrite.ready || !adminWrite.allowed) return undefined;
-    if (!pendingSeed.current) return undefined;
-
-    const seed = pendingSeed.current;
-    pendingSeed.current = null;
-    saveCatalogSettings({ ...seed, version: CATALOG_VERSION }).catch((error) => {
-      console.error("[catalog] Failed to seed Firestore:", error);
-    });
-  }, [firebaseEnabled, adminWrite]);
-
-  useEffect(() => {
-    // Skip the save that would echo a remote hydrate (microtask clear ran too early before).
-    if (syncingRemote.current) {
-      syncingRemote.current = false;
-      return undefined;
+  const saveCatalog = useCallback(async () => {
+    if (firebaseEnabled && (!adminWrite.ready || !adminWrite.allowed)) {
+      setSaveError("Sign in as admin to save classification changes.");
+      return { ok: false };
     }
 
-    if (!firebaseEnabled) {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...catalog, version: CATALOG_VERSION }));
-      return undefined;
+    const payload = cloneCatalog(catalogRef.current);
+    setSaving(true);
+    setSaveError("");
+    setSaveOk(false);
+    try {
+      cacheCatalogLocally(payload);
+      if (firebaseEnabled) {
+        await saveCatalogSettings({ ...payload, version: CATALOG_VERSION });
+      }
+      baselineRef.current = cloneCatalog(payload);
+      setDirty(false);
+      dirtyRef.current = false;
+      setSaveOk(true);
+      return { ok: true };
+    } catch (error) {
+      console.error("[catalog] Failed to save settings:", error);
+      setSaveError(error?.message || "Could not save classifications.");
+      return { ok: false, error };
+    } finally {
+      setSaving(false);
     }
+  }, [firebaseEnabled, adminWrite.ready, adminWrite.allowed]);
 
-    if (!adminWrite.ready || !adminWrite.allowed) return undefined;
-
-    clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      saveCatalogSettings({ ...catalog, version: CATALOG_VERSION }).catch((error) => {
-        console.error("[catalog] Failed to save settings:", error);
-      });
-    }, 400);
-
-    return () => clearTimeout(saveTimer.current);
-  }, [catalog, firebaseEnabled, adminWrite]);
+  const discardChanges = useCallback(() => {
+    const cached = cloneCatalog(baselineRef.current);
+    setCatalog(cached);
+    setDirty(false);
+    dirtyRef.current = false;
+    setSaveOk(false);
+    setSaveError("");
+  }, []);
 
   const activeLines = useMemo(
     () => catalog.lines.filter((line) => line.active !== false),
@@ -148,33 +182,40 @@ export function CatalogProvider({ children }) {
     [activeLines],
   );
 
-  const addLine = useCallback((input) => {
-    const label = input.label?.trim();
-    if (!label) return null;
-    const id = input.id?.trim() || label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    const row = { id, label, match: input.match?.trim() || label, logo: input.logo ?? "", active: input.active !== false };
+  const addLine = useCallback((input = {}) => {
+    const label = input.label?.trim() || "New line";
+    const id = input.id?.trim() || `line_${Date.now().toString(36)}`;
+    const row = {
+      id,
+      label,
+      match: input.match?.trim() || label,
+      logo: input.logo ?? "",
+      active: input.active !== false,
+    };
+    markDirty();
     setCatalog((prev) => ({ ...prev, lines: [...prev.lines, row] }));
     return row;
-  }, []);
+  }, [markDirty]);
 
   const updateLine = useCallback((id, patch) => {
+    markDirty();
     setCatalog((prev) => ({
       ...prev,
       lines: prev.lines.map((line) => (line.id === id ? { ...line, ...patch } : line)),
     }));
-  }, []);
+  }, [markDirty]);
 
   const removeLine = useCallback((id) => {
+    markDirty();
     setCatalog((prev) => ({
       ...prev,
       lines: prev.lines.filter((line) => line.id !== id),
     }));
-  }, []);
+  }, [markDirty]);
 
-  const addCategory = useCallback((input) => {
-    const label = input.label?.trim();
-    if (!label) return null;
-    const id = input.id?.trim() || label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const addCategory = useCallback((input = {}) => {
+    const label = input.label?.trim() || "New type";
+    const id = input.id?.trim() || `type_${Date.now().toString(36)}`;
     const row = {
       id,
       label,
@@ -182,32 +223,36 @@ export function CatalogProvider({ children }) {
       active: input.active !== false,
       forPreorders: false,
     };
+    markDirty();
     setCatalog((prev) => ({ ...prev, categories: [...prev.categories, row] }));
     return row;
-  }, []);
+  }, [markDirty]);
 
   const updateCategory = useCallback((id, patch) => {
+    markDirty();
     setCatalog((prev) => ({
       ...prev,
       categories: prev.categories.map((cat) => (cat.id === id ? { ...cat, ...patch } : cat)),
     }));
-  }, []);
+  }, [markDirty]);
 
   const removeCategory = useCallback((id) => {
+    markDirty();
     setCatalog((prev) => ({
       ...prev,
       categories: prev.categories.filter((cat) => cat.id !== id),
     }));
-  }, []);
+  }, [markDirty]);
 
   const setTerms = useCallback((kind, lines) => {
     const cleaned = lines.map((line) => line.trim()).filter(Boolean);
     if (!cleaned.length) return;
+    markDirty();
     setCatalog((prev) => ({
       ...prev,
       terms: { ...prev.terms, [kind]: cleaned },
     }));
-  }, []);
+  }, [markDirty]);
 
   const value = useMemo(
     () => ({
@@ -217,6 +262,11 @@ export function CatalogProvider({ children }) {
       activeLines,
       activeCategories,
       lineOptions,
+      hydrated,
+      dirty,
+      saving,
+      saveError,
+      saveOk,
       addLine,
       updateLine,
       removeLine,
@@ -224,8 +274,29 @@ export function CatalogProvider({ children }) {
       updateCategory,
       removeCategory,
       setTerms,
+      saveCatalog,
+      discardChanges,
     }),
-    [catalog, activeLines, activeCategories, lineOptions, addLine, updateLine, removeLine, addCategory, updateCategory, removeCategory, setTerms],
+    [
+      catalog,
+      activeLines,
+      activeCategories,
+      lineOptions,
+      hydrated,
+      dirty,
+      saving,
+      saveError,
+      saveOk,
+      addLine,
+      updateLine,
+      removeLine,
+      addCategory,
+      updateCategory,
+      removeCategory,
+      setTerms,
+      saveCatalog,
+      discardChanges,
+    ],
   );
 
   return <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>;

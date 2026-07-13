@@ -2,22 +2,20 @@ import { useMemo, useState } from "react";
 import {
   Box,
   Button,
+  ButtonBase,
   Chip,
+  Collapse,
   Grid,
+  Link as MuiLink,
   Popover,
   Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
-import { useNavigate, useOutletContext } from "react-router-dom";
+import { Link as RouterLink, useNavigate, useOutletContext } from "react-router-dom";
 import {
   Area,
   AreaChart,
@@ -35,10 +33,45 @@ import {
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
-import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
 import { computeDashboardAnalytics } from "../lib/dashboardAnalytics.js";
 import { STATUS_COLOR as ORDER_STATUS_COLOR, orderStatusLabel } from "../data/orderWorkflow.js";
 import { useOrders } from "../lib/ordersStore.jsx";
+import { useIsMobileMd } from "../lib/mobileUi.js";
+
+const RECENT_ORDERS_GRID = "minmax(140px, 1.1fr) minmax(120px, 1fr) minmax(140px, 1.3fr) minmax(120px, 0.9fr)";
+const RECENT_ORDERS_MIN_WIDTH = 560;
+
+function recentOrdersGridSx(overrides = {}) {
+  return {
+    display: "grid",
+    gridTemplateColumns: RECENT_ORDERS_GRID,
+    columnGap: { xs: 1, md: 1.5 },
+    alignItems: "center",
+    width: "100%",
+    boxSizing: "border-box",
+    px: { xs: 1.25, md: 1.5 },
+    ...overrides,
+  };
+}
+
+function RecentOrdersHeaderCell({ children, sx }) {
+  return (
+    <Typography
+      sx={{
+        fontFamily: MONO_FONT,
+        fontWeight: 800,
+        fontSize: "0.75rem",
+        letterSpacing: "0.08em",
+        textTransform: "uppercase",
+        color: "text.secondary",
+        whiteSpace: "nowrap",
+        ...sx,
+      }}
+    >
+      {children}
+    </Typography>
+  );
+}
 
 const PERIOD_PRESETS = [
   { key: "1D", label: "1D" },
@@ -126,6 +159,167 @@ function CardEmptyState({ message, hint, minHeight = 220 }) {
   );
 }
 
+function PanelCollapseChevron({ open }) {
+  return (
+    <Box
+      aria-hidden
+      sx={{
+        width: 24,
+        height: 24,
+        borderRadius: 1,
+        flexShrink: 0,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: open ? "primary.main" : "text.secondary",
+        border: "1px solid",
+        borderColor: open ? (theme) => alpha(theme.palette.primary.main, 0.45) : "divider",
+        fontSize: "0.7rem",
+        lineHeight: 1,
+        transform: open ? "rotate(180deg)" : "none",
+        transition: "transform 180ms ease, color 180ms ease, border-color 180ms ease",
+      }}
+    >
+      ▾
+    </Box>
+  );
+}
+
+/**
+ * Dashboard widget chrome — matches CMS section accordions (title + subtitle header).
+ * Collapsible on mobile only; expanded by default.
+ */
+function DashboardPanel({
+  panelSx,
+  surfaceBorderColor,
+  title,
+  subtitle,
+  headerRight,
+  children,
+  defaultExpanded = true,
+  collapsibleOnMobile = true,
+  sx,
+}) {
+  const isMobile = useIsMobileMd();
+  const collapsible = collapsibleOnMobile && isMobile;
+  const [open, setOpen] = useState(defaultExpanded);
+  const borderColor = surfaceBorderColor ?? panelSx?.borderColor ?? "divider";
+
+  const header = (
+    <Box
+      sx={{
+        width: "100%",
+        px: { xs: 2, md: 2.5 },
+        py: 1,
+        boxSizing: "border-box",
+        textAlign: "left",
+      }}
+    >
+      <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minHeight: 40 }}>
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+        <Typography
+          sx={{
+            fontWeight: 800,
+            fontSize: "0.88rem",
+            lineHeight: 1.25,
+            fontFamily: MONO_FONT,
+            letterSpacing: 1.1,
+            textTransform: "uppercase",
+          }}
+        >
+          {typeof title === "string" ? title.toUpperCase() : title}
+        </Typography>
+        {subtitle ? (
+          <Typography sx={{ color: "text.secondary", fontSize: "0.75rem", mt: 0.25, lineHeight: 1.35 }}>
+            {subtitle}
+          </Typography>
+        ) : null}
+        </Box>
+        {headerRight ? (
+          <Box
+            onClick={collapsible ? (event) => event.stopPropagation() : undefined}
+            onKeyDown={collapsible ? (event) => event.stopPropagation() : undefined}
+            sx={{
+              flexShrink: 0,
+              display: { xs: "none", sm: "flex" },
+              alignItems: "center",
+              gap: 1,
+              justifyContent: "flex-end",
+            }}
+          >
+            {headerRight}
+          </Box>
+        ) : null}
+        {collapsible ? <PanelCollapseChevron open={open} /> : null}
+      </Stack>
+      {headerRight ? (
+        <Box
+          onClick={collapsible ? (event) => event.stopPropagation() : undefined}
+          onKeyDown={collapsible ? (event) => event.stopPropagation() : undefined}
+          sx={{
+            display: { xs: "flex", sm: "none" },
+            alignItems: "center",
+            gap: 1,
+            mt: 1,
+            width: "100%",
+          }}
+        >
+          {headerRight}
+        </Box>
+      ) : null}
+    </Box>
+  );
+
+  const contentSx = {
+    px: { xs: 2, md: 2.5 },
+    pt: { xs: 1.75, md: 2 },
+    pb: { xs: 2, md: 2.5 },
+    borderTop: "1px solid",
+    borderColor,
+    minWidth: 0,
+  };
+
+  return (
+    <Box
+      sx={{
+        ...panelSx,
+        overflow: "hidden",
+        minWidth: 0,
+        height: collapsible ? "auto" : "100%",
+        display: "flex",
+        flexDirection: "column",
+        ...(collapsible && open
+          ? { borderColor: (theme) => alpha(theme.palette.primary.main, 0.4) }
+          : {}),
+        ...sx,
+      }}
+    >
+      {collapsible ? (
+        <ButtonBase
+          onClick={() => setOpen((prev) => !prev)}
+          aria-expanded={open}
+          aria-label={open ? `Collapse ${title}` : `Expand ${title}`}
+          sx={{ display: "block", width: "100%", borderRadius: 0 }}
+        >
+          {header}
+        </ButtonBase>
+      ) : (
+        header
+      )}
+
+      {collapsible ? (
+        <Collapse in={open} timeout="auto" unmountOnExit={false}>
+          <Box sx={contentSx}>{children}</Box>
+        </Collapse>
+      ) : (
+        <Box sx={{ ...contentSx, flex: 1, display: "flex", flexDirection: "column" }}>
+          {children}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
 function KpiStrip({ panelSx, items, periodLabel }) {
   return (
     <Box
@@ -181,11 +375,14 @@ function KpiStrip({ panelSx, items, periodLabel }) {
             <Typography
               sx={{
                 fontWeight: 800,
-                fontSize: { xs: "1.35rem", md: "1.55rem" },
+                fontSize: { xs: "1.2rem", md: "1.55rem" },
                 lineHeight: 1.15,
                 mt: 0.75,
                 fontVariantNumeric: "tabular-nums",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
+                maxWidth: "100%",
               }}
             >
               {item.value}
@@ -197,7 +394,7 @@ function KpiStrip({ panelSx, items, periodLabel }) {
             ) : (
               <Box sx={{ display: { xs: "none", md: "block" }, height: "1.05rem", mt: 0.4 }} />
             )}
-            <Stack direction="row" spacing={0.5} alignItems="baseline" sx={{ mt: "auto", pt: 0.75 }}>
+            <Stack direction="row" spacing={0.5} alignItems="baseline" flexWrap="wrap" useFlexGap sx={{ mt: "auto", pt: 0.75 }}>
               <Typography
                 sx={{
                   color: positive ? "success.main" : "error.main",
@@ -220,35 +417,36 @@ function KpiStrip({ panelSx, items, periodLabel }) {
   );
 }
 
-function ChartCard({ panelSx, title, subtitle, children, minHeight = 280, empty = false, emptyMessage, emptyHint }) {
-  return (
-    <Box sx={{ ...panelSx, p: { xs: 2, md: 3 }, height: "100%", display: "flex", flexDirection: "column" }}>
-      <Stack spacing={0.25} sx={{ mb: 2 }}>
-        <AdminSectionTitle variant="h6">{title}</AdminSectionTitle>
-        {subtitle ? <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>{subtitle}</Typography> : null}
-      </Stack>
-      {empty ? (
-        <CardEmptyState message={emptyMessage} hint={emptyHint} minHeight={minHeight} />
-      ) : (
-        <Box sx={{ width: "100%", flex: 1, minHeight }}>
-          <ResponsiveContainer width="100%" height="100%">
-            {children}
-          </ResponsiveContainer>
-        </Box>
-      )}
+function ChartCard({ panelSx, surfaceBorderColor, title, subtitle, children, minHeight = 240, empty = false, emptyMessage, emptyHint }) {
+  const body = empty ? (
+    <CardEmptyState message={emptyMessage} hint={emptyHint} minHeight={minHeight} />
+  ) : (
+    <Box sx={{ width: "100%", height: minHeight, minWidth: 0, overflow: "hidden" }}>
+      <ResponsiveContainer width="100%" height={minHeight}>
+        {children}
+      </ResponsiveContainer>
     </Box>
+  );
+
+  return (
+    <DashboardPanel panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} title={title} subtitle={subtitle}>
+      {body}
+    </DashboardPanel>
   );
 }
 
-function SalesByLineCard({ panelSx, tooltipStyle, salesByLine, revenue }) {
+function SalesByLineCard({ panelSx, surfaceBorderColor, tooltipStyle, salesByLine, revenue }) {
+  const chartHeight = 200;
+
   return (
-    <Box sx={{ ...panelSx, p: { xs: 2, md: 3 }, height: "100%", display: "flex", flexDirection: "column" }}>
-      <Stack spacing={0.25} sx={{ mb: 1 }}>
-        <AdminSectionTitle variant="h6">Sales by line</AdminSectionTitle>
-        <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>Share of paid revenue</Typography>
-      </Stack>
-      <Box sx={{ position: "relative", flex: 1, minHeight: 200 }}>
-        <ResponsiveContainer width="100%" height="100%">
+    <DashboardPanel
+      panelSx={panelSx}
+      surfaceBorderColor={surfaceBorderColor}
+      title="Sales by line"
+      subtitle="Share of paid revenue"
+    >
+      <Box sx={{ position: "relative", width: "100%", height: chartHeight, minWidth: 0 }}>
+        <ResponsiveContainer width="100%" height={chartHeight}>
           <PieChart>
             <Pie data={salesByLine} dataKey="value" nameKey="name" innerRadius="64%" outerRadius="94%" paddingAngle={3} stroke="none">
               {salesByLine.map((entry) => (
@@ -258,23 +456,23 @@ function SalesByLineCard({ panelSx, tooltipStyle, salesByLine, revenue }) {
             <RTooltip contentStyle={tooltipStyle} formatter={(value) => `${value}%`} />
           </PieChart>
         </ResponsiveContainer>
-        <Box sx={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-          <Typography sx={{ fontWeight: 800, fontSize: "1.25rem", lineHeight: 1, textAlign: "center" }}>
+        <Box sx={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none", px: 2 }}>
+          <Typography sx={{ fontWeight: 800, fontSize: { xs: "1.05rem", md: "1.25rem" }, lineHeight: 1, textAlign: "center" }}>
             {revenue >= 1e6 ? `₱${(revenue / 1e6).toFixed(2)}M` : PESO.format(revenue)}
           </Typography>
           <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>period revenue</Typography>
         </Box>
       </Box>
-      <Stack spacing={1} sx={{ mt: 1.5 }}>
+      <Stack spacing={1} sx={{ mt: 1.5, minWidth: 0 }}>
         {salesByLine.map((entry) => (
-          <Stack key={entry.name} direction="row" alignItems="center" spacing={1}>
-            <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: entry.color }} />
-            <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, flexGrow: 1 }}>{entry.name}</Typography>
-            <Typography sx={{ fontSize: "0.85rem", fontWeight: 800 }}>{entry.value}%</Typography>
+          <Stack key={entry.name} direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0 }}>
+            <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: entry.color, flexShrink: 0 }} />
+            <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, flexGrow: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.name}</Typography>
+            <Typography sx={{ fontSize: "0.85rem", fontWeight: 800, flexShrink: 0 }}>{entry.value}%</Typography>
           </Stack>
         ))}
       </Stack>
-    </Box>
+    </DashboardPanel>
   );
 }
 
@@ -364,13 +562,13 @@ export default function DashboardPage() {
   }
 
   return (
-    <Stack spacing={ADMIN_PAGE_SPACING}>
+    <Stack spacing={ADMIN_PAGE_SPACING} sx={{ minWidth: 0, width: "100%", maxWidth: "100%" }}>
       <AdminPageHeader
         eyebrow="Overview"
         title="Dashboard"
         subtitle="Live sales from your order history."
         action={(
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ maxWidth: "100%" }}>
             <ToggleButtonGroup
               exclusive
               size="small"
@@ -418,6 +616,7 @@ export default function DashboardPage() {
                     mt: 1,
                     p: 2,
                     minWidth: 280,
+                    maxWidth: "calc(100vw - 32px)",
                     border: "1px solid",
                     borderColor: surfaceBorderColor,
                     ...panelSx,
@@ -478,10 +677,10 @@ export default function DashboardPage() {
         ]}
       />
 
-      <Grid container spacing={2.5}>
-        <Grid size={{ xs: 12, md: 8 }}>
-          <ChartCard panelSx={panelSx} title="Revenue trend" subtitle={trendSubtitle}>
-            <AreaChart data={revenueTrend} margin={{ top: 6, right: 8, left: 8, bottom: 0 }}>
+      <Grid container spacing={2.5} sx={{ width: "100%", m: 0 }}>
+        <Grid size={{ xs: 12, md: 8 }} sx={{ minWidth: 0 }}>
+          <ChartCard panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} title="Revenue trend" subtitle={trendSubtitle}>
+            <AreaChart data={revenueTrend} margin={{ top: 0, right: 4, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={primary} stopOpacity={0.5} />
@@ -489,29 +688,36 @@ export default function DashboardPage() {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-              <XAxis dataKey="month" stroke={axisColor} tickLine={false} axisLine={false} fontSize={12} />
-              <YAxis stroke={axisColor} tickLine={false} axisLine={false} fontSize={12} tickFormatter={(v) => `${v / 1000}k`} />
+              <XAxis dataKey="month" stroke={axisColor} tickLine={false} axisLine={false} fontSize={11} />
+              <YAxis stroke={axisColor} tickLine={false} axisLine={false} fontSize={11} width={36} tickFormatter={(v) => `${v / 1000}k`} />
               <RTooltip contentStyle={tooltipStyle} formatter={(value) => PESO.format(value)} />
               <Area type="monotone" dataKey="revenue" stroke={primary} strokeWidth={3} fill="url(#revFill)" />
             </AreaChart>
           </ChartCard>
         </Grid>
-        <Grid size={{ xs: 12, md: 4 }}>
-          <SalesByLineCard panelSx={panelSx} tooltipStyle={tooltipStyle} salesByLine={salesByLine} revenue={kpis.revenue} />
+        <Grid size={{ xs: 12, md: 4 }} sx={{ minWidth: 0 }}>
+          <SalesByLineCard
+            panelSx={panelSx}
+            surfaceBorderColor={surfaceBorderColor}
+            tooltipStyle={tooltipStyle}
+            salesByLine={salesByLine}
+            revenue={kpis.revenue}
+          />
         </Grid>
       </Grid>
 
-      <Grid container spacing={2.5}>
-        <Grid size={{ xs: 12, md: 5 }}>
+      <Grid container spacing={2.5} sx={{ width: "100%", m: 0 }}>
+        <Grid size={{ xs: 12, md: 5 }} sx={{ minWidth: 0 }}>
           <ChartCard
             panelSx={panelSx}
+            surfaceBorderColor={surfaceBorderColor}
             title="Orders by type"
             subtitle="% of orders in period"
             empty={!channelSplit.length}
             emptyMessage="No orders in this period yet."
             emptyHint="Try a wider date range or wait for new orders to come in."
           >
-            <BarChart data={channelSplit} margin={{ top: 6, right: 8, left: 8, bottom: 0 }} barCategoryGap="22%">
+            <BarChart data={channelSplit} margin={{ top: 0, right: 4, left: 0, bottom: 0 }} barCategoryGap="22%">
               <defs>
                 <linearGradient id="barFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={secondary} stopOpacity={0.95} />
@@ -519,29 +725,43 @@ export default function DashboardPage() {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-              <XAxis dataKey="channel" stroke={axisColor} tickLine={false} axisLine={false} fontSize={12} />
-              <YAxis stroke={axisColor} tickLine={false} axisLine={false} fontSize={12} />
+              <XAxis dataKey="channel" stroke={axisColor} tickLine={false} axisLine={false} fontSize={11} />
+              <YAxis stroke={axisColor} tickLine={false} axisLine={false} fontSize={11} width={28} />
               <RTooltip contentStyle={tooltipStyle} formatter={(value) => `${value}%`} cursor={{ fill: alpha(secondary, 0.08) }} />
               <Bar dataKey="value" fill="url(#barFill)" radius={[8, 8, 0, 0]} maxBarSize={90} />
             </BarChart>
           </ChartCard>
         </Grid>
-        <Grid size={{ xs: 12, md: 7 }}>
-          <Box sx={{ ...panelSx, p: { xs: 2, md: 3 }, height: "100%", display: "flex", flexDirection: "column" }}>
-            <AdminSectionTitle variant="h6" sx={{ mb: 2 }}>Top products</AdminSectionTitle>
+        <Grid size={{ xs: 12, md: 7 }} sx={{ minWidth: 0 }}>
+          <DashboardPanel
+            panelSx={panelSx}
+            surfaceBorderColor={surfaceBorderColor}
+            title="Top products"
+            subtitle="By paid revenue in this period"
+          >
             {topProducts.length ? (
               <Stack spacing={1.5}>
                 {topProducts.map((product, index) => {
                   const max = topProducts[0].revenue || 1;
                   const pct = Math.round((product.revenue / max) * 100);
                   return (
-                    <Box key={product.name}>
-                      <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
-                        <Typography sx={{ fontWeight: 600, fontSize: "0.88rem" }}>
+                    <Box key={product.name} sx={{ minWidth: 0 }}>
+                      <Stack direction="row" justifyContent="space-between" spacing={1} sx={{ mb: 0.5 }}>
+                        <Typography
+                          sx={{
+                            fontWeight: 600,
+                            fontSize: "0.88rem",
+                            minWidth: 0,
+                            overflow: "hidden",
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
+                          }}
+                        >
                           <Box component="span" sx={{ fontFamily: MONO_FONT, color: "text.secondary", mr: 1 }}>{index + 1}.</Box>
                           {product.name}
                         </Typography>
-                        <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", ml: 1 }}>{PESO.format(product.revenue)}</Typography>
+                        <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", flexShrink: 0 }}>{PESO.format(product.revenue)}</Typography>
                       </Stack>
                       <Box sx={{ height: 8, borderRadius: 1, bgcolor: alpha(primary, 0.12), overflow: "hidden" }}>
                         <Box sx={{ width: `${pct}%`, height: "100%", borderRadius: 1, background: `linear-gradient(90deg, ${primary}, ${secondary})` }} />
@@ -557,46 +777,109 @@ export default function DashboardPage() {
                 minHeight={240}
               />
             )}
-          </Box>
+          </DashboardPanel>
         </Grid>
       </Grid>
 
-      <Box sx={{ ...panelSx, p: { xs: 2, md: 3 } }}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
-          <AdminSectionTitle variant="h6">Recent orders</AdminSectionTitle>
-          <Stack direction="row" spacing={1}>
-            <Button size="small" color="inherit" onClick={() => navigate("/admin/customers")} sx={{ color: "text.secondary" }}>Customers →</Button>
-            <Button size="small" variant="outlined" color="primary" onClick={() => navigate("/admin/orders")} sx={{ borderColor: surfaceBorderColor }}>All orders →</Button>
-          </Stack>
-        </Stack>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ fontWeight: 800 }}>Order</TableCell>
-              <TableCell sx={{ fontWeight: 800 }}>Customer</TableCell>
-              <TableCell sx={{ fontWeight: 800, display: { xs: "none", sm: "table-cell" } }}>Date</TableCell>
-              <TableCell sx={{ fontWeight: 800 }} align="right">Total</TableCell>
-              <TableCell sx={{ fontWeight: 800 }} align="right">Status</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {recentOrders.map((order) => (
-              <TableRow key={order.id} hover sx={{ cursor: "pointer" }} onClick={() => navigate(`/admin/orders/${encodeURIComponent(order.id)}`)}>
-                <TableCell sx={{ fontFamily: MONO_FONT, fontWeight: 700 }}>{order.id}</TableCell>
-                <TableCell>{order.customer}</TableCell>
-                <TableCell sx={{ color: "text.secondary", display: { xs: "none", sm: "table-cell" } }}>{order.date}</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700 }}>{PESO.format(order.total)}</TableCell>
-                <TableCell align="right"><Chip label={orderStatusLabel(order.status)} size="small" color={ORDER_STATUS_COLOR[order.status] || "default"} variant="outlined" /></TableCell>
-              </TableRow>
-            ))}
-            {recentOrders.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} sx={{ textAlign: "center", py: 3, color: "text.secondary" }}>No orders yet.</TableCell>
-              </TableRow>
-            ) : null}
-          </TableBody>
-        </Table>
-      </Box>
+      <DashboardPanel
+        panelSx={panelSx}
+        surfaceBorderColor={surfaceBorderColor}
+        title="Recent orders"
+        subtitle="Latest orders across queues"
+        headerRight={(
+          <>
+            <Button size="small" color="inherit" onClick={() => navigate("/admin/customers")} sx={{ color: "text.secondary", whiteSpace: "nowrap", flex: { xs: 1, sm: "none" } }}>
+              Customers →
+            </Button>
+            <Button size="small" variant="outlined" color="primary" onClick={() => navigate("/admin/orders")} sx={{ borderColor: surfaceBorderColor, whiteSpace: "nowrap", flex: { xs: 1, sm: "none" } }}>
+              All orders →
+            </Button>
+          </>
+        )}
+      >
+        {recentOrders.length === 0 ? (
+          <Typography sx={{ textAlign: "center", py: 3, color: "text.secondary" }}>No orders yet.</Typography>
+        ) : (
+          <Box sx={{ overflowX: "auto", WebkitOverflowScrolling: "touch", mx: { xs: -2, md: -2.5 } }}>
+            <Box sx={{ minWidth: RECENT_ORDERS_MIN_WIDTH }}>
+              <Box
+                sx={{
+                  ...recentOrdersGridSx(),
+                  py: 1,
+                  borderBottom: "1px solid",
+                  borderColor: surfaceBorderColor,
+                }}
+              >
+                <RecentOrdersHeaderCell>Order</RecentOrdersHeaderCell>
+                <RecentOrdersHeaderCell>Customer</RecentOrdersHeaderCell>
+                <RecentOrdersHeaderCell>Items</RecentOrdersHeaderCell>
+                <RecentOrdersHeaderCell>Status</RecentOrdersHeaderCell>
+              </Box>
+
+              {recentOrders.map((order) => (
+                <Box
+                  key={order.id}
+                  sx={{
+                    ...recentOrdersGridSx(),
+                    py: 1.25,
+                    borderBottom: "1px solid",
+                    borderColor: surfaceBorderColor,
+                    "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.06) },
+                  }}
+                >
+                  <Box sx={{ minWidth: 0 }}>
+                    <MuiLink
+                      component={RouterLink}
+                      to={`/admin/orders/${encodeURIComponent(order.id)}`}
+                      underline="hover"
+                      sx={{
+                        fontFamily: MONO_FONT,
+                        fontWeight: 700,
+                        fontSize: "0.85rem",
+                        whiteSpace: "nowrap",
+                        color: "primary.main",
+                        display: "inline-block",
+                      }}
+                    >
+                      {order.id}
+                    </MuiLink>
+                    <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", whiteSpace: "nowrap" }}>
+                      {order.date}
+                    </Typography>
+                  </Box>
+
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography sx={{ fontWeight: 600, fontSize: "0.88rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {order.customer}
+                    </Typography>
+                  </Box>
+
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography sx={{ fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {order.items || "—"}
+                    </Typography>
+                    <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", fontFamily: MONO_FONT }}>
+                      {PESO.format(order.total)}
+                      {order.qty != null ? ` · Qty ${order.qty}` : ""}
+                    </Typography>
+                  </Box>
+
+                  <Box sx={{ minWidth: 0 }}>
+                    <Chip
+                      label={orderStatusLabel(order.status)}
+                      size="small"
+                      color={ORDER_STATUS_COLOR[order.status] || "default"}
+                      variant="outlined"
+                      sx={{ maxWidth: "100%", "& .MuiChip-label": { overflow: "hidden", textOverflow: "ellipsis" } }}
+                    />
+                  </Box>
+
+                </Box>
+              ))}
+            </Box>
+          </Box>
+        )}
+      </DashboardPanel>
     </Stack>
   );
 }

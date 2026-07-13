@@ -64,7 +64,11 @@ export default function CustomerLayout() {
     <Box
       sx={{
         ...(isAccount
-          ? { height: "100dvh", overflow: "hidden" }
+          ? {
+              minHeight: "100dvh",
+              height: { xs: "auto", md: "100dvh" },
+              overflow: { xs: "visible", md: "hidden" },
+            }
           : isCheckout
             ? {
                 minHeight: "100dvh",

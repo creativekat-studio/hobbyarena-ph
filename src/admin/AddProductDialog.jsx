@@ -9,6 +9,7 @@ import {
   DialogContent,
   DialogTitle,
   FormControlLabel,
+  IconButton,
   Link,
   MenuItem,
   Stack,
@@ -677,14 +678,14 @@ export default function AddProductDialog({
                       {form.image ? "Replace image" : "Upload image"}
                     </Button>
                     {form.image && !uploading ? (
-                      <Button
-                        variant="text"
+                      <IconButton
                         size="small"
-                        color="inherit"
+                        color="error"
+                        aria-label="Remove image"
                         onClick={() => update("image", "")}
                       >
-                        Remove
-                      </Button>
+                        <TrashIcon sx={{ fontSize: 18 }} />
+                      </IconButton>
                     ) : null}
                   </Stack>
                   <Typography sx={{ fontSize: "0.72rem", color: "text.disabled", lineHeight: 1.4 }}>

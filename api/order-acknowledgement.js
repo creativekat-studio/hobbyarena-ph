@@ -93,23 +93,25 @@ export default async function handler(req, res) {
     const customerEmail = buildOrderAcknowledgementEmail(order, reminder ? { reminder } : {});
     const adminEmailContent = buildAdminOrderNotificationEmail(order);
 
-    const [customerResult, adminResult] = await Promise.all([
-      dispatchEmail({
-        to: order.email,
-        subject: customerEmail.subject,
-        html: customerEmail.html,
-        text: customerEmail.text,
-        meta: { kind: "order_ack_customer", orderId: order.id },
-      }),
-      dispatchEmail({
-        to: adminEmail,
-        subject: adminEmailContent.subject,
-        html: adminEmailContent.html,
-        text: adminEmailContent.text,
-        replyTo: order.email,
-        meta: { kind: "order_ack_admin", orderId: order.id },
-      }),
-    ]);
+    const customerPromise = dispatchEmail({
+      to: order.email,
+      subject: customerEmail.subject,
+      html: customerEmail.html,
+      text: customerEmail.text,
+      meta: { kind: "order_ack_customer", orderId: order.id },
+    });
+    const adminPromise = adminEmail
+      ? dispatchEmail({
+          to: adminEmail,
+          subject: adminEmailContent.subject,
+          html: adminEmailContent.html,
+          text: adminEmailContent.text,
+          replyTo: order.email,
+          meta: { kind: "order_ack_admin", orderId: order.id },
+        })
+      : Promise.resolve({ ok: true, skipped: true, skipReason: "ADMIN_NOTIFICATION_EMAIL not set." });
+
+    const [customerResult, adminResult] = await Promise.all([customerPromise, adminPromise]);
 
     if (!customerResult.ok) {
       return res.status(502).json({ error: customerResult.error?.message || "Failed to send customer email." });

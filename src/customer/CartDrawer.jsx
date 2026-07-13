@@ -9,7 +9,7 @@ import {
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
-import { CardIcon, PokeballIcon } from "../components/icons.jsx";
+import { CardIcon, PokeballIcon, TrashIcon } from "../components/icons.jsx";
 import { PESO } from "../components/ProductCard.jsx";
 import { OFF_WHITE } from "../lib/colors.js";
 import { productMediaSurface } from "../lib/surfaces.js";
@@ -75,9 +75,9 @@ function CartLineItem({ item, onQuantityChange, onRemove, surfaceBorderColor, is
               +
             </IconButton>
           </Stack>
-          <Button size="small" color="error" onClick={() => onRemove(item.id)} sx={{ minWidth: 0, px: 1 }}>
-            Remove
-          </Button>
+          <IconButton size="small" color="error" aria-label="Remove from cart" onClick={() => onRemove(item.id)}>
+            <TrashIcon sx={{ fontSize: 18 }} />
+          </IconButton>
         </Stack>
       </Box>
 

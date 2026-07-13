@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Box, Divider, Stack, Typography } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { MONO_FONT } from "../theme.js";
+import { initialAccordionExpanded } from "../lib/mobileUi.js";
 
 function SectionBody({ section }) {
   return (
@@ -131,10 +132,10 @@ function AccordionSection({ section, open, onToggle, surfaceBorderColor, isLast 
 }
 
 export default function ProductDescription({ sections, panelSx, surfaceBorderColor, embedded = false }) {
-  const [openIndex, setOpenIndex] = useState(0);
+  const [openIndex, setOpenIndex] = useState(() => (initialAccordionExpanded(0) === false ? -1 : 0));
 
   useEffect(() => {
-    setOpenIndex(0);
+    setOpenIndex(initialAccordionExpanded(0) === false ? -1 : 0);
   }, [sections]);
 
   const emptyMessage = (

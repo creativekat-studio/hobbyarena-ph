@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Accordion,
   AccordionDetails,
@@ -13,6 +14,7 @@ import {
 import { alpha, useTheme } from "@mui/material/styles";
 import { MONO_FONT } from "../theme.js";
 import { resolveLineLogo, shortLineLabel } from "../lib/shopFilterUi.js";
+import { useAccordionExpanded } from "../lib/mobileUi.js";
 
 function CollapseIcon() {
   return (
@@ -145,6 +147,8 @@ export function ShopFiltersSidebar({
   onReset,
   hasActiveFilters,
 }) {
+  const [lineExpanded, setLineExpanded] = useAccordionExpanded(true);
+
   return (
     <Box
       sx={{
@@ -164,7 +168,8 @@ export function ShopFiltersSidebar({
       </Stack>
 
       <Accordion
-        defaultExpanded
+        expanded={Boolean(lineExpanded)}
+        onChange={(_, next) => setLineExpanded(next)}
         disableGutters
         elevation={0}
         sx={{ bgcolor: "transparent", "&::before": { display: "none" } }}
