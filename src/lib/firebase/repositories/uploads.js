@@ -27,6 +27,28 @@ function contentTypeForDataUrl(dataUrl) {
   return match?.[1] || "image/jpeg";
 }
 
+/**
+ * Build a token download URL from upload metadata.
+ * Prefer this over getDownloadURL for guest checkout: Storage read rules require
+ * auth, but the upload response already includes a download token.
+ */
+function downloadUrlFromUpload(result) {
+  const token = String(result?.metadata?.downloadTokens || "")
+    .split(",")
+    .map((part) => part.trim())
+    .find(Boolean);
+  const bucket = result?.ref?.bucket;
+  const fullPath = result?.ref?.fullPath;
+  if (token && bucket && fullPath) {
+    return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(fullPath)}?alt=media&token=${token}`;
+  }
+  return null;
+}
+
+async function resolveUploadDownloadUrl(result, storageRef) {
+  return downloadUrlFromUpload(result) || getDownloadURL(storageRef);
+}
+
 export function dataUrlToBlob(dataUrl) {
   const [header, encoded] = String(dataUrl).split(",");
   if (!encoded) throw new Error("Invalid file data.");
@@ -53,11 +75,11 @@ export async function uploadOrderProofFromDataUrl(orderId, dataUrl, fileLabel = 
   const path = `${STORAGE_PATHS.orderProofs(orderId)}/${Date.now()}-${sanitizeFileName(fileLabel)}.${ext}`;
   const storageRef = ref(storage, path);
   const blob = dataUrlToBlob(compressed);
-  await uploadBytes(storageRef, blob, {
+  const result = await uploadBytes(storageRef, blob, {
     contentType: contentTypeForDataUrl(compressed),
     cacheControl: IMMUTABLE_CACHE_CONTROL,
   });
-  return getDownloadURL(storageRef);
+  return resolveUploadDownloadUrl(result, storageRef);
 }
 
 /**
