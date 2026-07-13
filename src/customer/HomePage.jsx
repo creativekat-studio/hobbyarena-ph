@@ -851,7 +851,7 @@ export default function HomePage() {
             </Grid>
 
             {hasHeroShowcase ? (
-              <Grid size={{ xs: 12, md: 6 }} sx={{ display: { xs: "none", md: "block" } }}>
+              <Grid size={{ xs: 12, md: 6 }}>
                 <HeroShowcase panelSx={panelSx} isDarkMode={isDarkMode} featureDrops={content.featureDrops} />
               </Grid>
             ) : null}
