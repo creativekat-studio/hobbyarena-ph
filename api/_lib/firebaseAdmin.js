@@ -17,7 +17,7 @@ export function isFirebaseAdminConfigured() {
 }
 
 export function getFirebaseAdmin() {
-  if (initialized) return admin;
+  if (initialized && admin.getApps().length) return admin;
 
   const serviceAccount = readServiceAccount();
   if (!serviceAccount) return null;
@@ -26,9 +26,10 @@ export function getFirebaseAdmin() {
     || process.env.VITE_FIREBASE_STORAGE_BUCKET
     || `${serviceAccount.project_id}.firebasestorage.app`;
 
-  if (!admin.apps.length) {
+  // firebase-admin v12+ modular surface: getApps() / cert() (not admin.apps / credential.cert)
+  if (!admin.getApps().length) {
     admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
+      credential: admin.cert(serviceAccount),
       storageBucket,
     });
   }
