@@ -114,7 +114,11 @@ export default async function handler(req, res) {
     const [customerResult, adminResult] = await Promise.all([customerPromise, adminPromise]);
 
     if (!customerResult.ok) {
-      return res.status(502).json({ error: customerResult.error?.message || "Failed to send customer email." });
+      return res.status(502).json({
+        error: customerResult.error?.message || customerResult.skipReason || "Failed to send customer email.",
+        customerSkipped: Boolean(customerResult.skipped),
+        customerSimulated: Boolean(customerResult.simulated),
+      });
     }
 
     return res.status(200).json({
@@ -125,6 +129,8 @@ export default async function handler(req, res) {
       adminSimulated: Boolean(adminResult.simulated),
       customerSkipped: Boolean(customerResult.skipped),
       adminSkipped: Boolean(adminResult.skipped),
+      customerSkipReason: customerResult.skipReason || null,
+      adminSkipReason: adminResult.skipReason || null,
     });
   } catch (error) {
     console.error("order-acknowledgement:", error);

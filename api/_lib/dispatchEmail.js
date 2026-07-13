@@ -11,9 +11,17 @@ function isResendSandboxRestriction(error) {
   );
 }
 
+function isVercelProduction() {
+  return process.env.VERCEL_ENV === "production"
+    || (process.env.NODE_ENV === "production" && Boolean(process.env.VERCEL));
+}
+
 /**
  * Send via Resend, or capture locally when EMAIL_SIMULATE is enabled
- * (auto-on when RESEND_FROM_EMAIL uses onboarding@resend.dev).
+ * (auto-on in local/dev when RESEND_FROM_EMAIL uses onboarding@resend.dev).
+ *
+ * Production never pretends a failed Resend send succeeded — that hid guest
+ * acknowledgement failures when the From address was still in Resend test mode.
  */
 export async function dispatchEmail({ to, subject, html, text, from, replyTo, meta = {} }) {
   const recipients = Array.isArray(to) ? to : [to];
@@ -31,9 +39,10 @@ export async function dispatchEmail({ to, subject, html, text, from, replyTo, me
   }
 
   const { apiKey, from: defaultFrom } = getEmailConfig();
+  const sender = from || defaultFrom;
   const resend = new Resend(apiKey);
   const result = await resend.emails.send({
-    from: from || defaultFrom,
+    from: sender,
     to: recipients,
     subject,
     html,
@@ -43,21 +52,44 @@ export async function dispatchEmail({ to, subject, html, text, from, replyTo, me
 
   if (result.error) {
     if (isResendSandboxRestriction(result.error)) {
-      const entry = recordSimulatedEmail({
+      const reason =
+        "Resend rejected this send (test-mode / unverified domain). "
+        + "Verify hobbyarena.ph in Resend and set RESEND_FROM_EMAIL to an address on that domain "
+        + "(e.g. Hobby Arena <noreply@hobbyarena.ph>). "
+        + "onboarding@resend.dev can only deliver to your Resend account email.";
+
+      // Local/dev: keep capturing into the outbox so QA can still inspect HTML.
+      // Production: fail loudly so we don't mark orders as emailed when nothing was delivered.
+      if (!isVercelProduction()) {
+        const entry = recordSimulatedEmail({
+          to: recipients,
+          subject,
+          html,
+          text,
+          from: sender,
+          meta: { ...meta, fallbackSimulate: true },
+        });
+        return {
+          ok: true,
+          simulated: true,
+          messageId: entry.id,
+          skipped: true,
+          skipReason: reason,
+        };
+      }
+
+      console.error("[email] Resend sandbox/domain block:", {
         to: recipients,
+        from: sender,
         subject,
-        html,
-        text,
-        from: from || defaultFrom,
-        meta: { ...meta, fallbackSimulate: true },
+        error: result.error,
       });
       return {
-        ok: true,
-        simulated: true,
-        messageId: entry.id,
+        ok: false,
+        simulated: false,
         skipped: true,
-        skipReason:
-          "Resend test mode only delivers to your Resend account email. Email captured in the local outbox instead.",
+        skipReason: reason,
+        error: { message: reason, resend: result.error },
       };
     }
     return { ok: false, error: result.error };
