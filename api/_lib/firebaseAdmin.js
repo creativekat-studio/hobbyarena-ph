@@ -1,4 +1,6 @@
 import admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 
 let initialized = false;
 
@@ -39,11 +41,11 @@ export function getFirebaseAdmin() {
 }
 
 export function getAdminFirestore() {
-  const sdk = getFirebaseAdmin();
-  return sdk ? sdk.firestore() : null;
+  if (!getFirebaseAdmin()) return null;
+  return getFirestore();
 }
 
 export function getAdminStorageBucket() {
-  const sdk = getFirebaseAdmin();
-  return sdk ? sdk.storage().bucket() : null;
+  if (!getFirebaseAdmin()) return null;
+  return getStorage().bucket();
 }
