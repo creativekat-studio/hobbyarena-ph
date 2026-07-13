@@ -63,19 +63,7 @@ export default function CustomerLayout() {
   return (
     <Box
       sx={{
-        ...(isAccount
-          ? {
-              minHeight: "100dvh",
-              height: { xs: "auto", md: "100dvh" },
-              overflow: { xs: "visible", md: "hidden" },
-            }
-          : isCheckout
-            ? {
-                minHeight: "100dvh",
-                height: { xs: "auto", md: "100dvh" },
-                overflow: { xs: "visible", md: "hidden" },
-              }
-            : { minHeight: "100dvh" }),
+        minHeight: "100dvh",
         bgcolor: "background.default",
         color: "text.primary",
         backgroundImage: surfaces.pageBackground,

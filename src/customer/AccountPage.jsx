@@ -84,8 +84,20 @@ function AuthCard({ panelSx }) {
   }
 
   return (
-    <Box sx={{ ...panelSx, p: { xs: 3, md: 5 }, maxWidth: wider(460), width: "100%" }} component="form" onSubmit={handleSubmit}>
-      <Stack spacing={2.5}>
+    <Box
+      sx={{
+        ...panelSx,
+        p: { xs: 3, md: 5 },
+        maxWidth: wider(460),
+        width: "100%",
+        "@media (max-height: 820px)": {
+          p: { xs: 2.5, md: 3 },
+        },
+      }}
+      component="form"
+      onSubmit={handleSubmit}
+    >
+      <Stack spacing={2.5} sx={{ "@media (max-height: 820px)": { gap: 1.75 } }}>
         <Stack spacing={0.5}>
           <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2, fontFamily: MONO_FONT }}>
             ▣ {mode === "signin" ? "Member access" : "Create account"}
@@ -104,7 +116,7 @@ function AuthCard({ panelSx }) {
           <TextField label="Full name" fullWidth value={name} onChange={(e) => setName(e.target.value)} required />
         ) : null}
         <TextField label="Email" type="email" fullWidth value={email} onChange={(e) => setEmail(e.target.value)} required />
-        <PasswordField value={password} onChange={(e) => setPassword(e.target.value)} required helperText={mode === "signup" ? "At least 8 characters." : " "} autoComplete={mode === "signup" ? "new-password" : "current-password"} />
+        <PasswordField value={password} onChange={(e) => setPassword(e.target.value)} required helperText={mode === "signup" ? "At least 8 characters." : undefined} autoComplete={mode === "signup" ? "new-password" : "current-password"} />
 
         {mode === "signup" ? (
           <Stack spacing={0.5}>
@@ -653,6 +665,7 @@ export default function AccountPage() {
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
   const { isCustomer, loading, reconcileCustomerSession } = useAuth();
+  const showAuth = !isCustomer && !loading;
 
   useEffect(() => {
     setAuthSurface("customer");
@@ -663,21 +676,42 @@ export default function AccountPage() {
     <Container
       maxWidth="lg"
       sx={{
-        py: { xs: 2.5, md: 3 },
-        flex: 1,
-        minHeight: 0,
+        py: { xs: 2.5, md: showAuth ? 2 : 3 },
         width: "100%",
         display: "flex",
         flexDirection: "column",
-        overflow: { xs: "visible", md: "hidden" },
+        ...(showAuth
+          ? {
+              // Let the page scroll — nested overflow:auto puts a scrollbar
+              // inside the centered container instead of at the window edge.
+              flex: "0 1 auto",
+              overflow: "visible",
+            }
+          : {
+              flex: 1,
+              minHeight: 0,
+              overflow: { xs: "visible", md: "hidden" },
+            }),
       }}
     >
       {isCustomer || loading ? (
         <Dashboard panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} authLoading={loading && !isCustomer} />
       ) : (
-        <Stack spacing={4} alignItems="center" sx={{ py: { xs: 3, md: 5 } }}>
+        <Stack
+          spacing={3}
+          alignItems="center"
+          sx={{
+            py: { xs: 2, md: 2.5 },
+            pb: { xs: 4, md: 5 },
+            width: "100%",
+            "@media (max-height: 820px)": {
+              py: 1.25,
+              pb: 3,
+            },
+          }}
+        >
           <Stack spacing={1} alignItems="center" textAlign="center">
-            <UserIcon sx={{ fontSize: 40, color: "primary.main" }} />
+            <UserIcon sx={{ fontSize: { xs: 36, md: 40 }, color: "primary.main" }} />
             <Typography variant="h3">Your account</Typography>
             <Typography color="text.secondary" sx={{ maxWidth: wider(460) }}>
               Sign in to manage orders, pre-orders, store credit, and your wishlist.

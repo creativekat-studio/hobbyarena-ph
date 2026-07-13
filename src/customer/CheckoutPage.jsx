@@ -42,14 +42,20 @@ import { UPLOAD_PROOF_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLi
 import { getCustomerCheckoutDefaults, patchCustomerProfileIfEmpty, useCustomers } from "../lib/customersStore.jsx";
 import { readCheckoutDetails, writeCheckoutDetails, clearCheckoutDetails } from "../lib/checkoutDetails.js";
 import { formatPhPhoneInput, isValidPhPhone } from "../lib/phone.js";
+import { isValidEmail } from "../lib/email/emailUtils.js";
 import PasswordField from "../components/PasswordField.jsx";
 import QrCodeTile from "../components/QrCodeTile.jsx";
 
 const STEPS = ["Account", "Details", "Payment"];
 
+/** PH postal codes are numeric — strip everything else as the user types. */
+function formatPostalInput(value) {
+  return String(value ?? "").replace(/\D/g, "").slice(0, 10);
+}
+
 function CheckoutStepShell({ panelSx, children, sx }) {
   return (
-    <Box sx={{ ...panelSx, p: { xs: 2, md: 2.25 }, height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto", ...sx }}>
+    <Box sx={{ ...panelSx, p: { xs: 2, md: 2.25 }, display: "flex", flexDirection: "column", ...sx }}>
       {children}
     </Box>
   );
@@ -150,6 +156,10 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
   async function handleAuthSubmit(event) {
     event.preventDefault();
     setError("");
+    if (!isValidEmail(email)) {
+      setError("Enter a valid email address (name@domain.com).");
+      return;
+    }
     setBusy(true);
     try {
       if (mode === "signin") {
@@ -199,12 +209,29 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
           <Button
             fullWidth
             type="button"
-            variant="outlined"
-            color="inherit"
+            variant="contained"
+            color="primary"
             size="large"
             disabled={busy}
             onClick={handleGoogleSignIn}
-            sx={{ py: 1.35, borderColor: surfaceBorderColor, fontWeight: 700 }}
+            sx={{
+              py: 1.35,
+              fontFamily: MONO_FONT,
+              letterSpacing: 0.5,
+              textTransform: "uppercase",
+              fontWeight: 800,
+              // Theme proposal 2 makes containedPrimary look outlined — force a solid fill.
+              bgcolor: "primary.main",
+              color: (theme) => theme.palette.getContrastText(theme.palette.primary.main),
+              border: "1px solid",
+              borderColor: "primary.main",
+              boxShadow: "none",
+              "&:hover": {
+                bgcolor: "primary.dark",
+                borderColor: "primary.dark",
+                boxShadow: "none",
+              },
+            }}
           >
             Continue with Google
           </Button>
@@ -276,7 +303,17 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
             {mode === "signup" ? (
               <TextField label="Full name" fullWidth value={name} onChange={(e) => setName(e.target.value)} required />
             ) : null}
-            <TextField label="Email" type="email" fullWidth value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <TextField
+              label="Email"
+              type="email"
+              fullWidth
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              error={Boolean(email.trim()) && !isValidEmail(email)}
+              helperText={email.trim() && !isValidEmail(email) ? "Use a full email like name@domain.com" : undefined}
+              inputProps={{ inputMode: "email", autoComplete: "email" }}
+            />
             <PasswordField value={password} onChange={(e) => setPassword(e.target.value)} required helperText={mode === "signup" ? "At least 8 characters." : " "} autoComplete={mode === "signup" ? "new-password" : "current-password"} />
             {mode === "signup" ? (
               <FormControlLabel
@@ -312,6 +349,10 @@ function DetailsStep({ panelSx, surfaceBorderColor, details, setDetails, onBack,
       setError("Name, email, and phone are required.");
       return;
     }
+    if (!isValidEmail(details.email)) {
+      setError("Enter a valid email address (name@domain.com).");
+      return;
+    }
     if (!isValidPhPhone(details.phone)) {
       setError("Enter a valid PH mobile number (09XX XXX XXXX).");
       return;
@@ -320,12 +361,16 @@ function DetailsStep({ panelSx, surfaceBorderColor, details, setDetails, onBack,
       setError("Please complete your delivery address.");
       return;
     }
+    if (details.postal && !/^\d+$/.test(details.postal.trim())) {
+      setError("Postal code should contain numbers only.");
+      return;
+    }
     onContinue();
   }
 
   return (
-    <Box component="form" onSubmit={handleSubmit} sx={{ height: { xs: "auto", md: "100%" }, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <CheckoutStepShell panelSx={panelSx} sx={{ flex: 1, overflow: { xs: "visible", md: "hidden" } }}>
+    <Box component="form" onSubmit={handleSubmit} sx={{ display: "flex", flexDirection: "column" }}>
+      <CheckoutStepShell panelSx={panelSx}>
         <Box sx={{ flexShrink: 0 }}>
           <StepHeading
             step="Step 2"
@@ -352,7 +397,22 @@ function DetailsStep({ panelSx, surfaceBorderColor, details, setDetails, onBack,
             />
           </Grid>
           <Grid size={{ xs: 12 }}>
-            <TextField label="Email" type="email" fullWidth required size="small" value={details.email} onChange={(e) => setDetails({ email: e.target.value })} />
+            <TextField
+              label="Email"
+              type="email"
+              fullWidth
+              required
+              size="small"
+              value={details.email}
+              onChange={(e) => setDetails({ email: e.target.value })}
+              error={Boolean(details.email.trim()) && !isValidEmail(details.email)}
+              helperText={
+                details.email.trim() && !isValidEmail(details.email)
+                  ? "Use a full email like name@domain.com"
+                  : undefined
+              }
+              inputProps={{ inputMode: "email", autoComplete: "email" }}
+            />
           </Grid>
 
           <Grid size={{ xs: 12 }}>
@@ -374,33 +434,28 @@ function DetailsStep({ panelSx, surfaceBorderColor, details, setDetails, onBack,
             <TextField label="Province" fullWidth required size="small" value={details.province} onChange={(e) => setDetails({ province: e.target.value })} />
           </Grid>
           <Grid size={{ xs: 12 }}>
-            <TextField label="Postal code" fullWidth size="small" value={details.postal} onChange={(e) => setDetails({ postal: e.target.value })} />
+            <TextField
+              label="Postal code"
+              fullWidth
+              size="small"
+              value={details.postal}
+              onChange={(e) => setDetails({ postal: formatPostalInput(e.target.value) })}
+              inputProps={{ inputMode: "numeric", pattern: "[0-9]*", autoComplete: "postal-code" }}
+              helperText="Numbers only"
+            />
           </Grid>
         </Grid>
 
-        <Box sx={{ flex: 1, minHeight: 88, mt: 1.75, display: "flex", flexDirection: "column" }}>
+        <Box sx={{ mt: 1.75 }}>
           <TextField
             label="Order notes (optional)"
             fullWidth
             multiline
             minRows={2}
+            maxRows={6}
             size="small"
             value={details.notes}
             onChange={(e) => setDetails({ notes: e.target.value })}
-            sx={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              "& .MuiInputBase-root": {
-                flex: 1,
-                alignItems: "stretch",
-                height: "100%",
-              },
-              "& textarea": {
-                height: "100% !important",
-                overflow: "auto !important",
-              },
-            }}
           />
         </Box>
 
@@ -1008,15 +1063,13 @@ export default function CheckoutPage() {
       maxWidth="lg"
       sx={{
         py: { xs: 2, md: 2.5 },
-        flex: { xs: "none", md: 1 },
-        minHeight: 0,
+        pb: { xs: 4, md: 5 },
         width: "100%",
         display: "flex",
         flexDirection: "column",
-        overflow: { xs: "visible", md: "hidden" },
       }}
     >
-      <Stack spacing={2} sx={{ maxWidth: 1080, mx: "auto", width: "100%", flex: { xs: "none", md: 1 }, minHeight: 0, overflow: { xs: "visible", md: "hidden" } }}>
+      <Stack spacing={2} sx={{ maxWidth: 1080, mx: "auto", width: "100%" }}>
         <Box sx={{ flexShrink: 0 }}>
           <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2, fontFamily: MONO_FONT }}>Checkout</Typography>
           <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>
@@ -1033,9 +1086,9 @@ export default function CheckoutPage() {
           ))}
         </Stepper>
 
-        <Grid container spacing={2.5} alignItems="stretch" justifyContent="center" sx={{ flex: { xs: "none", md: 1 }, minHeight: 0, overflow: { xs: "visible", md: "hidden" } }}>
-          <Grid size={{ xs: 12, md: 7 }} sx={{ display: "flex", minWidth: 0, minHeight: 0, height: { md: "100%" } }}>
-            <Box sx={{ width: "100%", height: { xs: "auto", md: "100%" }, display: "flex", flexDirection: "column", minHeight: 0, overflow: { xs: "visible", md: "auto" } }}>
+        <Grid container spacing={2.5} alignItems="flex-start" justifyContent="center">
+          <Grid size={{ xs: 12, md: 7 }} sx={{ display: "flex", minWidth: 0 }}>
+            <Box sx={{ width: "100%", display: "flex", flexDirection: "column" }}>
               {step === 0 ? (
                 <AccountStep
                   panelSx={panelSx}
@@ -1097,19 +1150,10 @@ export default function CheckoutPage() {
               ) : null}
             </Box>
           </Grid>
-          <Grid size={{ xs: 12, md: 5 }} sx={{ display: { xs: "none", md: "flex" }, minWidth: 0, minHeight: 0, height: "100%" }}>
-            <Box
-              sx={{
-                width: "100%",
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-                minHeight: 0,
-              }}
-            >
+          <Grid size={{ xs: 12, md: 5 }} sx={{ display: { xs: "none", md: "flex" }, minWidth: 0 }}>
+            <Box sx={{ width: "100%", display: "flex", flexDirection: "column" }}>
               <OrderSummaryPanel
                 compact
-                scrollable
                 items={items.map((item) => ({ ...item, amount: cartItemDueNow(item) }))}
                 subtotal={subtotal}
                 shippingFee={shippingFee}
