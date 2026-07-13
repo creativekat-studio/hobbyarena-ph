@@ -217,7 +217,7 @@ function isOrderIdCollision(error) {
   return code === "permission-denied" || code === "already-exists";
 }
 
-/** Create a new order — uses create rule (no merge). Retries with the next monthly sequence on ID collision. */
+/** Create a new order — uses create rule (no merge). Retries with the next daily sequence on ID collision. */
 export async function createOrder(order, { maxAttempts = 30 } = {}) {
   const db = getFirestoreDb();
   if (!db || !order?.id) throw new Error("Firestore is not configured.");

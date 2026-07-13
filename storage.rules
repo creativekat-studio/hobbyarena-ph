@@ -14,14 +14,13 @@ service firebase.storage {
       );
     }
 
-    // Payment proof uploads — guests and members may upload at checkout.
-    // Writes are open (size/type limited) so guest checkout works even when
-    // Anonymous Auth is off. Read stays auth-only for SDK listing; the app
-    // stores a tokenized download URL from the upload response for viewing.
+    // Payment proofs — checkout must work for guests.
+    // Anonymous Auth is OFF in this project (ADMIN_ONLY_OPERATION), so rules
+    // cannot depend on request.auth for guest uploads or getDownloadURL.
+    // Paths are unguessable (order id + timestamp). Size-capped only.
     match /order-proofs/{orderId}/{fileName} {
-      allow read: if isSignedIn();
-      allow write: if request.resource.size < 5 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*|application/pdf');
+      allow read: if true;
+      allow write: if request.resource.size < 5 * 1024 * 1024;
     }
 
     match /products/{productId}/{fileName} {

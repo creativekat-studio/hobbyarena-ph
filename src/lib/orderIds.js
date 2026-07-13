@@ -1,6 +1,6 @@
-/** Order IDs: HA-yyyymmdd#### (e.g. HA-202606150001). Sequence resets each calendar month. */
+/** Order IDs: HA-yyyymmdd#### (e.g. HA-202606150001). Sequence resets each calendar day. */
 
-export const ORDER_ID_HELP = "HA-yyyymmdd#### — day stamp plus monthly sequence";
+export const ORDER_ID_HELP = "HA-yyyymmdd#### — date stamp plus daily sequence";
 
 /** Parse HA-yyyymmdd#### (or legacy HA-yyyymm####) into stamp + sequence. */
 export function parseOrderId(id) {
@@ -10,22 +10,22 @@ export function parseOrderId(id) {
   return {
     stamp,
     seq: Number(match[2]),
+    // Kept for a later monthly-reset flip; unused while daily reset is active.
     monthKey: stamp.slice(0, 6),
   };
 }
 
-/** Next ID for `now`: today's date stamp, sequence = max in that month + 1. */
+/** Next ID for `now`: today's date stamp, sequence = max for that day + 1. */
 export function makeOrderId(orders, now = new Date()) {
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, "0");
   const d = String(now.getDate()).padStart(2, "0");
-  const monthKey = `${y}${m}`;
-  const stamp = `${monthKey}${d}`;
+  const stamp = `${y}${m}${d}`;
 
   let maxSeq = 0;
   for (const order of orders ?? []) {
     const parsed = parseOrderId(order?.id ?? order);
-    if (!parsed || parsed.monthKey !== monthKey) continue;
+    if (!parsed || parsed.stamp !== stamp) continue;
     if (parsed.seq > maxSeq) maxSeq = parsed.seq;
   }
 

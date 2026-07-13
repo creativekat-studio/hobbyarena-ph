@@ -1,6 +1,6 @@
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { STORAGE_PATHS } from "../../../data/firestoreSchema.js";
-import { compressProductImageFile, compressProofDataUrl, normalizeProofDataUrl } from "../../imageCompression.js";
+import { compressProductImageFile, normalizeProofDataUrl } from "../../imageCompression.js";
 import { assertUploadFileSize } from "../../uploadLimits.js";
 import { getFirebaseStorage } from "../app.js";
 
@@ -18,19 +18,28 @@ function extensionForDataUrl(dataUrl) {
   if (dataUrl.startsWith("data:image/png")) return "png";
   if (dataUrl.startsWith("data:image/webp")) return "webp";
   if (dataUrl.startsWith("data:image/gif")) return "gif";
-  if (dataUrl.startsWith("data:image/jpeg")) return "jpg";
+  if (dataUrl.startsWith("data:image/jpeg") || dataUrl.startsWith("data:image/jpg")) return "jpg";
   return "jpg";
 }
 
+/** Always send a Storage-safe MIME type (rules + CDN). */
 function contentTypeForDataUrl(dataUrl) {
+  if (dataUrl.startsWith("data:application/pdf")) return "application/pdf";
+  if (dataUrl.startsWith("data:image/png")) return "image/png";
+  if (dataUrl.startsWith("data:image/webp")) return "image/webp";
+  if (dataUrl.startsWith("data:image/gif")) return "image/gif";
   const match = /^data:([^;,]+)/.exec(dataUrl);
-  return match?.[1] || "image/jpeg";
+  const raw = match?.[1]?.toLowerCase() || "";
+  if (raw.startsWith("image/")) {
+    // Normalize non-standard image/jpg from some mobile browsers.
+    return raw === "image/jpg" ? "image/jpeg" : raw;
+  }
+  return "image/jpeg";
 }
 
 /**
  * Build a token download URL from upload metadata.
- * Prefer this over getDownloadURL for guest checkout: Storage read rules require
- * auth, but the upload response already includes a download token.
+ * Prefer this over getDownloadURL so guest checkout does not need Storage read auth.
  */
 function downloadUrlFromUpload(result) {
   const token = String(result?.metadata?.downloadTokens || "")
@@ -43,10 +52,6 @@ function downloadUrlFromUpload(result) {
     return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(fullPath)}?alt=media&token=${token}`;
   }
   return null;
-}
-
-async function resolveUploadDownloadUrl(result, storageRef) {
-  return downloadUrlFromUpload(result) || getDownloadURL(storageRef);
 }
 
 export function dataUrlToBlob(dataUrl) {
@@ -71,15 +76,22 @@ export async function uploadOrderProofFromDataUrl(orderId, dataUrl, fileLabel = 
   }
 
   const compressed = await normalizeProofDataUrl(dataUrl);
+  const contentType = contentTypeForDataUrl(compressed);
   const ext = extensionForDataUrl(compressed);
   const path = `${STORAGE_PATHS.orderProofs(orderId)}/${Date.now()}-${sanitizeFileName(fileLabel)}.${ext}`;
   const storageRef = ref(storage, path);
   const blob = dataUrlToBlob(compressed);
   const result = await uploadBytes(storageRef, blob, {
-    contentType: contentTypeForDataUrl(compressed),
+    contentType,
     cacheControl: IMMUTABLE_CACHE_CONTROL,
   });
-  return resolveUploadDownloadUrl(result, storageRef);
+
+  const fromMeta = downloadUrlFromUpload(result);
+  if (fromMeta) return fromMeta;
+
+  // Fallback — Storage rules allow public read on order-proofs so this works
+  // even when Anonymous Auth is disabled.
+  return getDownloadURL(storageRef);
 }
 
 /**
@@ -96,7 +108,7 @@ export async function uploadProductImage(productId, file) {
   const path = `${STORAGE_PATHS.productImages(id)}/${Date.now()}-${sanitizeFileName(compressedFile.name)}`;
   const storageRef = ref(storage, path);
   await uploadBytes(storageRef, compressedFile, {
-    contentType: compressedFile.type,
+    contentType: compressedFile.type || "image/jpeg",
     cacheControl: IMMUTABLE_CACHE_CONTROL,
   });
   return getDownloadURL(storageRef);
@@ -119,7 +131,7 @@ export async function uploadCmsAsset(file, kind = "asset") {
   const path = STORAGE_PATHS.cmsAssets(filename);
   const storageRef = ref(storage, path);
   await uploadBytes(storageRef, compressedFile, {
-    contentType: compressedFile.type,
+    contentType: compressedFile.type || "image/jpeg",
     cacheControl: IMMUTABLE_CACHE_CONTROL,
   });
   return getDownloadURL(storageRef);
