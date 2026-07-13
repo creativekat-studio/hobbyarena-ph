@@ -81,20 +81,27 @@ function makeUid(email) {
 function syncCustomerProfile(user) {
   if (!user?.email) return user;
   const saved = getCustomerProfile(user.email);
-  upsertCustomerProfile({
+  const payload = {
     uid: user.uid,
     email: user.email,
     name: user.displayName,
     phone: saved?.phone || user.phone || "",
-    marketingOptIn: saved?.marketingOptIn,
     photoURL: user.photoURL || saved?.photoURL || "",
     authProvider: user.authProvider || saved?.authProvider || "unknown",
-  });
+  };
+  // Never blank marketingOptIn on auth sync — keep whatever Firebase already has.
+  if (Object.prototype.hasOwnProperty.call(user, "marketingOptIn")) {
+    payload.marketingOptIn = Boolean(user.marketingOptIn);
+  } else if (saved && Object.prototype.hasOwnProperty.call(saved, "marketingOptIn")) {
+    payload.marketingOptIn = Boolean(saved.marketingOptIn);
+  }
+  upsertCustomerProfile(payload);
   const updated = getCustomerProfile(user.email);
   return {
     ...user,
     displayName: updated?.name || saved?.name || user.displayName,
     phone: updated?.phone || saved?.phone || user.phone || "",
+    marketingOptIn: Boolean(updated?.marketingOptIn ?? saved?.marketingOptIn ?? user.marketingOptIn),
     ...((updated?.consent || saved?.consent) ? { consent: updated?.consent || saved?.consent } : {}),
   };
 }
@@ -343,6 +350,7 @@ export function AuthProvider({ children }) {
       ...customer,
       displayName: saved.name || customer.displayName,
       phone: saved.phone || "",
+      marketingOptIn: Boolean(saved.marketingOptIn),
     };
     if (firebaseEnabled) {
       setCustomer(nextUser);

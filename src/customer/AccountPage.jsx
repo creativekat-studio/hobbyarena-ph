@@ -16,6 +16,7 @@ import {
   Link,
   Skeleton,
   Stack,
+  Switch,
   Tab,
   Tabs,
   TextField,
@@ -285,7 +286,12 @@ function TierQuestCard({ clientTier, tierProgress, fulfilledSpend }) {
 function ProfileTab({ panelSx, surfaceBorderColor, clientTier, tierProgress, fulfilledSpend }) {
   const { user, updateCustomerProfileDetails } = useAuth();
   const { customers } = useCustomers();
-  const saved = getCustomerProfile(user?.email);
+  const saved = useMemo(() => {
+    const fromList = customers.find(
+      (row) => String(row.email || "").trim().toLowerCase() === String(user?.email || "").trim().toLowerCase(),
+    );
+    return fromList || getCustomerProfile(user?.email) || null;
+  }, [customers, user?.email]);
   const savedAddress = saved?.address && typeof saved.address === "object" ? saved.address : {};
   const [name, setName] = useState(saved?.name || user?.displayName || "");
   const [phone, setPhone] = useState(() => formatPhPhoneInput(saved?.phone || user?.phone || ""));
@@ -293,20 +299,24 @@ function ProfileTab({ panelSx, surfaceBorderColor, clientTier, tierProgress, ful
   const [city, setCity] = useState(savedAddress.city || "");
   const [province, setProvince] = useState(savedAddress.province || "");
   const [postal, setPostal] = useState(savedAddress.postal || "");
+  const [marketingOptIn, setMarketingOptIn] = useState(
+    Boolean(saved?.marketingOptIn ?? user?.marketingOptIn),
+  );
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const profile = getCustomerProfile(user?.email);
-    if (!profile) return;
-    const address = profile.address && typeof profile.address === "object" ? profile.address : {};
-    setName(profile.name || user?.displayName || "");
-    setPhone(formatPhPhoneInput(profile.phone || user?.phone || ""));
+    const profile = saved || getCustomerProfile(user?.email);
+    if (!profile && !user) return;
+    const address = profile?.address && typeof profile.address === "object" ? profile.address : {};
+    setName(profile?.name || user?.displayName || "");
+    setPhone(formatPhPhoneInput(profile?.phone || user?.phone || ""));
     setStreet(address.street || "");
     setCity(address.city || "");
     setProvince(address.province || "");
     setPostal(address.postal || "");
-  }, [user?.email, user?.displayName, user?.phone, customers]);
+    setMarketingOptIn(Boolean(profile?.marketingOptIn ?? user?.marketingOptIn));
+  }, [saved, user, user?.email, user?.displayName, user?.phone, user?.marketingOptIn]);
 
   async function handleSave(event) {
     event.preventDefault();
@@ -321,6 +331,7 @@ function ProfileTab({ panelSx, surfaceBorderColor, clientTier, tierProgress, ful
         name,
         phone: formatPhPhoneInput(phone),
         address: { street, city, province, postal },
+        marketingOptIn,
       });
       setStatus("saved");
     } catch (err) {
@@ -369,6 +380,42 @@ function ProfileTab({ panelSx, surfaceBorderColor, clientTier, tierProgress, ful
           </Stack>
         </Grid>
       </Grid>
+
+      <Box
+        sx={{
+          mt: 3,
+          p: 2,
+          border: "1px solid",
+          borderColor: surfaceBorderColor,
+          borderRadius: 1,
+          bgcolor: (theme) => alpha(theme.palette.primary.main, 0.04),
+        }}
+      >
+        <FormControlLabel
+          sx={{ alignItems: "flex-start", m: 0, gap: 1, width: "100%" }}
+          control={(
+            <Switch
+              checked={marketingOptIn}
+              onChange={(e) => {
+                setMarketingOptIn(e.target.checked);
+                setStatus("idle");
+              }}
+              color="primary"
+              inputProps={{ "aria-label": "Marketing opt-in" }}
+            />
+          )}
+          label={(
+            <Box>
+              <Typography sx={{ fontWeight: 700, fontSize: "0.88rem" }}>
+                Marketing
+              </Typography>
+              <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", mt: 0.25, lineHeight: 1.4 }}>
+                Opt in for restock alerts, pre-order windows, and member deals. Turn off anytime.
+              </Typography>
+            </Box>
+          )}
+        />
+      </Box>
 
       <Button
         type="submit"

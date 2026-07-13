@@ -53,7 +53,11 @@ function setCacheFromProfiles(profiles) {
   profileCache = {};
   profiles.forEach((profile) => {
     const key = normalizeEmail(profile.email);
-    if (key) profileCache[key] = profile;
+    if (!key) return;
+    profileCache[key] = {
+      ...profile,
+      marketingOptIn: Boolean(profile.marketingOptIn),
+    };
   });
   notifyCacheListeners();
 }
@@ -185,7 +189,10 @@ function mergeProfile(existing, input) {
     name: input.name?.trim() || existing?.name || email.split("@")[0] || "Member",
     phone: (input.phone && String(input.phone).trim()) || existing?.phone || "",
     address: normalizeAddressInput(input, existing),
-    marketingOptIn: input.marketingOptIn ?? existing?.marketingOptIn ?? false,
+    // Only change marketing when the caller explicitly passes it — otherwise keep Firestore value.
+    marketingOptIn: Object.prototype.hasOwnProperty.call(input, "marketingOptIn")
+      ? Boolean(input.marketingOptIn)
+      : Boolean(existing?.marketingOptIn),
     authProvider: input.authProvider || existing?.authProvider || "unknown",
     photoURL: input.photoURL ?? existing?.photoURL ?? "",
     joined: existing?.joined || input.joined || new Date().toISOString().slice(0, 10),
