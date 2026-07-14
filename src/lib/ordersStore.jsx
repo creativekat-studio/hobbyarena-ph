@@ -660,15 +660,10 @@ export function OrdersProvider({ children }) {
       if (firebaseEnabled) {
         placingOrderRef.current = true;
         try {
-          // Guests have no session; prefer anonymous Auth before proof upload.
-          // Storage rules also allow constrained guest writes as a fallback.
+          // Best-effort anonymous session. Storage rules allow guest proof uploads
+          // without Auth when Anonymous Auth is disabled in this project.
           if (proofUrl && !payload.manual) {
-            try {
-              await ensureAnonymousAuth();
-            } catch (authError) {
-              console.warn("[orders] Anonymous sign-in for proof upload failed:", authError);
-              throw authError;
-            }
+            await ensureAnonymousAuth();
           }
           const saved = await createOrder(created);
           if (saved.id !== created.id) {

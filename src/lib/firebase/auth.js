@@ -67,9 +67,9 @@ export function mapAuthError(error) {
     "auth/operation-not-allowed":
       "That sign-in method isn’t enabled yet. Check Firebase Console → Authentication → Sign-in method.",
     "auth/admin-restricted-operation":
-      "Guest checkout needs Anonymous Auth enabled in Firebase Console (Authentication → Sign-in method).",
+      "That sign-in method isn’t available right now. Please try again, or message Hobby Arena PH for help.",
     "storage/unauthorized":
-      "We couldn’t upload your payment proof. Guest checkout needs Anonymous Auth enabled in Firebase Console (Authentication → Sign-in method), and Storage rules must allow order-proofs uploads.",
+      "We couldn’t upload your payment proof. Please try a smaller image or PDF, or message Hobby Arena PH for help.",
     "storage/canceled": "Upload was cancelled. Please try again.",
     "storage/retry-limit-exceeded":
       "Upload failed after several tries. Check your connection, use a smaller image or PDF, then try again.",
@@ -133,8 +133,8 @@ function softenFirebaseMessage(raw) {
     || text.includes("operation-not-allowed")
   ) {
     return (
-      "Guest checkout needs Anonymous Auth enabled in Firebase Console "
-      + "(Authentication → Sign-in method)."
+      "That sign-in method isn’t available right now. Please try again, "
+      + "or message Hobby Arena PH for help."
     );
   }
 
@@ -144,16 +144,15 @@ function softenFirebaseMessage(raw) {
     || (text.includes("permission denied") && text.includes("upload"))
   ) {
     return (
-      "We couldn’t upload your payment proof. Guest checkout needs Anonymous Auth enabled "
-      + "in Firebase Console (Authentication → Sign-in method), and Storage rules must allow order-proofs uploads."
+      "We couldn’t upload your payment proof. Please try a smaller image or PDF, "
+      + "or message Hobby Arena PH for help."
     );
   }
 
   if (text.includes("could not upload your proof") || text.includes("could not upload your file to storage")) {
     return (
-      "We couldn’t upload your payment proof. Please try a smaller image or PDF. "
-      + "If you’re checking out as a guest and this keeps failing, make sure Anonymous Auth is enabled "
-      + "in Firebase Console (Authentication → Sign-in method), or message Hobby Arena PH."
+      "We couldn’t upload your payment proof. Please try a smaller image or PDF, "
+      + "or message Hobby Arena PH for help."
     );
   }
 
@@ -345,9 +344,13 @@ export async function firebaseSignOut() {
 }
 
 /**
- * Ensure there is a Firebase auth session for guest checkout proof uploads.
+ * Best-effort Auth session for guest checkout proof uploads.
  * Reuses any existing session (member or anonymous). Returns the uid, or null
- * when Auth is unavailable. Throws when Anonymous Auth is disabled / blocked.
+ * when Auth is unavailable or Anonymous Auth is disabled.
+ *
+ * Anonymous Auth is intentionally OFF in this project — Storage rules allow
+ * constrained guest writes on order-proofs, so callers must not treat a null
+ * result as a hard failure.
  */
 export async function ensureAnonymousAuth() {
   const auth = getFirebaseAuth();
@@ -359,10 +362,10 @@ export async function ensureAnonymousAuth() {
   } catch (error) {
     const code = error?.code || "";
     if (code === "auth/admin-restricted-operation" || code === "auth/operation-not-allowed") {
-      throw new Error(
-        "Guest checkout needs Anonymous Auth enabled in Firebase Console (Authentication → Sign-in method).",
-      );
+      console.info("[auth] Anonymous Auth disabled — continuing as guest without a session.");
+      return null;
     }
-    throw new Error(mapFirebaseUserError(error));
+    console.warn("[auth] Anonymous sign-in failed:", error);
+    return null;
   }
 }
