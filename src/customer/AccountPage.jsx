@@ -43,8 +43,7 @@ import { formatPhPhoneInput, isValidPhPhone } from "../lib/phone.js";
 import PasswordField from "../components/PasswordField.jsx";
 
 function AuthCard({ panelSx }) {
-  const theme = useTheme();
-  const { signInCustomer, signInWithGoogle, registerCustomer, authMode } = useAuth();
+  const { signInCustomer, signInWithGoogle, registerCustomer, sendPasswordReset, authMode } = useAuth();
   const [mode, setMode] = useState("signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -52,14 +51,25 @@ function AuthCard({ panelSx }) {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
+
+  function switchMode(next) {
+    setMode(next);
+    setError("");
+    setInfo("");
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
     setError("");
+    setInfo("");
     setBusy(true);
     try {
-      if (mode === "signin") {
+      if (mode === "reset") {
+        await sendPasswordReset(email);
+        setInfo("If an email/password account exists for that address, we sent a reset link.");
+      } else if (mode === "signin") {
         await signInCustomer(email, password);
       } else {
         await registerCustomer({ name, email, password, acceptedTerms, marketingOptIn });
@@ -73,6 +83,7 @@ function AuthCard({ panelSx }) {
 
   async function handleGoogleSignIn() {
     setError("");
+    setInfo("");
     setBusy(true);
     try {
       await signInWithGoogle();
@@ -82,6 +93,19 @@ function AuthCard({ panelSx }) {
       setBusy(false);
     }
   }
+
+  const heading =
+    mode === "reset"
+      ? "Reset your password."
+      : mode === "signin"
+        ? "Welcome back, Trainer."
+        : "Join the Arena.";
+  const subheading =
+    mode === "reset"
+      ? "We’ll email a reset link for email/password accounts. Google sign-in members should use Continue with Google."
+      : mode === "signin"
+        ? "Sign in to track orders, secure pre-orders, and spend store credit."
+        : "Create an account to start collecting, earn points, and lock in drops.";
 
   return (
     <Box
@@ -100,23 +124,51 @@ function AuthCard({ panelSx }) {
       <Stack spacing={2.5} sx={{ "@media (max-height: 820px)": { gap: 1.75 } }}>
         <Stack spacing={0.5}>
           <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2, fontFamily: MONO_FONT }}>
-            ▣ {mode === "signin" ? "Member access" : "Create account"}
+            ▣ {mode === "reset" ? "Password reset" : mode === "signin" ? "Member access" : "Create account"}
           </Typography>
-          <Typography variant="h4">{mode === "signin" ? "Welcome back, Trainer." : "Join the Arena."}</Typography>
-          <Typography color="text.secondary">
-            {mode === "signin"
-              ? "Sign in to track orders, secure pre-orders, and spend store credit."
-              : "Create an account to start collecting, earn points, and lock in drops."}
-          </Typography>
+          <Typography variant="h4">{heading}</Typography>
+          <Typography color="text.secondary">{subheading}</Typography>
         </Stack>
 
         {error ? <Alert severity="error">{error}</Alert> : null}
+        {info ? <Alert severity="success">{info}</Alert> : null}
 
         {mode === "signup" ? (
           <TextField label="Full name" fullWidth value={name} onChange={(e) => setName(e.target.value)} required />
         ) : null}
         <TextField label="Email" type="email" fullWidth value={email} onChange={(e) => setEmail(e.target.value)} required />
-        <PasswordField value={password} onChange={(e) => setPassword(e.target.value)} required helperText={mode === "signup" ? "At least 8 characters." : undefined} autoComplete={mode === "signup" ? "new-password" : "current-password"} />
+        {mode === "signin" || mode === "signup" ? (
+          <Stack spacing={0.75}>
+            <PasswordField
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              helperText={mode === "signup" ? "At least 8 characters." : undefined}
+              autoComplete={mode === "signup" ? "new-password" : "current-password"}
+            />
+            {mode === "signin" && authMode === "firebase" ? (
+              <Typography variant="body2" textAlign="right">
+                <Box
+                  component="button"
+                  type="button"
+                  onClick={() => switchMode("reset")}
+                  sx={{
+                    background: "none",
+                    border: "none",
+                    p: 0,
+                    cursor: "pointer",
+                    color: "primary.main",
+                    fontWeight: 700,
+                    textDecoration: "underline",
+                    font: "inherit",
+                  }}
+                >
+                  Forgot password?
+                </Box>
+              </Typography>
+            ) : null}
+          </Stack>
+        ) : null}
 
         {mode === "signup" ? (
           <Stack spacing={0.5}>
@@ -138,31 +190,58 @@ function AuthCard({ panelSx }) {
         ) : null}
 
         <Button type="submit" variant="contained" color="primary" size="large" disabled={busy} sx={{ py: 1.3, fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase" }}>
-          {busy ? "Please wait…" : mode === "signin" ? "▶ Sign in" : "▶ Create account"}
+          {busy
+            ? "Please wait…"
+            : mode === "reset"
+              ? "▶ Send reset link"
+              : mode === "signin"
+                ? "▶ Sign in"
+                : "▶ Create account"}
         </Button>
 
-        <Divider sx={{ color: "text.secondary", fontSize: "0.75rem" }}>or</Divider>
+        {mode !== "reset" ? (
+          <>
+            <Divider sx={{ color: "text.secondary", fontSize: "0.75rem" }}>or</Divider>
 
-        {authMode === "firebase" ? (
-          <Button
-            type="button"
-            variant="outlined"
-            color="inherit"
-            size="large"
-            disabled={busy}
-            onClick={handleGoogleSignIn}
-            sx={{ py: 1.2, borderColor: "divider", fontWeight: 700 }}
-          >
-            Continue with Google
-          </Button>
-        ) : null}
+            {authMode === "firebase" ? (
+              <Button
+                type="button"
+                variant="outlined"
+                color="inherit"
+                size="large"
+                disabled={busy}
+                onClick={handleGoogleSignIn}
+                sx={{ py: 1.2, borderColor: "divider", fontWeight: 700 }}
+              >
+                Continue with Google
+              </Button>
+            ) : null}
 
-        <Typography variant="body2" color="text.secondary" textAlign="center">
-          {mode === "signin" ? "New to Hobby Arena? " : "Already a member? "}
-          <Box component="button" type="button" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(""); }} sx={{ background: "none", border: "none", p: 0, cursor: "pointer", color: "primary.main", fontWeight: 700, textDecoration: "underline", font: "inherit" }}>
-            {mode === "signin" ? "Create an account" : "Sign in"}
-          </Box>
-        </Typography>
+            <Typography variant="body2" color="text.secondary" textAlign="center">
+              {mode === "signin" ? "New to Hobby Arena? " : "Already a member? "}
+              <Box
+                component="button"
+                type="button"
+                onClick={() => switchMode(mode === "signin" ? "signup" : "signin")}
+                sx={{ background: "none", border: "none", p: 0, cursor: "pointer", color: "primary.main", fontWeight: 700, textDecoration: "underline", font: "inherit" }}
+              >
+                {mode === "signin" ? "Create an account" : "Sign in"}
+              </Box>
+            </Typography>
+          </>
+        ) : (
+          <Typography variant="body2" color="text.secondary" textAlign="center">
+            Remembered it?{" "}
+            <Box
+              component="button"
+              type="button"
+              onClick={() => switchMode("signin")}
+              sx={{ background: "none", border: "none", p: 0, cursor: "pointer", color: "primary.main", fontWeight: 700, textDecoration: "underline", font: "inherit" }}
+            >
+              Back to sign in
+            </Box>
+          </Typography>
+        )}
       </Stack>
     </Box>
   );

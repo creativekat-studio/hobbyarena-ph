@@ -7,14 +7,24 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
+import { keyframes } from "@mui/system";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { CardIcon, PokeballIcon, TrashIcon } from "../components/icons.jsx";
+import QtyStepper from "../components/QtyStepper.jsx";
 import { PESO } from "../components/ProductCard.jsx";
 import { OFF_WHITE } from "../lib/colors.js";
 import { productMediaSurface } from "../lib/surfaces.js";
 import { useCart, cartItemDueNow, cartItemBalanceDue } from "../lib/cartStore.jsx";
 import { isPreorderProduct } from "../lib/preorder.js";
+
+const addedFlash = keyframes`
+  0% { opacity: 0; transform: translateY(-6px); }
+  18% { opacity: 1; transform: translateY(0); }
+  75% { opacity: 1; }
+  100% { opacity: 0; }
+`;
 
 function CloseIcon(props) {
   return (
@@ -29,6 +39,7 @@ function CartLineItem({ item, onQuantityChange, onRemove, surfaceBorderColor, is
   const isPreorder = isPreorderProduct(item);
   const dueNow = cartItemDueNow(item);
   const balance = cartItemBalanceDue(item);
+  const maxQty = Math.max(1, Number(item.maxQuantity) || 1);
 
   return (
     <Stack direction="row" spacing={1.5} alignItems="flex-start">
@@ -61,20 +72,16 @@ function CartLineItem({ item, onQuantityChange, onRemove, surfaceBorderColor, is
         </Typography>
 
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
-          <Stack direction="row" alignItems="center" sx={{ border: "1px solid", borderColor: surfaceBorderColor, borderRadius: 1 }}>
-            <IconButton size="small" onClick={() => onQuantityChange(item.id, item.quantity - 1)} aria-label="Decrease quantity">−</IconButton>
-            <Typography sx={{ minWidth: 24, textAlign: "center", fontFamily: MONO_FONT, fontWeight: 700, fontSize: "0.85rem" }}>
-              {item.quantity}
-            </Typography>
-            <IconButton
+          <Box sx={{ width: 128 }}>
+            <QtyStepper
+              value={item.quantity}
+              onChange={(nextQty) => onQuantityChange(item.id, nextQty, { maxQuantity: maxQty })}
+              max={maxQty}
+              min={1}
+              clearAtZero
               size="small"
-              onClick={() => onQuantityChange(item.id, item.quantity + 1)}
-              disabled={item.quantity >= item.maxQuantity}
-              aria-label="Increase quantity"
-            >
-              +
-            </IconButton>
-          </Stack>
+            />
+          </Box>
           <IconButton size="small" color="error" aria-label="Remove from cart" onClick={() => onRemove(item.id)}>
             <TrashIcon sx={{ fontSize: 18 }} />
           </IconButton>
@@ -90,7 +97,15 @@ function CartLineItem({ item, onQuantityChange, onRemove, surfaceBorderColor, is
 
 export default function CartDrawer({ open, onClose, surfaceBorderColor, isDarkMode }) {
   const navigate = useNavigate();
-  const { items, itemCount, subtotal, balanceDue, hasPreorder, setQuantity, removeItem, clearCart } = useCart();
+  const { items, itemCount, subtotal, balanceDue, hasPreorder, setQuantity, removeItem, clearCart, addPulse } = useCart();
+  const [showAdded, setShowAdded] = useState(false);
+
+  useEffect(() => {
+    if (!addPulse || !open) return undefined;
+    setShowAdded(true);
+    const timer = window.setTimeout(() => setShowAdded(false), 1400);
+    return () => window.clearTimeout(timer);
+  }, [addPulse, open]);
 
   function goToCheckout() {
     onClose();
@@ -117,7 +132,7 @@ export default function CartDrawer({ open, onClose, surfaceBorderColor, isDarkMo
       }}
     >
       <Stack sx={{ height: "100%" }}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2.5, py: 2, borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2.5, py: 2, borderBottom: "1px solid", borderColor: surfaceBorderColor, position: "relative" }}>
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 800 }}>Your cart</Typography>
             <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>
@@ -127,6 +142,26 @@ export default function CartDrawer({ open, onClose, surfaceBorderColor, isDarkMo
           <IconButton onClick={onClose} aria-label="Close cart">
             <CloseIcon />
           </IconButton>
+          {showAdded ? (
+            <Typography
+              sx={{
+                position: "absolute",
+                left: 20,
+                right: 56,
+                bottom: 4,
+                fontFamily: MONO_FONT,
+                fontSize: "0.68rem",
+                fontWeight: 800,
+                letterSpacing: 0.8,
+                textTransform: "uppercase",
+                color: "success.main",
+                pointerEvents: "none",
+                animation: `${addedFlash} 1.35s ease forwards`,
+              }}
+            >
+              Added to cart
+            </Typography>
+          ) : null}
         </Stack>
 
         <Box sx={{ flexGrow: 1, overflow: "auto", px: 2.5, py: 2 }}>

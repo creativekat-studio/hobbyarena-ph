@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   AppBar,
-  Badge,
   Box,
   Button,
   Container,
@@ -19,12 +18,11 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { useColorMode } from "../lib/colorMode.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
-import { useCart } from "../lib/cartStore.jsx";
 import { useCms } from "../lib/cmsContent.jsx";
 import BrandLogo from "../components/BrandLogo.jsx";
+import CartNavButton from "../components/CartNavButton.jsx";
 import ShopNav, { ShopNavMobileItems } from "../components/ShopNav.jsx";
 import {
-  CartIcon,
   MoonIcon,
   SearchIcon,
   SunIcon,
@@ -45,7 +43,6 @@ export default function CustomerNavbar({ surfaces, onOpenCart, onOpenSearch }) {
   const location = useLocation();
   const { mode, toggle } = useColorMode();
   const { user } = useAuth();
-  const { itemCount } = useCart();
   const { content } = useCms();
   const tagline = content.hero.tagline;
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -150,13 +147,7 @@ export default function CustomerNavbar({ surfaces, onOpenCart, onOpenSearch }) {
               </IconButton>
             </Tooltip>
 
-            <Tooltip title="Cart">
-              <IconButton color="inherit" onClick={onOpenCart}>
-                <Badge badgeContent={itemCount} color="primary" invisible={itemCount === 0}>
-                  <CartIcon />
-                </Badge>
-              </IconButton>
-            </Tooltip>
+            <CartNavButton onOpenCart={onOpenCart} />
 
             <Button
               variant="outlined"

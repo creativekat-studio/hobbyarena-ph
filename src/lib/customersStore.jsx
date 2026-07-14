@@ -267,6 +267,53 @@ export function recordCustomerFromAuth(user) {
   });
 }
 
+/**
+ * Upsert a customer profile from checkout (guest or signed-in).
+ * Guests are stored with authProvider "guest" and an email-keyed uid so Admin → Customers lists them.
+ */
+export async function recordCustomerFromCheckout({
+  email,
+  name,
+  phone,
+  address,
+  guest = false,
+  userId = null,
+  authProvider = null,
+}) {
+  const key = normalizeEmail(email);
+  if (!key) return null;
+
+  const existing = getCustomerProfile(email);
+  const existingProvider = existing?.authProvider || "unknown";
+  const isExistingMember = existingProvider === "google" || existingProvider === "password";
+
+  let provider;
+  if (guest) {
+    // Don't downgrade a real account if they later checkout without signing in.
+    provider = isExistingMember ? existingProvider : "guest";
+  } else {
+    provider = authProvider || (isExistingMember ? existingProvider : "password");
+  }
+
+  const uid = guest
+    ? (isExistingMember && existing?.uid ? existing.uid : (existing?.uid || key))
+    : (userId || existing?.uid || key);
+
+  try {
+    return await upsertCustomerProfile({
+      uid,
+      email: key,
+      name,
+      phone,
+      address,
+      authProvider: provider,
+    });
+  } catch (error) {
+    console.error("[customers] Failed to record profile from checkout:", error);
+    return getCustomerProfile(email);
+  }
+}
+
 export function CustomersProvider({ children }) {
   const firebaseEnabled = useFirebaseData();
   const [customers, setCustomers] = useState(() =>

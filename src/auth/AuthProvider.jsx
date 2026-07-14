@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getCustomerProfile, recordCustomerFromAuth, updateCustomerProfile, upsertCustomerProfile } from "../lib/customersStore.jsx";
 import { isFirebaseConfigured } from "../lib/firebase/config.js";
+import { requestPasswordReset } from "../lib/emailService.js";
+import { getEmailBodyOverride } from "../lib/emailTemplatesStore.js";
 import {
   buildCustomerUser,
   firebaseRegisterCustomer,
@@ -10,6 +12,7 @@ import {
   isAdminAccount,
   firebaseSignOut,
   mapAuthError,
+  mapPasswordResetError,
   subscribeToAuthChanges,
   useFirebaseAuth,
 } from "../lib/firebase/auth.js";
@@ -224,6 +227,35 @@ export function AuthProvider({ children }) {
     }
   }, [firebaseEnabled, publishCustomerSession]);
 
+  const sendPasswordReset = useCallback(async (email) => {
+    if (!email?.trim()) {
+      throw new Error("Enter the email for your account.");
+    }
+    if (firebaseEnabled) {
+      try {
+        if (isAdminAccount(email.trim())) {
+          throw new Error("This email is reserved for admin. Sign in at /admin/login instead.");
+        }
+        const continueUrl =
+          typeof window !== "undefined"
+            ? `${window.location.origin}/account`
+            : undefined;
+        const bodyOverride = getEmailBodyOverride("password_reset") || undefined;
+        await requestPasswordReset({
+          email: email.trim(),
+          continueUrl,
+          bodyOverride,
+        });
+        return;
+      } catch (error) {
+        throw new Error(mapPasswordResetError(error));
+      }
+    }
+    throw new Error(
+      "Sign-in isn’t configured yet. Add your Firebase web config to .env.local.",
+    );
+  }, [firebaseEnabled]);
+
   const registerCustomer = useCallback(async ({ name, email, password, acceptedTerms, marketingOptIn = false }) => {
     if (!name?.trim() || !email?.trim() || !password) {
       throw new Error("Name, email, and password are required.");
@@ -373,6 +405,7 @@ export function AuthProvider({ children }) {
       isCustomer: Boolean(customer),
       signInCustomer,
       signInWithGoogle,
+      sendPasswordReset,
       registerCustomer,
       signInAdmin,
       signOutCustomer,
@@ -388,6 +421,7 @@ export function AuthProvider({ children }) {
       firebaseEnabled,
       signInCustomer,
       signInWithGoogle,
+      sendPasswordReset,
       registerCustomer,
       signInAdmin,
       signOutCustomer,

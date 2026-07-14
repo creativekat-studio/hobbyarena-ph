@@ -5,6 +5,7 @@ import {
   trailEntryShowsAttachment,
 } from "../data/orderWorkflow.js";
 import { getDataSource } from "./firebase/config.js";
+import { mapFirebaseUserError } from "./firebase/auth.js";
 import { uploadOrderProofFromDataUrl } from "./firebase/repositories/uploads.js";
 
 const PROOF_KEY_PREFIX = "hobbyarena:order-proof:";
@@ -378,8 +379,7 @@ export async function uploadOrderProofAttachments(order) {
 
   if (!changed) {
     if (lastUploadError) {
-      const message = lastUploadError?.message || "Could not upload file to storage.";
-      throw new Error(message);
+      throw new Error(mapFirebaseUserError(lastUploadError));
     }
     return order;
   }

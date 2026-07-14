@@ -112,6 +112,15 @@ export default function ProductPage() {
     setTermsAlert(false);
   }, [productId]);
 
+  useEffect(() => {
+    if (!product || !cartItem || soldOut || maxQty <= 0) return;
+    if (cartItem.quantity > maxQty) {
+      setQuantity(product.id, maxQty, { maxQuantity: maxQty });
+    } else if (cartItem.maxQuantity !== maxQty) {
+      setQuantity(product.id, cartItem.quantity, { maxQuantity: maxQty });
+    }
+  }, [cartItem, maxQty, product, setQuantity, soldOut]);
+
   if (!product || !isPublished(productId)) {
     return <Navigate to="/products" replace />;
   }
@@ -120,22 +129,28 @@ export default function ProductPage() {
   if (isPreorder) actionLabel = "Pre-order";
   else if (soldOut) actionLabel = "Out of stock";
 
-  function handleAdd() {
-    if (soldOut || inCart) return;
+  function addToCart(qty = 1) {
+    const nextQty = Math.min(Math.max(Number(qty) || 1, 1), Math.max(maxQty, 1));
+    if (soldOut || maxQty < 1) return;
     if (isPreorder && !termsAccepted) {
       setTermsAlert(true);
       return;
     }
     setTermsAlert(false);
-    const ok = addItem(product, 1);
+    const ok = addItem(product, nextQty, { maxQuantity: maxQty });
     if (!ok) return;
     setAdded(true);
     clearTimeout(resetTimer.current);
     resetTimer.current = setTimeout(() => setAdded(false), 1500);
   }
 
+  function handleAdd() {
+    if (soldOut || preorderClosed) return;
+    addToCart(1);
+  }
+
   function handleQtyChange(nextQty) {
-    setQuantity(product.id, nextQty);
+    setQuantity(product.id, nextQty, { maxQuantity: maxQty });
   }
 
   function handleWishlist() {
@@ -285,12 +300,13 @@ export default function ProductPage() {
                 {inCart && !soldOut && !preorderClosed ? (
                   <>
                     <Stack direction="row" spacing={1.5} alignItems="center">
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Box sx={{ width: { xs: 140, sm: 160 }, flexShrink: 0 }}>
                         <QtyStepper
                           value={cartItem.quantity}
                           onChange={handleQtyChange}
                           max={maxQty}
-                          disabled={preorderClosed && isPreorder}
+                          min={1}
+                          clearAtZero
                         />
                       </Box>
                       {isCustomer && canWishlist ? (
@@ -326,7 +342,7 @@ export default function ProductPage() {
                     <Button
                       variant={soldOut ? "outlined" : added ? "outlined" : "contained"}
                       color={added ? "success" : "primary"}
-                      disabled={soldOut || (preorderClosed && isPreorder)}
+                      disabled={soldOut || (preorderClosed && isPreorder) || maxQty < 1}
                       onClick={handleAdd}
                       size="large"
                       sx={{ flex: 1, py: 1.35, fontFamily: MONO_FONT, letterSpacing: 0.8, textTransform: "uppercase" }}

@@ -11,7 +11,7 @@ import {
 import { COLLECTIONS } from "../../../data/firestoreSchema.js";
 import { getFirestoreDb } from "../app.js";
 import { sanitizeForFirestore } from "../sanitize.js";
-import { ensureAnonymousAuth } from "../auth.js";
+import { ensureAnonymousAuth, mapFirebaseUserError } from "../auth.js";
 import { checkoutProofPersisted, stripOrderProofPayload, uploadOrderProofAttachments } from "../../orderProofStorage.js";
 import { incrementOrderId, sortOrdersByOrderNo } from "../../orderIds.js";
 import { serializeFirestoreTime } from "../../orderTimestamps.js";
@@ -230,6 +230,7 @@ export async function createOrder(order, { maxAttempts = 30 } = {}) {
         await ensureAnonymousAuth();
       } catch (authError) {
         console.warn("[orders] Auth before proof upload:", authError);
+        throw new Error(mapFirebaseUserError(authError));
       }
     }
     current = await uploadOrderProofAttachments(current);
@@ -237,7 +238,9 @@ export async function createOrder(order, { maxAttempts = 30 } = {}) {
     // browser — surface the failure so checkout can retry.
     if (order.hasProof && !checkoutProofPersisted(current)) {
       throw new Error(
-        "Could not upload your proof of payment. Please check your connection and try again with a smaller image or PDF.",
+        "We couldn’t upload your payment proof. Please try a smaller image or PDF. "
+        + "If you’re checking out as a guest and this keeps failing, enable Anonymous Auth "
+        + "in Firebase Console (Authentication → Sign-in method), or message Hobby Arena PH.",
       );
     }
     const payload = prepareOrderDoc(current);
@@ -292,7 +295,11 @@ export async function patchCustomerOrderTrail(order) {
   const latestEntry = compact.trail?.[compact.trail.length - 1];
   const needsProof = latestEntry?.attachment && !latestEntry.attachment.storageUrl && !latestEntry.attachment.purged;
   if (needsProof) {
-    throw new Error("Could not upload your file to storage. Please try again, or use a different image or PDF.");
+    throw new Error(
+      "We couldn’t upload your file to storage. Please try a smaller image or PDF. "
+      + "If this keeps failing on guest checkout, enable Anonymous Auth in Firebase Console "
+      + "(Authentication → Sign-in method), or message Hobby Arena PH.",
+    );
   }
 
   const patch = {

@@ -1,19 +1,32 @@
-import { migrateOrderStatus, getOrderLineItems } from "../data/orderWorkflow.js";
+import { ALLOCATION_FULFILLED_PAY_BALANCE, migrateOrderStatus, getOrderLineItems } from "../data/orderWorkflow.js";
 
-const FULFILLED_STATUSES = new Set(["Fulfilled", "Ready for Pickup"]);
+/** Line statuses that contribute (fully or via allocated qty) to loyalty spend. */
+const FULL_CREDIT_STATUSES = new Set(["Fulfilled", "Ready for Pickup"]);
+const ALLOCATED_CREDIT_STATUSES = new Set([
+  ALLOCATION_FULFILLED_PAY_BALANCE,
+  "Partially Fulfilled & Pay Balance",
+  "Partially Fulfilled & For Refund",
+]);
 
 export function fulfilledLineItemSpend(item) {
   const status = migrateOrderStatus(item.status);
-  if (!FULFILLED_STATUSES.has(status)) return 0;
+  const qty = Math.max(1, Number(item.quantity) || 1);
+  const lineTotal = Number(item.lineTotal ?? (item.price ?? 0) * qty) || 0;
+  const allocated = Math.max(0, Number(item.allocatedQty) || 0);
 
-  const qty = item.quantity ?? 1;
-  const lineTotal = item.lineTotal ?? (item.price ?? 0) * qty;
-  const allocated = item.allocatedQty ?? 0;
-
-  if (item.tag === "Pre-order" && allocated > 0 && allocated < qty) {
-    return (lineTotal * allocated) / qty;
+  if (FULL_CREDIT_STATUSES.has(status)) {
+    // Fully closed lines count in full; partial preorder fulfillments pro-rate.
+    if (allocated > 0 && allocated < qty) {
+      return (lineTotal * allocated) / qty;
+    }
+    return lineTotal;
   }
-  return lineTotal;
+
+  if (ALLOCATED_CREDIT_STATUSES.has(status) && allocated > 0) {
+    return (lineTotal * Math.min(allocated, qty)) / qty;
+  }
+
+  return 0;
 }
 
 export function computeFulfilledSpendForEmail(orders, email) {
@@ -48,12 +61,12 @@ export function getNextTierProgress(spend, tiers) {
     .sort((a, b) => (a.minSpend ?? 0) - (b.minSpend ?? 0));
 
   if (!ascending.length) {
-    return { nextTier: null, remaining: 0, progress: 1, atTop: true };
+    return { nextTier: null, remaining: 0, progress: 1, atTop: true, floor: 0, ceiling: 0, amount };
   }
 
   const nextTier = ascending.find((t) => amount < (t.minSpend ?? 0)) ?? null;
   if (!nextTier) {
-    return { nextTier: null, remaining: 0, progress: 1, atTop: true };
+    return { nextTier: null, remaining: 0, progress: 1, atTop: true, floor: amount, ceiling: amount, amount };
   }
 
   const floor = [...ascending]
@@ -64,5 +77,5 @@ export function getNextTierProgress(spend, tiers) {
   const progress = Math.min(1, Math.max(0, (amount - floor) / span));
   const remaining = Math.max(0, ceiling - amount);
 
-  return { nextTier, remaining, progress, atTop: false };
+  return { nextTier, remaining, progress, atTop: false, floor, ceiling, amount };
 }

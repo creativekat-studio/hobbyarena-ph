@@ -23,6 +23,7 @@ import { PESO } from "../components/ProductCard.jsx";
 import { OrderSummaryPanel } from "../components/OrderSummaryPanel.jsx";
 import CheckoutConfirmation from "./CheckoutConfirmation.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
+import { mapFirebaseUserError } from "../lib/firebase/auth.js";
 import { useColorMode } from "../lib/colorMode.jsx";
 import { getSurfaces } from "../lib/surfaces.js";
 import { useCart, cartItemDueNow } from "../lib/cartStore.jsx";
@@ -39,7 +40,7 @@ import { useCms } from "../lib/cmsContent.jsx";
 import { useCheckoutConfirmation, writeCheckoutConfirmation } from "../lib/checkoutConfirmation.js";
 import { compressProofFile } from "../lib/imageCompression.js";
 import { UPLOAD_PROOF_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLimits.js";
-import { getCustomerCheckoutDefaults, patchCustomerProfileIfEmpty, useCustomers } from "../lib/customersStore.jsx";
+import { getCustomerCheckoutDefaults, patchCustomerProfileIfEmpty, recordCustomerFromCheckout, useCustomers } from "../lib/customersStore.jsx";
 import { readCheckoutDetails, writeCheckoutDetails, clearCheckoutDetails } from "../lib/checkoutDetails.js";
 import { formatPhPhoneInput, isValidPhPhone } from "../lib/phone.js";
 import { isValidEmail } from "../lib/email/emailUtils.js";
@@ -55,7 +56,17 @@ function formatPostalInput(value) {
 
 function CheckoutStepShell({ panelSx, children, sx }) {
   return (
-    <Box sx={{ ...panelSx, p: { xs: 2, md: 2.25 }, display: "flex", flexDirection: "column", ...sx }}>
+    <Box
+      sx={{
+        ...panelSx,
+        p: { xs: 2, md: 2.25 },
+        flex: 1,
+        alignSelf: "stretch",
+        display: "flex",
+        flexDirection: "column",
+        ...sx,
+      }}
+    >
       {children}
     </Box>
   );
@@ -125,13 +136,14 @@ function CheckoutEmptyLanding({ panelSx }) {
 
 function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGuest }) {
   const theme = useTheme();
-  const { user, isCustomer, signInCustomer, signInWithGoogle, registerCustomer, authMode } = useAuth();
+  const { user, isCustomer, signInCustomer, signInWithGoogle, registerCustomer, sendPasswordReset, authMode } = useAuth();
   const [mode, setMode] = useState("guest");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
 
   if (isCustomer && user) {
@@ -156,13 +168,17 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
   async function handleAuthSubmit(event) {
     event.preventDefault();
     setError("");
+    setInfo("");
     if (!isValidEmail(email)) {
       setError("Enter a valid email address (name@domain.com).");
       return;
     }
     setBusy(true);
     try {
-      if (mode === "signin") {
+      if (mode === "reset") {
+        await sendPasswordReset(email);
+        setInfo("If an email/password account exists for that address, we sent a reset link.");
+      } else if (mode === "signin") {
         const signedIn = await signInCustomer(email, password);
         onContinue({ name: signedIn.displayName, email: signedIn.email, guest: false });
       } else if (mode === "signup") {
@@ -178,6 +194,7 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
 
   async function handleGoogleSignIn() {
     setError("");
+    setInfo("");
     setBusy(true);
     try {
       const signedIn = await signInWithGoogle();
@@ -195,7 +212,7 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
   }
 
   return (
-    <Box sx={{ ...panelSx, p: { xs: 3, md: 4 } }}>
+    <Box sx={{ ...panelSx, p: { xs: 3, md: 4 }, flex: 1, alignSelf: "stretch", display: "flex", flexDirection: "column" }}>
       <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2, fontFamily: MONO_FONT }}>Step 1</Typography>
       <Typography variant="h5" sx={{ fontWeight: 800, mt: 0.5 }}>How would you like to checkout?</Typography>
       <Typography color="text.secondary" sx={{ mt: 0.5, mb: 3 }}>
@@ -244,7 +261,7 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
           fullWidth
           variant={mode === "guest" ? "contained" : "outlined"}
           color={mode === "guest" ? "primary" : "inherit"}
-          onClick={() => { setMode("guest"); setError(""); }}
+          onClick={() => { setMode("guest"); setError(""); setInfo(""); }}
           sx={{ py: 1.5, justifyContent: "flex-start", borderColor: surfaceBorderColor }}
         >
           <Box sx={{ textAlign: "left" }}>
@@ -259,7 +276,7 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
           fullWidth
           variant={mode === "signup" ? "contained" : "outlined"}
           color={mode === "signup" ? "primary" : "inherit"}
-          onClick={() => { setMode("signup"); setError(""); }}
+          onClick={() => { setMode("signup"); setError(""); setInfo(""); }}
           sx={{ py: 1.5, justifyContent: "flex-start", borderColor: surfaceBorderColor }}
         >
           <Box sx={{ textAlign: "left" }}>
@@ -272,14 +289,14 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
 
         <Button
           fullWidth
-          variant={mode === "signin" ? "contained" : "outlined"}
-          color={mode === "signin" ? "primary" : "inherit"}
-          onClick={() => { setMode("signin"); setError(""); }}
+          variant={mode === "signin" || mode === "reset" ? "contained" : "outlined"}
+          color={mode === "signin" || mode === "reset" ? "primary" : "inherit"}
+          onClick={() => { setMode("signin"); setError(""); setInfo(""); }}
           sx={{ py: 1.5, justifyContent: "flex-start", borderColor: surfaceBorderColor }}
         >
           <Box sx={{ textAlign: "left" }}>
             <Typography sx={{ fontWeight: 800 }}>Sign in</Typography>
-            <Typography variant="body2" color={mode === "signin" ? "inherit" : "text.secondary"} sx={{ textTransform: "none" }}>
+            <Typography variant="body2" color={mode === "signin" || mode === "reset" ? "inherit" : "text.secondary"} sx={{ textTransform: "none" }}>
               Already have an account? Sign in to continue.
             </Typography>
           </Box>
@@ -299,7 +316,13 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
       ) : (
         <Box component="form" onSubmit={handleAuthSubmit} sx={{ mt: 3 }}>
           {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
+          {info ? <Alert severity="success" sx={{ mb: 2 }}>{info}</Alert> : null}
           <Stack spacing={2}>
+            {mode === "reset" ? (
+              <Typography variant="body2" color="text.secondary">
+                We’ll email a reset link for email/password accounts. Google sign-in members should use Continue with Google.
+              </Typography>
+            ) : null}
             {mode === "signup" ? (
               <TextField label="Full name" fullWidth value={name} onChange={(e) => setName(e.target.value)} required />
             ) : null}
@@ -314,7 +337,38 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
               helperText={email.trim() && !isValidEmail(email) ? "Use a full email like name@domain.com" : undefined}
               inputProps={{ inputMode: "email", autoComplete: "email" }}
             />
-            <PasswordField value={password} onChange={(e) => setPassword(e.target.value)} required helperText={mode === "signup" ? "At least 8 characters." : " "} autoComplete={mode === "signup" ? "new-password" : "current-password"} />
+            {mode === "signin" || mode === "signup" ? (
+              <Stack spacing={0.5}>
+                <PasswordField
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  helperText={mode === "signup" ? "At least 8 characters." : " "}
+                  autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                />
+                {mode === "signin" && authMode === "firebase" ? (
+                  <Typography variant="body2" textAlign="right">
+                    <Box
+                      component="button"
+                      type="button"
+                      onClick={() => { setMode("reset"); setError(""); setInfo(""); }}
+                      sx={{
+                        background: "none",
+                        border: "none",
+                        p: 0,
+                        cursor: "pointer",
+                        color: "primary.main",
+                        fontWeight: 700,
+                        textDecoration: "underline",
+                        font: "inherit",
+                      }}
+                    >
+                      Forgot password?
+                    </Box>
+                  </Typography>
+                ) : null}
+              </Stack>
+            ) : null}
             {mode === "signup" ? (
               <FormControlLabel
                 control={<Checkbox checked={acceptedTerms} onChange={(e) => setAcceptedTerms(e.target.checked)} size="small" />}
@@ -326,8 +380,24 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
               />
             ) : null}
             <Button type="submit" variant="contained" size="large" disabled={busy} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
-              {busy ? "Please wait…" : mode === "signin" ? "Sign in & continue" : "Create account & continue"}
+              {busy
+                ? "Please wait…"
+                : mode === "reset"
+                  ? "Send reset link"
+                  : mode === "signin"
+                    ? "Sign in & continue"
+                    : "Create account & continue"}
             </Button>
+            {mode === "reset" ? (
+              <Button
+                type="button"
+                variant="text"
+                onClick={() => { setMode("signin"); setError(""); setInfo(""); }}
+                sx={{ fontWeight: 700 }}
+              >
+                Back to sign in
+              </Button>
+            ) : null}
           </Stack>
         </Box>
       )}
@@ -369,8 +439,8 @@ function DetailsStep({ panelSx, surfaceBorderColor, details, setDetails, onBack,
   }
 
   return (
-    <Box component="form" onSubmit={handleSubmit} sx={{ display: "flex", flexDirection: "column" }}>
-      <CheckoutStepShell panelSx={panelSx}>
+    <Box component="form" onSubmit={handleSubmit} sx={{ flex: 1, alignSelf: "stretch", display: "flex", flexDirection: "column" }}>
+      <CheckoutStepShell panelSx={panelSx} sx={{ flex: 1 }}>
         <Box sx={{ flexShrink: 0 }}>
           <StepHeading
             step="Step 2"
@@ -446,16 +516,29 @@ function DetailsStep({ panelSx, surfaceBorderColor, details, setDetails, onBack,
           </Grid>
         </Grid>
 
-        <Box sx={{ mt: 1.75 }}>
+        <Box sx={{ flex: 1, minHeight: 88, mt: 1.75, display: "flex", flexDirection: "column" }}>
           <TextField
             label="Order notes (optional)"
             fullWidth
             multiline
             minRows={2}
-            maxRows={6}
             size="small"
             value={details.notes}
             onChange={(e) => setDetails({ notes: e.target.value })}
+            sx={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              "& .MuiInputBase-root": {
+                flex: 1,
+                alignItems: "stretch",
+                height: "100%",
+              },
+              "& textarea": {
+                height: "100% !important",
+                overflow: "auto !important",
+              },
+            }}
           />
         </Box>
 
@@ -972,6 +1055,7 @@ export default function CheckoutPage() {
 
         const depositPercent = items.find((item) => item.depositPercent)?.depositPercent ?? 30;
 
+        const guestCheckout = Boolean(isGuest);
         const order = await placeOrder({
           cartItems: items,
           customer: details.name.trim(),
@@ -988,8 +1072,9 @@ export default function CheckoutPage() {
           balanceDue,
           depositPercent,
           proofOfPayment: proofFile.dataUrl,
-          guest: isGuest,
-          userId: user?.uid,
+          guest: guestCheckout,
+          // Guests must not attach a signed-in uid — they are guest checkouts.
+          userId: guestCheckout ? null : (user?.uid || null),
         });
 
         if (order?.id) {
@@ -1001,7 +1086,28 @@ export default function CheckoutPage() {
             userId: order.userId ?? null,
           });
 
-          if (!isGuest && user?.email && details.email.trim().toLowerCase() === user.email.toLowerCase()) {
+          try {
+            await recordCustomerFromCheckout({
+              email: details.email.trim(),
+              name: details.name.trim(),
+              phone: formatPhPhoneInput(details.phone),
+              address: {
+                street: details.street.trim(),
+                city: details.city.trim(),
+                province: details.province.trim(),
+                postal: details.postal.trim(),
+              },
+              guest: guestCheckout,
+              userId: guestCheckout ? null : (user?.uid || null),
+              authProvider: guestCheckout
+                ? "guest"
+                : (user?.authProvider === "google.com" || user?.providerId === "google.com" ? "google" : "password"),
+            });
+          } catch (profileError) {
+            console.warn("[checkout] Could not save customer profile:", profileError);
+          }
+
+          if (!guestCheckout && user?.email && details.email.trim().toLowerCase() === user.email.toLowerCase()) {
             try {
               await updateCustomerProfileDetails({
                 name: details.name,
@@ -1043,15 +1149,7 @@ export default function CheckoutPage() {
         releaseSessionHolds();
       } catch (error) {
         console.error("[checkout] placeOrder failed:", error);
-        const code = error?.code || "";
-        const message = code === "permission-denied"
-          ? "Order could not be saved (permission denied). Check Firestore rules and try again."
-          : code === "invalid-argument"
-            ? "Order could not be saved (invalid data). Please try again or contact support."
-            : String(error?.message || "").includes("timed out")
-              ? "Saving order timed out. Check your internet connection and try again."
-              : error?.message || "Could not place order. Please try again.";
-        setPaymentError(message);
+        setPaymentError(mapFirebaseUserError(error));
       } finally {
         setBusy(false);
       }
@@ -1086,9 +1184,9 @@ export default function CheckoutPage() {
           ))}
         </Stepper>
 
-        <Grid container spacing={2.5} alignItems="flex-start" justifyContent="center">
+        <Grid container spacing={2.5} alignItems="stretch" justifyContent="center">
           <Grid size={{ xs: 12, md: 7 }} sx={{ display: "flex", minWidth: 0 }}>
-            <Box sx={{ width: "100%", display: "flex", flexDirection: "column" }}>
+            <Box sx={{ width: "100%", flex: 1, display: "flex", flexDirection: "column" }}>
               {step === 0 ? (
                 <AccountStep
                   panelSx={panelSx}
@@ -1151,9 +1249,10 @@ export default function CheckoutPage() {
             </Box>
           </Grid>
           <Grid size={{ xs: 12, md: 5 }} sx={{ display: { xs: "none", md: "flex" }, minWidth: 0 }}>
-            <Box sx={{ width: "100%", display: "flex", flexDirection: "column" }}>
+            <Box sx={{ width: "100%", flex: 1, display: "flex", flexDirection: "column" }}>
               <OrderSummaryPanel
                 compact
+                scrollable
                 items={items.map((item) => ({ ...item, amount: cartItemDueNow(item) }))}
                 subtotal={subtotal}
                 shippingFee={shippingFee}

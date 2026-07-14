@@ -33,12 +33,14 @@ import { MONO_FONT } from "../theme.js";
 import { TrashIcon } from "../components/icons.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { ORDER_STATUS_EMAIL_LABELS } from "../lib/orderEmailTriggers.js";
-import { sendOrderStatusEmail } from "../lib/emailService.js";
+import { sendOrderStatusEmail, previewPasswordResetEmail, requestPasswordReset } from "../lib/emailService.js";
 import { buildOrderStatusEmail } from "../lib/email/orderStatusEmail.js";
 import {
   DEFAULT_EMAIL_BODIES,
   EMAIL_PLACEHOLDERS,
   EMAIL_TYPES,
+  PASSWORD_RESET_EMAIL_TYPE,
+  PASSWORD_RESET_PLACEHOLDERS,
   PREORDER_REMINDER_PLACEHOLDERS,
   addEmailFooter,
   getEditableEmailBody,
@@ -722,6 +724,216 @@ function TestRecipientCard({ panelSx, testEmail, setTestEmail, feedback, onClear
   );
 }
 
+function PasswordResetPreview({ body, surfaceBorderColor }) {
+  const [state, setState] = useState({ loading: true, html: "", subject: "", error: "" });
+
+  useEffect(() => {
+    let cancelled = false;
+    setState((prev) => ({ ...prev, loading: true, error: "" }));
+    previewPasswordResetEmail({
+      email: PREVIEW_EMAIL,
+      bodyOverride: body,
+    })
+      .then((result) => {
+        if (cancelled) return;
+        setState({
+          loading: false,
+          html: result.html || "",
+          subject: result.subject || "",
+          error: "",
+        });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setState({
+          loading: false,
+          html: "",
+          subject: "",
+          error: error.message || "Preview failed.",
+        });
+      });
+    return () => { cancelled = true; };
+  }, [body]);
+
+  if (state.loading) {
+    return (
+      <Stack alignItems="center" justifyContent="center" sx={{ minHeight: 280 }}>
+        <CircularProgress size={28} />
+      </Stack>
+    );
+  }
+
+  if (state.error) {
+    return <Alert severity="error">{state.error}</Alert>;
+  }
+
+  return (
+    <Stack spacing={1.25} sx={{ height: "100%" }}>
+      <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", color: "text.secondary" }}>
+        Subject: <strong style={{ color: "inherit" }}>{state.subject}</strong>
+      </Typography>
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 320,
+          borderRadius: 1,
+          border: "1px solid",
+          borderColor: surfaceBorderColor,
+          overflow: "hidden",
+          bgcolor: "#F7F7F5",
+        }}
+      >
+        <Box
+          component="iframe"
+          title="Password reset preview"
+          srcDoc={state.html}
+          sx={{ width: "100%", height: "100%", minHeight: 360, border: 0 }}
+        />
+      </Box>
+    </Stack>
+  );
+}
+
+function PasswordResetTemplateEditor({
+  draft,
+  onDraftChange,
+  surfaceBorderColor,
+  testEmail,
+  onTestResult,
+}) {
+  const theme = useTheme();
+  const [saved, setSaved] = useState(false);
+  const [sending, setSending] = useState(false);
+  const defaultBody = DEFAULT_EMAIL_BODIES[PASSWORD_RESET_EMAIL_TYPE] || "";
+  const isCustom = draft.trim() !== defaultBody.trim();
+
+  function insertPlaceholder(token) {
+    onDraftChange(`${draft}${draft && !draft.endsWith(" ") && !draft.endsWith("\n") ? " " : ""}${token}`);
+    setSaved(false);
+  }
+
+  function handleSave() {
+    setEmailBodyOverride(PASSWORD_RESET_EMAIL_TYPE, draft);
+    setSaved(true);
+  }
+
+  function handleReset() {
+    onDraftChange(defaultBody);
+    setEmailBodyOverride(PASSWORD_RESET_EMAIL_TYPE, "");
+    setSaved(false);
+  }
+
+  async function handleSendTest() {
+    if (!testEmail?.trim()) {
+      onTestResult({ ok: false, error: "Enter a test recipient email above." });
+      return;
+    }
+    setSending(true);
+    try {
+      setEmailBodyOverride(PASSWORD_RESET_EMAIL_TYPE, draft);
+      const result = await requestPasswordReset({
+        email: testEmail.trim(),
+        bodyOverride: draft,
+      });
+      if (result.skipped) {
+        onTestResult({
+          ok: true,
+          warning: result.skipReason || "Sent to simulated outbox.",
+          message: `Password reset email captured for ${testEmail}.`,
+        });
+      } else if (result.simulated) {
+        onTestResult({
+          ok: true,
+          message: `Password reset email simulated for ${testEmail} (check Simulated inbox).`,
+        });
+      } else {
+        onTestResult({ ok: true, message: `Password reset email sent to ${testEmail}.` });
+      }
+    } catch (error) {
+      onTestResult({ ok: false, error: error.message || "Could not send test email." });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <Stack spacing={1.5} sx={{ height: "100%" }}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+        <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", color: "text.secondary" }}>
+          Password reset body
+        </Typography>
+        {isCustom ? (
+          <Chip label="Customized" size="small" color="primary" sx={{ height: 20, fontSize: "0.62rem", fontWeight: 700 }} />
+        ) : (
+          <Chip label="Default" size="small" variant="outlined" sx={{ height: 20, fontSize: "0.62rem", fontWeight: 700 }} />
+        )}
+      </Stack>
+
+      <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", lineHeight: 1.55 }}>
+        Branded email with a Firebase reset link. Google-only accounts have no password — they should use Continue with Google.
+      </Typography>
+
+      <TextField
+        fullWidth
+        multiline
+        minRows={8}
+        value={draft}
+        onChange={(e) => { onDraftChange(e.target.value); setSaved(false); }}
+        placeholder={defaultBody}
+      />
+
+      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+        {PASSWORD_RESET_PLACEHOLDERS.map((placeholder) => (
+          <Chip
+            key={placeholder.token}
+            label={placeholder.token}
+            size="small"
+            variant="outlined"
+            onClick={() => insertPlaceholder(placeholder.token)}
+            title={placeholder.description}
+            sx={{ fontFamily: MONO_FONT, fontSize: "0.66rem", borderColor: surfaceBorderColor, cursor: "pointer" }}
+          />
+        ))}
+      </Stack>
+
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }} flexWrap="wrap" useFlexGap>
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={handleSave}
+          sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
+        >
+          Save
+        </Button>
+        <Button
+          variant="text"
+          color="inherit"
+          disabled={!isCustom}
+          onClick={handleReset}
+          sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem" }}
+        >
+          Reset
+        </Button>
+        <Box sx={{ flex: 1 }} />
+        <Button
+          variant="outlined"
+          disabled={sending}
+          onClick={handleSendTest}
+          sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem" }}
+        >
+          {sending ? "Sending…" : "Send test to me"}
+        </Button>
+      </Stack>
+
+      {saved ? (
+        <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, color: theme.palette.success.main }}>
+          Saved — used on the next password reset email from this browser.
+        </Typography>
+      ) : null}
+    </Stack>
+  );
+}
+
 export default function EmailTemplatesPage() {
   const theme = useTheme();
   const { surfaces } = useOutletContext();
@@ -737,6 +949,7 @@ export default function EmailTemplatesPage() {
   }
   const [drafts, setDrafts] = useState(() => draftsRef.current);
   const [reminderDraft, setReminderDraft] = useState(() => getPreorderReminderConfig());
+  const [passwordResetDraft, setPasswordResetDraft] = useState(() => getEditableEmailBody(PASSWORD_RESET_EMAIL_TYPE));
 
   const draft = drafts[activeType] ?? "";
 
@@ -756,7 +969,7 @@ export default function EmailTemplatesPage() {
       <AdminPageHeader
         eyebrow="Settings"
         title="Email templates"
-        subtitle="Edit order-status copy, preview layouts, and review simulated emails captured during local development."
+        subtitle="Edit order-status and account copy, preview layouts, and review simulated emails captured during local development."
       />
 
       <Tabs
@@ -764,7 +977,8 @@ export default function EmailTemplatesPage() {
         onChange={(_, value) => setPageMode(value)}
         sx={{ ...panelSx, px: 1 }}
       >
-        <Tab value="templates" label="Templates" />
+        <Tab value="templates" label="Order templates" />
+        <Tab value="account" label="Password reset" />
         <Tab value="footer" label="Footer template" />
         <Tab value="inbox" label="Simulated inbox" />
       </Tabs>
@@ -781,6 +995,52 @@ export default function EmailTemplatesPage() {
             surfaceBorderColor={surfaceBorderColor}
           />
         </Box>
+      ) : null}
+
+      {pageMode === "account" ? (
+        <>
+          <TestRecipientCard
+            panelSx={panelSx}
+            testEmail={testEmail}
+            setTestEmail={setTestEmail}
+            feedback={feedback}
+            onClearFeedback={() => setFeedback(null)}
+            feedbackSeverity={feedbackSeverity}
+          />
+          <Box sx={{ ...panelSx, overflow: "hidden" }}>
+            <Box
+              sx={{
+                p: { xs: 2, md: 3 },
+                display: "grid",
+                gap: { xs: 3, md: 3 },
+                gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) minmax(0, 1fr)" },
+                alignItems: "stretch",
+              }}
+            >
+              <PasswordResetTemplateEditor
+                draft={passwordResetDraft}
+                onDraftChange={setPasswordResetDraft}
+                surfaceBorderColor={surfaceBorderColor}
+                testEmail={testEmail}
+                onTestResult={setFeedback}
+              />
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderRadius: 1,
+                  border: "1px dashed",
+                  borderColor: alpha(surfaceBorderColor, 0.9),
+                  bgcolor: alpha(theme.palette.text.primary, 0.015),
+                }}
+              >
+                <PasswordResetPreview
+                  body={passwordResetDraft}
+                  surfaceBorderColor={surfaceBorderColor}
+                />
+              </Box>
+            </Box>
+          </Box>
+        </>
       ) : null}
 
       {pageMode === "templates" ? (

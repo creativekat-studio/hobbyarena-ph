@@ -3,6 +3,7 @@ import { STORAGE_PATHS } from "../../../data/firestoreSchema.js";
 import { compressProductImageFile, normalizeProofDataUrl } from "../../imageCompression.js";
 import { assertUploadFileSize } from "../../uploadLimits.js";
 import { getFirebaseStorage } from "../app.js";
+import { mapFirebaseUserError } from "../auth.js";
 
 // Uploaded assets live at unique, content-addressed paths (timestamped names),
 // so they never change — let browsers/CDN cache them for a year.
@@ -81,17 +82,26 @@ export async function uploadOrderProofFromDataUrl(orderId, dataUrl, fileLabel = 
   const path = `${STORAGE_PATHS.orderProofs(orderId)}/${Date.now()}-${sanitizeFileName(fileLabel)}.${ext}`;
   const storageRef = ref(storage, path);
   const blob = dataUrlToBlob(compressed);
-  const result = await uploadBytes(storageRef, blob, {
-    contentType,
-    cacheControl: IMMUTABLE_CACHE_CONTROL,
-  });
+  let result;
+  try {
+    result = await uploadBytes(storageRef, blob, {
+      contentType,
+      cacheControl: IMMUTABLE_CACHE_CONTROL,
+    });
+  } catch (error) {
+    throw new Error(mapFirebaseUserError(error));
+  }
 
   const fromMeta = downloadUrlFromUpload(result);
   if (fromMeta) return fromMeta;
 
   // Fallback — Storage rules allow public read on order-proofs so this works
   // even when Anonymous Auth is disabled.
-  return getDownloadURL(storageRef);
+  try {
+    return await getDownloadURL(storageRef);
+  } catch (error) {
+    throw new Error(mapFirebaseUserError(error));
+  }
 }
 
 /**

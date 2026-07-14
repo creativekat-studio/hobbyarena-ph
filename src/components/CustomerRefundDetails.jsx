@@ -14,6 +14,7 @@ import { alpha, useTheme } from "@mui/material/styles";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "./ProductCard.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
+import { mapFirebaseUserError } from "../lib/firebase/auth.js";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { itemNeedsRefundDetails, refundedAmountForLineItem } from "../data/orderWorkflow.js";
 import { compressProofFile } from "../lib/imageCompression.js";
@@ -78,7 +79,7 @@ export default function CustomerRefundDetails({ order, item, surfaceBorderColor 
       setSuccess("Refund details sent. We'll process your refund shortly.");
       setQrFile(null);
     } catch (err) {
-      setError(err.message || "Could not submit refund details.");
+      setError(mapFirebaseUserError(err) || "Could not submit refund details.");
     } finally {
       setBusy(false);
     }

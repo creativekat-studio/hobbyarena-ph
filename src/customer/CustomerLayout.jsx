@@ -6,6 +6,7 @@ import { getSurfaces } from "../lib/surfaces.js";
 import { useColorMode } from "../lib/colorMode.jsx";
 import { useCms } from "../lib/cmsContent.jsx";
 import { shouldShowLandingPage } from "../lib/siteAccess.js";
+import { useCart } from "../lib/cartStore.jsx";
 import StorefrontNavbar from "../components/StorefrontNavbar.jsx";
 import CartDrawer from "./CartDrawer.jsx";
 import SearchDialog from "../components/SearchDialog.jsx";
@@ -19,7 +20,7 @@ export default function CustomerLayout() {
   const { content, hydrated } = useCms();
   const location = useLocation();
   const surfaces = getSurfaces(theme, isDarkMode);
-  const [cartOpen, setCartOpen] = useState(false);
+  const { drawerOpen, openCart, closeCart } = useCart();
   const [searchOpen, setSearchOpen] = useState(false);
   const showLanding = hydrated && shouldShowLandingPage(content.storefront?.landingMode, location.search, location.pathname);
 
@@ -72,10 +73,10 @@ export default function CustomerLayout() {
         flexDirection: "column",
       }}
     >
-      <StorefrontNavbar surfaces={surfaces} onOpenCart={() => setCartOpen(true)} onOpenSearch={() => setSearchOpen(true)} />
-      <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} surfaceBorderColor={surfaces.surfaceBorderColor} isDarkMode={isDarkMode} />
+      <StorefrontNavbar surfaces={surfaces} onOpenCart={openCart} onOpenSearch={() => setSearchOpen(true)} />
+      <CartDrawer open={drawerOpen} onClose={closeCart} surfaceBorderColor={surfaces.surfaceBorderColor} isDarkMode={isDarkMode} />
       <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} surfaceBorderColor={surfaces.surfaceBorderColor} />
-      <Box sx={{ flexGrow: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      <Box sx={{ flexGrow: 1, display: "flex", flexDirection: "column" }}>
         <Outlet context={{ surfaces, isDarkMode }} />
       </Box>
       {showGlobalFooter ? (

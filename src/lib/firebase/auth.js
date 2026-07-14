@@ -2,6 +2,7 @@ import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInAnonymously,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -43,17 +44,142 @@ export function assertNotAdminCustomerEmail(email) {
 
 export function mapAuthError(error) {
   const code = error?.code || "";
+  const raw = String(error?.message || error || "").trim();
   const messages = {
     "auth/invalid-credential": "Invalid email or password.",
     "auth/wrong-password": "Invalid email or password.",
-    "auth/user-not-found": "No admin account found for this email.",
+    "auth/user-not-found": "No account found for this email.",
+    "auth/invalid-email": "Enter a valid email address.",
+    "auth/missing-email": "Enter your email address.",
     "auth/email-already-in-use": "An account with this email already exists.",
-    "auth/weak-password": "Password must be at least 6 characters.",
+    "auth/weak-password": "Password must be at least 8 characters.",
     "auth/too-many-requests": "Too many attempts. Try again later.",
     "auth/popup-closed-by-user": "Sign-in cancelled.",
-    "auth/account-exists-with-different-credential": "This email is linked to a different sign-in method.",
+    "auth/network-request-failed": "Network issue — check your connection and try again.",
+    "auth/internal-error": "Something went wrong with sign-in. Please try again.",
+    "auth/account-exists-with-different-credential":
+      "This email already uses a different sign-in method. Try Continue with Google, or reset your password if you signed up with email.",
+    "auth/operation-not-allowed":
+      "That sign-in method isn’t enabled yet. Check Firebase Console → Authentication → Sign-in method.",
+    "auth/admin-restricted-operation":
+      "Guest checkout needs Anonymous Auth enabled in Firebase Console (Authentication → Sign-in method).",
+    "storage/unauthorized":
+      "We couldn’t upload your payment proof. Guest checkout needs Anonymous Auth enabled in Firebase Console (Authentication → Sign-in method), and Storage rules must allow order-proofs uploads.",
+    "storage/canceled": "Upload was cancelled. Please try again.",
+    "storage/retry-limit-exceeded":
+      "Upload failed after several tries. Check your connection, use a smaller image or PDF, then try again.",
+    "storage/quota-exceeded":
+      "Upload couldn’t finish (storage limit). Please message Hobby Arena PH so we can help complete your order.",
+    "storage/invalid-format": "That file type isn’t supported. Please upload an image or PDF.",
+    "storage/object-not-found": "We couldn’t find that file. Please upload your proof again.",
+    "permission-denied":
+      "We couldn’t save your order (permission denied). Check Firestore rules, or message Hobby Arena PH for help.",
+    "unavailable": "Firebase is temporarily unavailable. Please try again in a moment.",
+    "deadline-exceeded": "That request timed out. Check your connection and try again.",
   };
-  return messages[code] || error?.message || "Authentication failed.";
+  if (messages[code]) return messages[code];
+  return softenFirebaseMessage(raw) || "Something went wrong. Please try again.";
+}
+
+/** Rewrite technical / setup errors into guest-style guidance. */
+function softenFirebaseMessage(raw) {
+  if (!raw) return "";
+  const text = raw.toLowerCase();
+
+  if (
+    text.includes("firebase_service_account")
+    || text.includes("service account")
+    || (text.includes("password reset") && text.includes("branded"))
+  ) {
+    return (
+      "Password reset isn’t set up yet. Add FIREBASE_SERVICE_ACCOUNT_JSON "
+      + "(Firebase Console → Project settings → Service accounts → Generate new private key), "
+      + "then restart the API."
+    );
+  }
+
+  if (
+    text.includes("local api")
+    || text.includes("dev:full")
+    || text.includes("vercel dev")
+    || text.includes("could not reach")
+    || text.includes("port 3000")
+  ) {
+    return (
+      "We couldn’t send the email because the local API isn’t running. "
+      + "Start it with yarn dev:full so the storefront and /api stay connected."
+    );
+  }
+
+  if (/email request failed \(\d+\)/.test(text) || /\bfailed \(5\d\d\)/.test(text)) {
+    return (
+      "We couldn’t send that email right now. Please try again in a few minutes, "
+      + "or message Hobby Arena PH if it keeps happening."
+    );
+  }
+
+  if (text.includes("resend") && (text.includes("api key") || text.includes("not configured"))) {
+    return "Email sending isn’t configured yet. Add RESEND_API_KEY to your server env.";
+  }
+
+  if (
+    text.includes("anonymous auth")
+    || text.includes("admin-restricted-operation")
+    || text.includes("operation-not-allowed")
+  ) {
+    return (
+      "Guest checkout needs Anonymous Auth enabled in Firebase Console "
+      + "(Authentication → Sign-in method)."
+    );
+  }
+
+  if (
+    text.includes("storage/unauthorized")
+    || (text.includes("unauthorized") && text.includes("storage"))
+    || (text.includes("permission denied") && text.includes("upload"))
+  ) {
+    return (
+      "We couldn’t upload your payment proof. Guest checkout needs Anonymous Auth enabled "
+      + "in Firebase Console (Authentication → Sign-in method), and Storage rules must allow order-proofs uploads."
+    );
+  }
+
+  if (text.includes("could not upload your proof") || text.includes("could not upload your file to storage")) {
+    return (
+      "We couldn’t upload your payment proof. Please try a smaller image or PDF. "
+      + "If you’re checking out as a guest and this keeps failing, make sure Anonymous Auth is enabled "
+      + "in Firebase Console (Authentication → Sign-in method), or message Hobby Arena PH."
+    );
+  }
+
+  if (text.includes("firestore is not configured") || text.includes("firebase storage is not configured")) {
+    return "Checkout isn’t fully configured yet. Add your Firebase config and try again.";
+  }
+
+  if (text.includes("firebase auth is not configured") || text.includes("add your firebase config")) {
+    return "Sign-in isn’t configured yet. Add your Firebase web config to .env.local.";
+  }
+
+  if (text.includes("timed out") || text.includes("timeout")) {
+    return "That request timed out. Check your internet connection and try again.";
+  }
+
+  // Avoid dumping raw HTTP / stack noise to shoppers.
+  if (/^error:|exception|stack|econnrefused|enotfound|fetch failed|firebaseerror/i.test(raw)) {
+    return "Something went wrong. Please try again, or message Hobby Arena PH for help.";
+  }
+
+  return raw;
+}
+
+/** Password-reset / email API errors — always shopper-friendly. */
+export function mapPasswordResetError(error) {
+  return mapAuthError(error);
+}
+
+/** Checkout, uploads, Firestore — same friendly mapping as auth. */
+export function mapFirebaseUserError(error) {
+  return mapAuthError(error);
 }
 
 async function tokenClaims(user) {
@@ -164,6 +290,22 @@ export async function firebaseSignInWithGoogle() {
   return user;
 }
 
+/**
+ * Email/password accounts only. Google-only members have no password to reset —
+ * they should use Continue with Google. Firebase may still accept the request
+ * without revealing whether the email exists (enumeration protection).
+ */
+export async function firebaseSendPasswordReset(email) {
+  assertNotAdminCustomerEmail(email);
+  const auth = getFirebaseAuth();
+  if (!auth) throw new Error("Firebase Auth is not configured.");
+  const continueUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/account`
+      : undefined;
+  await sendPasswordResetEmail(auth, email.trim(), continueUrl ? { url: continueUrl } : undefined);
+}
+
 export async function firebaseSignInAdmin(email, password) {
   const auth = getFirebaseAuth();
   if (!auth) throw new Error("Firebase Auth is not configured.");
@@ -196,6 +338,6 @@ export async function ensureAnonymousAuth() {
         "Guest checkout needs Anonymous Auth enabled in Firebase Console (Authentication → Sign-in method).",
       );
     }
-    throw new Error(mapAuthError(error));
+    throw new Error(mapFirebaseUserError(error));
   }
 }

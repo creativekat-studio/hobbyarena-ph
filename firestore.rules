@@ -56,11 +56,18 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Customer profiles
+    // Customer profiles — members write their own uid doc; guests may create/update
+    // email-keyed profiles at checkout (same openness as orders create).
     match /customers/{customerId} {
       allow read: if isAdmin() || (isSignedIn() && customerId == request.auth.uid);
-      allow create: if isSignedIn() && customerId == request.auth.uid;
-      allow update: if isAdmin() || (isSignedIn() && customerId == request.auth.uid);
+      allow create: if true;
+      allow update: if isAdmin()
+        || (isSignedIn() && customerId == request.auth.uid)
+        || (
+          resource.data.authProvider == 'guest'
+          && request.resource.data.authProvider == 'guest'
+          && request.resource.data.email == resource.data.email
+        );
       allow delete: if isAdmin();
     }
 

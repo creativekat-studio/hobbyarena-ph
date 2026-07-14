@@ -25,6 +25,12 @@ const stockDot = keyframes`
   50% { opacity: 0.85; transform: scale(1.08); box-shadow: 0 0 0 8px rgba(52, 211, 153, 0); }
 `;
 
+const addedPop = keyframes`
+  0% { transform: scale(1); }
+  35% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+`;
+
 export const PESO = new Intl.NumberFormat("en-PH", {
   style: "currency",
   currency: "PHP",
@@ -46,7 +52,7 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
   const { mode } = useColorMode();
   const { surfaceBorderColor } = getSurfaces(theme, mode === "dark");
   const { isCustomer } = useAuth();
-  const { addItem, setQuantity, items } = useCart();
+  const { addItem, setQuantity, items, openCart } = useCart();
   const { canWishlist, isWishlisted, toggle } = useWishlist();
   const { availableStock } = useStockHolds();
   const [added, setAdded] = useState(false);
@@ -75,6 +81,15 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
 
   useEffect(() => () => clearTimeout(resetTimer.current), []);
 
+  useEffect(() => {
+    if (!cartItem || soldOut || maxQty <= 0) return;
+    if (cartItem.quantity > maxQty) {
+      setQuantity(product.id, maxQty, { maxQuantity: maxQty });
+    } else if (cartItem.maxQuantity !== maxQty) {
+      setQuantity(product.id, cartItem.quantity, { maxQuantity: maxQty });
+    }
+  }, [cartItem, maxQty, product.id, setQuantity, soldOut]);
+
   function handleWishlist(event) {
     event.preventDefault();
     event.stopPropagation();
@@ -83,8 +98,9 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
     setWishlisted((prev) => !prev);
   }
 
-  function addToCart() {
-    const ok = addItem(product, 1);
+  function addToCart(qty = 1) {
+    const nextQty = Math.min(Math.max(Number(qty) || 1, 1), Math.max(maxQty, 1));
+    const ok = addItem(product, nextQty, { maxQuantity: maxQty });
     if (!ok) return;
     setAdded(true);
     clearTimeout(resetTimer.current);
@@ -93,21 +109,21 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
 
   function handleAction(event) {
     event.stopPropagation();
-    if (soldOut || preorderClosed || inCart) return;
+    if (soldOut || preorderClosed) return;
     if (isPreorder) {
       setTermsOpen(true);
       return;
     }
-    addToCart();
+    addToCart(1);
   }
 
   function handlePreorderConfirm() {
-    addToCart();
+    addToCart(1);
     setTermsOpen(false);
   }
 
   function handleQtyChange(nextQty) {
-    setQuantity(product.id, nextQty);
+    setQuantity(product.id, nextQty, { maxQuantity: maxQty });
   }
 
   let buttonLabel = actionLabel;
@@ -194,11 +210,63 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
         )}
         <Stack direction="row" spacing={1} alignItems="center">
           {inCart && !soldOut && !preorderClosed ? (
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <QtyStepper value={cartItem.quantity} onChange={handleQtyChange} max={maxQty} size="small" />
-            </Box>
+            <>
+              <Box sx={{ flex: 1, minWidth: 0, mt: 0.5 }}>
+                <QtyStepper
+                  value={cartItem.quantity}
+                  onChange={handleQtyChange}
+                  max={maxQty}
+                  min={1}
+                  clearAtZero
+                  size="small"
+                />
+              </Box>
+              <Button
+                variant="text"
+                color="primary"
+                size="small"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openCart();
+                }}
+                sx={{
+                  flexShrink: 0,
+                  mt: 0.5,
+                  px: 1,
+                  minWidth: 0,
+                  fontSize: "0.68rem",
+                  fontWeight: 800,
+                  color: "primary.main",
+                  textTransform: "none",
+                  "&:hover": {
+                    color: "primary.light",
+                    bgcolor: "transparent",
+                    textDecoration: "underline",
+                  },
+                  ...(added
+                    ? { animation: `${addedPop} 480ms cubic-bezier(0.34, 1.45, 0.64, 1)` }
+                    : null),
+                }}
+              >
+                {added ? "Added ✓" : "View cart"}
+              </Button>
+            </>
           ) : (
-            <Button variant={soldOut || preorderClosed ? "outlined" : added ? "outlined" : "contained"} color={added ? "success" : "primary"} disabled={soldOut || preorderClosed} onClick={handleAction} sx={{ flex: 1, mt: 0.5 }}>{buttonLabel}</Button>
+            <Button
+              variant={soldOut || preorderClosed ? "outlined" : added ? "outlined" : "contained"}
+              color={added ? "success" : "primary"}
+              disabled={soldOut || preorderClosed || maxQty < 1}
+              onClick={handleAction}
+              sx={{
+                flex: 1,
+                mt: 0.5,
+                ...(added
+                  ? { animation: `${addedPop} 480ms cubic-bezier(0.34, 1.45, 0.64, 1)` }
+                  : null),
+              }}
+            >
+              {buttonLabel}
+            </Button>
           )}
         </Stack>
       </Stack>

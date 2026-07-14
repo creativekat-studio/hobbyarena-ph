@@ -16,6 +16,7 @@ import { alpha, useTheme } from "@mui/material/styles";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "./ProductCard.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
+import { mapFirebaseUserError } from "../lib/firebase/auth.js";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { itemNeedsBalanceProof, itemOutstandingBalance } from "../data/orderWorkflow.js";
 import { resolveProofAttachmentUrl } from "../lib/orderProofStorage.js";
@@ -161,7 +162,7 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
       setSuccess("Proof submitted. We'll verify your balance payment shortly.");
       setProofFile(null);
     } catch (err) {
-      setError(err.message || "Could not submit proof.");
+      setError(mapFirebaseUserError(err) || "Could not submit proof.");
     } finally {
       setBusy(false);
     }

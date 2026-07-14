@@ -667,6 +667,7 @@ export function OrdersProvider({ children }) {
               await ensureAnonymousAuth();
             } catch (authError) {
               console.warn("[orders] Anonymous sign-in for proof upload failed:", authError);
+              throw authError;
             }
           }
           const saved = await createOrder(created);

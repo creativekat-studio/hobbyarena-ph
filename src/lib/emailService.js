@@ -1,11 +1,19 @@
 import { getPreorderReminderConfig } from "./emailTemplatesStore.js";
 
 async function postJson(path, payload) {
-  const response = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  let response;
+  try {
+    response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new Error(
+      "We couldn’t send the email because the local API isn’t running. "
+      + "Start it with yarn dev:full so the storefront and /api stay connected.",
+    );
+  }
 
   let data = null;
   try {
@@ -15,8 +23,16 @@ async function postJson(path, payload) {
   }
 
   if (!response.ok) {
-    const message = data?.error || `Email request failed (${response.status})`;
-    throw new Error(message);
+    if (!data?.error && (response.status === 500 || response.status === 502 || response.status === 504)) {
+      throw new Error(
+        "We couldn’t send the email because the local API isn’t running. "
+        + "Start it with yarn dev:full so the storefront and /api stay connected.",
+      );
+    }
+    throw new Error(
+      data?.error
+      || "We couldn’t send that email right now. Please try again in a few minutes, or message Hobby Arena PH if it keeps happening.",
+    );
   }
 
   return data;
@@ -83,6 +99,23 @@ export async function sendInquiryEmails(inquiry) {
 
 export async function sendNewsletterSubscribe(email) {
   return postJson("/api/newsletter-subscribe", { email });
+}
+
+export async function requestPasswordReset({ email, bodyOverride, continueUrl } = {}) {
+  return postJson("/api/password-reset", {
+    email,
+    ...(bodyOverride ? { bodyOverride } : {}),
+    ...(continueUrl ? { continueUrl } : {}),
+  });
+}
+
+export async function previewPasswordResetEmail({ email, bodyOverride, continueUrl } = {}) {
+  return postJson("/api/password-reset", {
+    preview: true,
+    email: email || "trainer@example.com",
+    ...(bodyOverride ? { bodyOverride } : {}),
+    ...(continueUrl ? { continueUrl } : {}),
+  });
 }
 
 export async function fetchEmailOutboxStatus() {

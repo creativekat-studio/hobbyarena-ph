@@ -1,10 +1,12 @@
 import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
+import { loadLocalEnv } from "./loadLocalEnv.js";
 
 let initialized = false;
 
 function readServiceAccount() {
+  loadLocalEnv();
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim();
   if (!raw) return null;
   try {

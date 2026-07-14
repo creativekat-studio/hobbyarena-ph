@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  Badge,
   Box,
   Button,
   Container,
@@ -17,11 +16,10 @@ import { MONO_FONT } from "../theme.js";
 import { groupIsActive, NAV_GROUPS, NAV_DESTINATIONS } from "../data/navDestinations.js";
 import { useColorMode } from "../lib/colorMode.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
-import { useCart } from "../lib/cartStore.jsx";
 import BrandLogo from "./BrandLogo.jsx";
+import CartNavButton from "./CartNavButton.jsx";
 import {
   BoxIcon,
-  CartIcon,
   MoonIcon,
   SearchIcon,
   SparkleIcon,
@@ -253,7 +251,6 @@ export default function DockNavbar({ surfaces, onOpenCart, onOpenSearch }) {
   const location = useLocation();
   const { mode, toggle } = useColorMode();
   const { user } = useAuth();
-  const { itemCount } = useCart();
   const [openGroup, setOpenGroup] = useState(null);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const dockRef = useRef(null);
@@ -387,13 +384,7 @@ export default function DockNavbar({ surfaces, onOpenCart, onOpenSearch }) {
                   {isDarkMode ? <SunIcon /> : <MoonIcon />}
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Cart">
-                <IconButton color="inherit" onClick={onOpenCart} size="small">
-                  <Badge badgeContent={itemCount} color="primary" invisible={itemCount === 0}>
-                    <CartIcon />
-                  </Badge>
-                </IconButton>
-              </Tooltip>
+              <CartNavButton onOpenCart={onOpenCart} size="small" />
               <Button
                 variant="outlined"
                 color="primary"
@@ -435,11 +426,7 @@ export default function DockNavbar({ surfaces, onOpenCart, onOpenSearch }) {
                 <IconButton onClick={toggle} color="inherit" size="small">
                   {isDarkMode ? <SunIcon /> : <MoonIcon />}
                 </IconButton>
-                <IconButton color="inherit" onClick={onOpenCart} size="small">
-                  <Badge badgeContent={itemCount} color="primary" invisible={itemCount === 0}>
-                    <CartIcon />
-                  </Badge>
-                </IconButton>
+                <CartNavButton onOpenCart={onOpenCart} size="small" />
                 <IconButton color="inherit" onClick={() => navigate("/account")} size="small">
                   <UserIcon />
                 </IconButton>

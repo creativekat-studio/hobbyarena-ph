@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { clearCheckoutConfirmation } from "./checkoutConfirmation.js";
 import {
   calcPreorderPricing,
@@ -68,77 +68,105 @@ function cartItemBalanceDue(item) {
   return preorderBalanceDue(item, item.quantity);
 }
 
+function shouldAutoOpenCart() {
+  if (typeof window === "undefined") return true;
+  return !window.location.pathname.startsWith("/checkout");
+}
+
 const CartContext = createContext(null);
 
 export function CartProvider({ children }) {
   const [items, setItems] = useState(loadCart);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [addPulse, setAddPulse] = useState(0);
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   }, [items]);
 
-  const api = useMemo(() => {
-    const addItem = (product, quantity = 1) => {
-      if (!canAddProduct(product)) return false;
-      clearCheckoutConfirmation();
-      const qty = Math.max(1, quantity);
+  const openCart = useCallback(() => setDrawerOpen(true), []);
+  const closeCart = useCallback(() => setDrawerOpen(false), []);
 
-      setItems((prev) => {
-        const existing = prev.find((item) => item.id === product.id);
-        const limit = maxQuantity(product);
-        const isPreorder = isPreorderProduct(product);
-        const depositPercent = isPreorder ? getDepositPercent(product) : null;
-        const pricing = isPreorder ? calcPreorderPricing(product.price, depositPercent) : null;
+  const addItem = useCallback((product, quantity = 1, options = {}) => {
+    if (!canAddProduct(product)) return false;
+    clearCheckoutConfirmation();
+    const qty = Math.max(1, Number(quantity) || 1);
+    const openDrawer = options.openDrawer !== false && shouldAutoOpenCart();
 
-        if (existing) {
-          const nextQty = Math.min(existing.quantity + qty, limit);
-          if (nextQty === existing.quantity) return prev;
-          return prev.map((item) => (item.id === product.id ? { ...item, quantity: nextQty } : item));
-        }
+    setItems((prev) => {
+      const existing = prev.find((item) => item.id === product.id);
+      const limit = Math.max(
+        0,
+        Number(options.maxQuantity ?? maxQuantity(product)) || 0,
+      );
+      if (limit <= 0 && !isPreorderProduct(product)) return prev;
 
-        return [
-          ...prev,
-          {
-            id: product.id,
-            name: product.name,
-            line: product.line,
-            price: product.price,
-            tag: product.tag,
-            accent: product.accent,
-            image: product.image,
-            maxQuantity: limit,
-            quantity: Math.min(qty, limit),
-            ...(isPreorder
-              ? {
-                  depositPercent,
-                  preorderEndsAt: product.preorderEndsAt ?? null,
-                  depositAmount: pricing.deposit,
-                  balanceAmount: pricing.balance,
-                }
-              : {}),
-          },
-        ];
-      });
-      return true;
-    };
+      const isPreorder = isPreorderProduct(product);
+      const depositPercent = isPreorder ? getDepositPercent(product) : null;
+      const pricing = isPreorder ? calcPreorderPricing(product.price, depositPercent) : null;
+      const effectiveLimit = isPreorder ? Math.max(limit, 1) : limit;
 
-    const setQuantity = (id, quantity) => {
-      setItems((prev) => {
-        if (quantity <= 0) return prev.filter((item) => item.id !== id);
-        return prev.map((item) => {
-          if (item.id !== id) return item;
-          const nextQty = Math.min(Math.max(quantity, 1), item.maxQuantity);
-          return { ...item, quantity: nextQty };
-        });
-      });
-    };
+      if (existing) {
+        const nextQty = Math.min(existing.quantity + qty, effectiveLimit);
+        if (nextQty === existing.quantity && existing.maxQuantity === effectiveLimit) return prev;
+        return prev.map((item) => (
+          item.id === product.id
+            ? { ...item, quantity: nextQty, maxQuantity: effectiveLimit }
+            : item
+        ));
+      }
 
-    const removeItem = (id) => setItems((prev) => prev.filter((item) => item.id !== id));
+      return [
+        ...prev,
+        {
+          id: product.id,
+          name: product.name,
+          line: product.line,
+          price: product.price,
+          tag: product.tag,
+          accent: product.accent,
+          image: product.image,
+          maxQuantity: effectiveLimit,
+          quantity: Math.min(qty, effectiveLimit),
+          ...(isPreorder
+            ? {
+                depositPercent,
+                preorderEndsAt: product.preorderEndsAt ?? null,
+                depositAmount: pricing.deposit,
+                balanceAmount: pricing.balance,
+              }
+            : {}),
+        },
+      ];
+    });
 
-    const clearCart = () => setItems([]);
-
-    return { addItem, setQuantity, removeItem, clearCart };
+    if (openDrawer) {
+      setDrawerOpen(true);
+      setAddPulse((n) => n + 1);
+    }
+    return true;
   }, []);
+
+  const setQuantity = useCallback((id, quantity, options = {}) => {
+    setItems((prev) => {
+      if (quantity <= 0) return prev.filter((item) => item.id !== id);
+      return prev.map((item) => {
+        if (item.id !== id) return item;
+        const limit = Math.max(
+          1,
+          Number(options.maxQuantity ?? item.maxQuantity) || item.maxQuantity || 1,
+        );
+        const nextQty = Math.min(Math.max(Number(quantity) || 1, 1), limit);
+        return { ...item, quantity: nextQty, maxQuantity: limit };
+      });
+    });
+  }, []);
+
+  const removeItem = useCallback((id) => {
+    setItems((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
+  const clearCart = useCallback(() => setItems([]), []);
 
   const itemCount = useMemo(
     () => items.reduce((sum, item) => sum + item.quantity, 0),
@@ -166,8 +194,38 @@ export function CartProvider({ children }) {
   );
 
   const value = useMemo(
-    () => ({ items, itemCount, subtotal, fullSubtotal, balanceDue, hasPreorder, ...api }),
-    [items, itemCount, subtotal, fullSubtotal, balanceDue, hasPreorder, api],
+    () => ({
+      items,
+      itemCount,
+      subtotal,
+      fullSubtotal,
+      balanceDue,
+      hasPreorder,
+      drawerOpen,
+      addPulse,
+      addItem,
+      setQuantity,
+      removeItem,
+      clearCart,
+      openCart,
+      closeCart,
+    }),
+    [
+      items,
+      itemCount,
+      subtotal,
+      fullSubtotal,
+      balanceDue,
+      hasPreorder,
+      drawerOpen,
+      addPulse,
+      addItem,
+      setQuantity,
+      removeItem,
+      clearCart,
+      openCart,
+      closeCart,
+    ],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
