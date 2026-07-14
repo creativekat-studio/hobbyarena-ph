@@ -834,20 +834,34 @@ function PasswordResetTemplateEditor({
       const result = await requestPasswordReset({
         email: testEmail.trim(),
         bodyOverride: draft,
+        test: true,
       });
       if (result.skipped) {
         onTestResult({
           ok: true,
-          warning: result.skipReason || "Sent to simulated outbox.",
+          warning: result.skipReason || result.warning || "Sent to simulated outbox.",
           message: `Password reset email captured for ${testEmail}.`,
         });
       } else if (result.simulated) {
         onTestResult({
           ok: true,
+          warning: result.warning || undefined,
           message: `Password reset email simulated for ${testEmail} (check Simulated inbox).`,
         });
+      } else if (result.usedPlaceholderLink || result.warning) {
+        onTestResult({
+          ok: true,
+          warning: result.warning || "Sent with a placeholder reset link.",
+          message: result.message || `Password reset template sent to ${testEmail}.`,
+        });
+      } else if (result.sent || result.messageId) {
+        onTestResult({ ok: true, message: result.message || `Password reset email sent to ${testEmail}.` });
       } else {
-        onTestResult({ ok: true, message: `Password reset email sent to ${testEmail}.` });
+        onTestResult({
+          ok: true,
+          warning: "API returned success but no Resend message id — check that a Firebase Auth user exists for this email.",
+          message: result.message || `Password reset requested for ${testEmail}.`,
+        });
       }
     } catch (error) {
       onTestResult({ ok: false, error: error.message || "Could not send test email." });

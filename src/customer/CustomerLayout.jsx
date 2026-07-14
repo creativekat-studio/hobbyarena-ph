@@ -28,7 +28,7 @@ export default function CustomerLayout() {
     setSearchOpen(false);
   }, [location.pathname]);
 
-  const isAccount = location.pathname === "/account";
+  const isAccount = location.pathname === "/account" || location.pathname.startsWith("/account/");
   const isCheckout = location.pathname === "/checkout";
   const showGlobalFooter = !isCheckout && !isAccount;
 

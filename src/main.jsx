@@ -27,6 +27,7 @@ import ContactPage from "./customer/ContactPage.jsx";
 import CatalogListingPage from "./customer/CatalogListingPage.jsx";
 import ProductPage from "./customer/ProductPage.jsx";
 import AccountPage from "./customer/AccountPage.jsx";
+import ResetPasswordPage from "./customer/ResetPasswordPage.jsx";
 import OrderStatusPage from "./customer/OrderStatusPage.jsx";
 import CheckoutPage from "./customer/CheckoutPage.jsx";
 import CheckoutErrorBoundary from "./customer/CheckoutErrorBoundary.jsx";
@@ -61,6 +62,7 @@ const router = createBrowserRouter([
       { path: "/contact", element: <ContactPage /> },
       { path: "/checkout", element: <CheckoutErrorBoundary><CheckoutPage /></CheckoutErrorBoundary> },
       { path: "/account", element: <AccountPage /> },
+      { path: "/account/reset-password", element: <ResetPasswordPage /> },
       { path: "/account/orders/:orderId", element: <OrderStatusPage /> },
     ],
   },

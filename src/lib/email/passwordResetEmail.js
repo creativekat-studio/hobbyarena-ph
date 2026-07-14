@@ -77,7 +77,7 @@ export function buildPasswordResetEmail({
     ${renderBodyHtml(body, { email: safeEmail })}
     ${resetButton(link)}
     <p style="margin:18px 0 0;font-family:Inter,Arial,sans-serif;font-size:12px;line-height:1.6;color:${c.muted};text-align:center">
-      Button not working? Reply to this email or message Hobby Arena PH and we’ll help.
+      Button not working? Message Hobby Arena PH and we’ll help.
     </p>
   `;
 

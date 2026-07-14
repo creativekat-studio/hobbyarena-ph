@@ -1,4 +1,5 @@
 import {
+  confirmPasswordReset,
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
   onAuthStateChanged,
@@ -8,6 +9,7 @@ import {
   signInWithPopup,
   signOut,
   updateProfile,
+  verifyPasswordResetCode,
 } from "firebase/auth";
 import { getFirebaseAuth, isFirebaseConfigured } from "./app.js";
 import { ROLES } from "../../auth/roles.js";
@@ -52,6 +54,9 @@ export function mapAuthError(error) {
     "auth/invalid-email": "Enter a valid email address.",
     "auth/missing-email": "Enter your email address.",
     "auth/email-already-in-use": "An account with this email already exists.",
+    "auth/expired-action-code": "This reset link has expired. Request a new one from the sign-in page.",
+    "auth/invalid-action-code": "This reset link is invalid or was already used. Request a new one from the sign-in page.",
+    "auth/user-disabled": "This account is disabled. Message Hobby Arena PH for help.",
     "auth/weak-password": "Password must be at least 8 characters.",
     "auth/too-many-requests": "Too many attempts. Try again later.",
     "auth/popup-closed-by-user": "Sign-in cancelled.",
@@ -304,6 +309,26 @@ export async function firebaseSendPasswordReset(email) {
       ? `${window.location.origin}/account`
       : undefined;
   await sendPasswordResetEmail(auth, email.trim(), continueUrl ? { url: continueUrl } : undefined);
+}
+
+/** Verify a password-reset oobCode and return the account email. */
+export async function firebaseVerifyPasswordResetCode(oobCode) {
+  const auth = getFirebaseAuth();
+  if (!auth) throw new Error("Firebase Auth is not configured.");
+  const code = String(oobCode || "").trim();
+  if (!code) throw new Error("This reset link is missing or incomplete. Request a new one from the sign-in page.");
+  return verifyPasswordResetCode(auth, code);
+}
+
+/** Complete password reset with the oobCode from the email link. */
+export async function firebaseConfirmPasswordReset(oobCode, newPassword) {
+  const auth = getFirebaseAuth();
+  if (!auth) throw new Error("Firebase Auth is not configured.");
+  const code = String(oobCode || "").trim();
+  const password = String(newPassword || "");
+  if (!code) throw new Error("This reset link is missing or incomplete. Request a new one from the sign-in page.");
+  if (password.length < 8) throw new Error("Password must be at least 8 characters.");
+  await confirmPasswordReset(auth, code, password);
 }
 
 export async function firebaseSignInAdmin(email, password) {

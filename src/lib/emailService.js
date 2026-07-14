@@ -84,6 +84,7 @@ export async function sendOrderAcknowledgementEmail(order, reminder) {
     type: order.type,
     payment: order.payment,
     date: order.date,
+    notes: order.notes || "",
     ...(reminder ? { reminder } : {}),
   });
 }
@@ -101,11 +102,12 @@ export async function sendNewsletterSubscribe(email) {
   return postJson("/api/newsletter-subscribe", { email });
 }
 
-export async function requestPasswordReset({ email, bodyOverride, continueUrl } = {}) {
+export async function requestPasswordReset({ email, bodyOverride, continueUrl, test = false } = {}) {
   return postJson("/api/password-reset", {
     email,
     ...(bodyOverride ? { bodyOverride } : {}),
     ...(continueUrl ? { continueUrl } : {}),
+    ...(test ? { test: true } : {}),
   });
 }
 

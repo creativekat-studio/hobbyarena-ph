@@ -58,10 +58,29 @@ function normalizeLineItems(order) {
   return [];
 }
 
+function customerNotes(order) {
+  const notes = String(order?.notes || "").trim();
+  return notes || "";
+}
+
+function notesHtml(notes) {
+  if (!notes) return "";
+  return `
+    ${sectionHeading("Order notes")}
+    ${bodyText(escapeHtml(notes).replace(/\n/g, "<br>"))}
+  `;
+}
+
+function notesTextLines(notes) {
+  if (!notes) return [];
+  return ["", "Order notes:", notes];
+}
+
 export function buildOrderAcknowledgementEmail(order, options = {}) {
   const kind = orderKind(order);
   const isPreorder = kind === "preorder";
   const lineItems = normalizeLineItems(order);
+  const notes = customerNotes(order);
   const orderDate = formatEmailDate(order.date || new Date().toISOString());
   const subject = isPreorder
     ? `Pre-order confirmation — ${order.id}`
@@ -119,6 +138,7 @@ export function buildOrderAcknowledgementEmail(order, options = {}) {
     }),
     "",
     ...totalRows.map((row) => `${row.label}: ${row.value}`),
+    ...notesTextLines(notes),
     "",
     showReminder ? preorderReminderText(reminderOpts) : "Questions? Message us at Hobby Arena PH.",
     "",
@@ -144,6 +164,7 @@ export function buildOrderAcknowledgementEmail(order, options = {}) {
     ${invoiceTable(lineItems)}
     ${totalsBlock(totalRows)}
     <div style="clear:both"></div>
+    ${notesHtml(notes)}
     ${divider()}
     ${sectionHeading("Status")}
     ${statusList([
@@ -165,6 +186,7 @@ export function buildOrderAcknowledgementEmail(order, options = {}) {
 
 export function buildAdminOrderNotificationEmail(order) {
   const lineItems = normalizeLineItems(order);
+  const notes = customerNotes(order);
   const orderDate = formatEmailDate(order.date || new Date().toISOString());
   const subject = `New order — ${order.id}`;
 
@@ -179,6 +201,7 @@ export function buildAdminOrderNotificationEmail(order) {
     `Total: ${formatPeso(order.total)}`,
     "",
     ...lineItems.map((item) => `${item.quantity}× ${item.name}`),
+    ...notesTextLines(notes),
     "",
     "Review in Admin → Orders.",
   ].join("\n");
@@ -199,6 +222,7 @@ export function buildAdminOrderNotificationEmail(order) {
       { label: "Payment", value: escapeHtml(order.payment || "Pending Verification") },
     ])}
     <div style="clear:both"></div>
+    ${notesHtml(notes)}
     ${bodyText(`<span style="color:${EMAIL_BRAND.colors.muted}">Review and verify in <strong style="color:${EMAIL_BRAND.colors.text}">Admin → Orders</strong>.</span>`)}
   `;
 

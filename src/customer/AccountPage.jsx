@@ -23,7 +23,7 @@ import {
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useNavigate, useSearchParams } from "react-router-dom";
 import { MONO_FONT, getStatAccents } from "../theme.js";
 import { avatarStyles } from "../lib/surfaces.js";
 import { wider } from "../lib/layout.js";
@@ -744,7 +744,17 @@ export default function AccountPage() {
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
   const { isCustomer, loading, reconcileCustomerSession } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const showAuth = !isCustomer && !loading;
+
+  useEffect(() => {
+    const oobCode = String(searchParams.get("oobCode") || searchParams.get("oobcode") || "").trim();
+    const mode = String(searchParams.get("mode") || "").trim();
+    if (oobCode && (!mode || mode === "resetPassword")) {
+      navigate(`/account/reset-password?${searchParams.toString()}`, { replace: true });
+    }
+  }, [navigate, searchParams]);
 
   useEffect(() => {
     setAuthSurface("customer");

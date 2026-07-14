@@ -6,7 +6,7 @@ function readOrder(body) {
   if (!body || typeof body !== "object") return null;
   const {
     id, customer, email, items, lineItems, total, subtotal, shippingFee,
-    balanceDue, type, phone, payment, date, depositPercent, reminder,
+    balanceDue, type, phone, payment, date, depositPercent, reminder, notes,
   } = body;
   if (!id || !customer || !isValidEmail(email)) return null;
 
@@ -72,6 +72,7 @@ function readOrder(body) {
       phone: phone ? String(phone) : "",
       payment: payment ? String(payment) : "Pending Verification",
       date: date ? String(date) : new Date().toISOString().slice(0, 10),
+      notes: notes ? String(notes).trim().slice(0, 2000) : "",
     },
     reminder: reminderConfig,
   };
