@@ -272,6 +272,11 @@ export function createAppTheme(mode, proposalId = 2) {
             textTransform: "uppercase",
             color: "text.secondary",
             whiteSpace: "nowrap",
+            // Match admin panel surfaces so sticky headers stay opaque while rows scroll.
+            backgroundColor: isDarkMode ? "#12204A" : OFF_WHITE.paper,
+          },
+          stickyHeader: {
+            backgroundColor: isDarkMode ? "#12204A" : OFF_WHITE.paper,
           },
         },
       },

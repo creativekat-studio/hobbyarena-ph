@@ -31,6 +31,7 @@ import { alpha, useTheme } from "@mui/material/styles";
 import { useOutletContext } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { TrashIcon } from "../components/icons.jsx";
+import { AdminTableHeaderCell } from "./adminTableHeader.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { ORDER_STATUS_EMAIL_LABELS } from "../lib/orderEmailTriggers.js";
 import { sendOrderStatusEmail, previewPasswordResetEmail, requestPasswordReset } from "../lib/emailService.js";
@@ -602,10 +603,10 @@ function FooterTemplateEditor({ draft, onDraftChange, surfaceBorderColor }) {
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell sx={{ fontWeight: 800 }}>Name / type</TableCell>
-              <TableCell sx={{ fontWeight: 800 }}>Title</TableCell>
-              <TableCell sx={{ fontWeight: 800 }}>Preview</TableCell>
-              <TableCell sx={{ fontWeight: 800, width: 88 }} align="center">Used</TableCell>
+              <AdminTableHeaderCell>Name / type</AdminTableHeaderCell>
+              <AdminTableHeaderCell>Title</AdminTableHeaderCell>
+              <AdminTableHeaderCell>Preview</AdminTableHeaderCell>
+              <AdminTableHeaderCell sx={{ width: 88 }} align="center">Used</AdminTableHeaderCell>
             </TableRow>
           </TableHead>
           <TableBody>

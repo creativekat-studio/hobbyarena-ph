@@ -22,7 +22,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TableSortLabel,
   Tabs,
   TextField,
   ToggleButton,
@@ -36,6 +35,7 @@ import { avatarStyles } from "../lib/surfaces.js";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import { CardIcon, SearchIcon, SparkleIcon, UserIcon } from "../components/icons.jsx";
+import { AdminTableHeaderCell, AdminTableSortHeader } from "./adminTableHeader.jsx";
 import { useCustomers } from "../lib/customersStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { useClientTiers } from "../lib/clientTiersStore.jsx";
@@ -344,12 +344,12 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
                 <Table stickyHeader size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 800 }}>Order</TableCell>
-                      <TableCell sx={{ fontWeight: 800, display: { xs: "none", sm: "table-cell" } }}>Date</TableCell>
-                      <TableCell sx={{ fontWeight: 800 }}>Status</TableCell>
-                      <TableCell sx={{ fontWeight: 800, display: { xs: "none", md: "table-cell" } }}>Items</TableCell>
-                      <TableCell sx={{ fontWeight: 800 }} align="right">Total</TableCell>
-                      <TableCell sx={{ fontWeight: 800 }} align="right" />
+                      <AdminTableHeaderCell>Order</AdminTableHeaderCell>
+                      <AdminTableHeaderCell sx={{ display: { xs: "none", sm: "table-cell" } }}>Date</AdminTableHeaderCell>
+                      <AdminTableHeaderCell>Status</AdminTableHeaderCell>
+                      <AdminTableHeaderCell sx={{ display: { xs: "none", md: "table-cell" } }}>Items</AdminTableHeaderCell>
+                      <AdminTableHeaderCell align="right">Total</AdminTableHeaderCell>
+                      <AdminTableHeaderCell align="right" />
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -596,40 +596,30 @@ export default function CustomersPage() {
       </Stack>
 
       <Box sx={{ flex: 1, minHeight: 0, ...panelSx, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        <TableContainer sx={{ flex: 1 }}>
+        <TableContainer sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
           <Table stickyHeader>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 800 }} sortDirection={sort.key === "name" ? sort.dir : false}>
-                  <TableSortLabel
-                    active={sort.key === "name"}
-                    direction={sort.key === "name" ? sort.dir : "asc"}
-                    onClick={() => handleSort("name")}
-                    sx={{ fontWeight: 800, "& .MuiTableSortLabel-icon": { fontSize: "0.95rem" } }}
-                  >
-                    Customer
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell sx={{ fontWeight: 800 }}>Rank</TableCell>
-                <TableCell
-                  sx={{ fontWeight: 800, display: { xs: "none", sm: "table-cell" } }}
-                  sortDirection={sort.key === "joined" ? sort.dir : false}
-                >
-                  <TableSortLabel
-                    active={sort.key === "joined"}
-                    direction={sort.key === "joined" ? sort.dir : "asc"}
-                    onClick={() => handleSort("joined")}
-                    sx={{ fontWeight: 800, "& .MuiTableSortLabel-icon": { fontSize: "0.95rem" } }}
-                  >
-                    Joined
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell sx={{ fontWeight: 800, display: { xs: "none", md: "table-cell" } }}>Sign-in</TableCell>
-                <TableCell sx={{ fontWeight: 800 }} align="right">Orders</TableCell>
-                <TableCell sx={{ fontWeight: 800 }} align="right">Total spent</TableCell>
-                <TableCell sx={{ fontWeight: 800 }} align="center">Marketing</TableCell>
-                <TableCell sx={{ fontWeight: 800 }} align="center">Status</TableCell>
-                <TableCell sx={{ fontWeight: 800 }} align="right" />
+                <AdminTableSortHeader
+                  id="name"
+                  label="Customer"
+                  sort={sort}
+                  onSort={handleSort}
+                />
+                <AdminTableHeaderCell>Rank</AdminTableHeaderCell>
+                <AdminTableSortHeader
+                  id="joined"
+                  label="Joined"
+                  sort={sort}
+                  onSort={handleSort}
+                  sx={{ display: { xs: "none", sm: "table-cell" } }}
+                />
+                <AdminTableHeaderCell sx={{ display: { xs: "none", md: "table-cell" } }}>Sign-in</AdminTableHeaderCell>
+                <AdminTableHeaderCell align="right">Orders</AdminTableHeaderCell>
+                <AdminTableHeaderCell align="right">Total spent</AdminTableHeaderCell>
+                <AdminTableHeaderCell align="center">Marketing</AdminTableHeaderCell>
+                <AdminTableHeaderCell align="center">Status</AdminTableHeaderCell>
+                <AdminTableHeaderCell align="right" />
               </TableRow>
             </TableHead>
             <TableBody>

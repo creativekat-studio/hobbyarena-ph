@@ -37,19 +37,14 @@ import { MONO_FONT, getStatAccents } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import InventoryProductThumb from "../components/InventoryProductThumb.jsx";
-import { BoxIcon, EditIcon, InventoryIcon, SearchIcon, ShieldIcon, SparkleIcon, TrashIcon, ViewGridIcon, ViewTableIcon } from "../components/icons.jsx";
+import { BoxIcon, EditIcon, InfoIcon, InventoryIcon, SearchIcon, ShieldIcon, SparkleIcon, TrashIcon, ViewGridIcon, ViewTableIcon } from "../components/icons.jsx";
 import { MAX_FEATURED_PRODUCTS, useInventory } from "../lib/inventoryStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { openOrdersByProductId } from "../data/orderWorkflow.js";
 import { sortRowsBy, toggleSortState } from "../lib/tableSort.js";
+import { AdminTableHeaderCell, AdminTableSortHeader, ADMIN_TABLE_SORT_LABEL_SX } from "./adminTableHeader.jsx";
 import AddProductDialog from "./AddProductDialog.jsx";
 import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
-
-const SORTABLE_HEADER_SX = {
-  fontWeight: 800,
-  "&.MuiTableSortLabel-root": { color: "inherit" },
-  "& .MuiTableSortLabel-icon": { fontSize: "0.95rem" },
-};
 
 const STATUS_FILTERS = [
   { id: "all", label: "All" },
@@ -181,23 +176,20 @@ function InventoryTableView({
   const someSelected = rows.some((row) => selectedIds.has(row.id));
 
   function SortHeader({ id, label, align = "left", sx }) {
-    const active = sort.key === id;
     return (
-      <TableCell align={align} sortDirection={active ? sort.dir : false} sx={{ fontWeight: 800, ...sx }}>
-        <TableSortLabel
-          active={active}
-          direction={active ? sort.dir : "asc"}
-          onClick={() => onSort(id)}
-          sx={SORTABLE_HEADER_SX}
-        >
-          {label}
-        </TableSortLabel>
-      </TableCell>
+      <AdminTableSortHeader
+        id={id}
+        label={label}
+        sort={sort}
+        onSort={onSort}
+        align={align}
+        sx={sx}
+      />
     );
   }
 
   return (
-    <TableContainer sx={{ flex: 1, minHeight: 0 }}>
+    <TableContainer sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
       <Table stickyHeader>
         <TableHead>
           <TableRow>
@@ -209,32 +201,48 @@ function InventoryTableView({
                 inputProps={{ "aria-label": "Select all products" }}
               />
             </TableCell>
-            <TableCell sx={{ fontWeight: 800, width: 56 }} />
+            <AdminTableHeaderCell sx={{ width: 56 }} />
             <SortHeader id="sku" label="SKU" />
             <SortHeader id="product" label="Product" />
             <SortHeader id="type" label="Type" sx={{ display: { xs: "none", md: "table-cell" } }} />
             <SortHeader id="price" label="Price" align="right" sx={{ display: { xs: "none", sm: "table-cell" } }} />
             <SortHeader id="stock" label="Stock" align="right" />
             <SortHeader id="live" label="Live" align="center" />
-            <TableCell sx={{ fontWeight: 800 }} align="center" sortDirection={sort.key === "featured" ? sort.dir : false}>
-              <Tooltip title={`Up to ${MAX_FEATURED_PRODUCTS} in-stock and ${MAX_FEATURED_PRODUCTS} pre-order on the homepage`}>
-                <TableSortLabel
-                  active={sort.key === "featured"}
-                  direction={sort.key === "featured" ? sort.dir : "asc"}
-                  onClick={() => onSort("featured")}
-                  sx={{ ...SORTABLE_HEADER_SX, flexDirection: "column", alignItems: "center" }}
-                >
-                  <Box component="span" sx={{ display: "inline-flex", flexDirection: "column", alignItems: "center", lineHeight: 1.2 }}>
-                    <Box component="span">Featured</Box>
-                    <Box component="span" sx={{ fontWeight: 600, fontSize: "0.65rem", color: "text.secondary", fontFamily: MONO_FONT }}>
-                      {featuredCountSealed}/{MAX_FEATURED_PRODUCTS} · {featuredCountPreorder}/{MAX_FEATURED_PRODUCTS}
+            <TableCell
+              align="center"
+              sortDirection={sort.key === "featured" ? sort.dir : false}
+            >
+              <TableSortLabel
+                active={sort.key === "featured"}
+                direction={sort.key === "featured" ? sort.dir : "asc"}
+                onClick={() => onSort("featured")}
+                sx={{ ...ADMIN_TABLE_SORT_LABEL_SX, alignItems: "center" }}
+              >
+                <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                  <Box component="span">Featured</Box>
+                  <Tooltip
+                    title={`In-stock featured: ${featuredCountSealed}/${MAX_FEATURED_PRODUCTS}. Pre-order featured: ${featuredCountPreorder}/${MAX_FEATURED_PRODUCTS}. Up to ${MAX_FEATURED_PRODUCTS} of each on the homepage.`}
+                  >
+                    <Box
+                      component="span"
+                      onClick={(event) => event.stopPropagation()}
+                      sx={{
+                        display: "inline-flex",
+                        color: "text.secondary",
+                        cursor: "help",
+                        lineHeight: 0,
+                        "&:hover": { color: "text.primary" },
+                      }}
+                      aria-label={`Featured slots: in-stock ${featuredCountSealed} of ${MAX_FEATURED_PRODUCTS}, pre-order ${featuredCountPreorder} of ${MAX_FEATURED_PRODUCTS}`}
+                    >
+                      <InfoIcon sx={{ fontSize: 14 }} />
                     </Box>
-                  </Box>
-                </TableSortLabel>
-              </Tooltip>
+                  </Tooltip>
+                </Box>
+              </TableSortLabel>
             </TableCell>
             <SortHeader id="status" label="Status" align="right" />
-            <TableCell sx={{ fontWeight: 800, width: 96 }} />
+            <AdminTableHeaderCell sx={{ width: 96 }} />
           </TableRow>
         </TableHead>
         <TableBody>

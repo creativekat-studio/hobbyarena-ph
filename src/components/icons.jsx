@@ -334,3 +334,14 @@ export function TrashIcon(props) {
     </SvgIcon>
   );
 }
+
+/** Small circled “i” for tooltip affordances in dense admin headers. */
+export function InfoIcon(props) {
+  return (
+    <SvgIcon viewBox="0 0 24 24" {...props}>
+      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M12 10.4v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <circle cx="12" cy="7.6" r="1.05" fill="currentColor" />
+    </SvgIcon>
+  );
+}

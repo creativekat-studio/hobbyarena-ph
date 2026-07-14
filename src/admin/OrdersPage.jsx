@@ -14,7 +14,6 @@ import {
   MenuItem,
   Select,
   Stack,
-  TableSortLabel,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -46,6 +45,7 @@ import { compareOrdersByOrderNo } from "../lib/orderIds.js";
 import { exportOrdersToExcel } from "../lib/ordersExcelExport.js";
 import { formatOrderTimestamp, resolveOrderPlacedAt } from "../lib/orderTimestamps.js";
 import { sortRowsBy, toggleSortState } from "../lib/tableSort.js";
+import { AdminGridHeaderLabel, AdminGridSortHeader, adminStickyHeaderRowSx } from "./adminTableHeader.jsx";
 import AddOrderDialog from "./AddOrderDialog.jsx";
 
 const ORDER_SORT_ACCESSORS = {
@@ -102,40 +102,14 @@ function lineItemGridSx(overrides = {}) {
   };
 }
 
-const HEADER_LABEL_SX = {
-  fontFamily: MONO_FONT,
-  fontWeight: 800,
-  fontSize: "0.75rem",
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "text.secondary",
-  whiteSpace: "nowrap",
-};
-
-function GridHeaderCell({ children, sx }) {
+function SortableGridHeader({ label, sortKey, sort, onSort, sx }) {
   return (
-    <Typography sx={{ ...HEADER_LABEL_SX, ...sx }}>
-      {children}
-    </Typography>
+    <AdminGridSortHeader label={label} sortKey={sortKey} sort={sort} onSort={onSort} sx={sx} />
   );
 }
 
-function SortableGridHeader({ label, sortKey, sort, onSort, sx }) {
-  const active = sort.key === sortKey;
-  return (
-    <TableSortLabel
-      active={active}
-      direction={active ? sort.dir : "asc"}
-      onClick={() => onSort(sortKey)}
-      sx={{
-        ...HEADER_LABEL_SX,
-        "& .MuiTableSortLabel-icon": { fontSize: "0.9rem" },
-        ...sx,
-      }}
-    >
-      {label}
-    </TableSortLabel>
-  );
+function GridHeaderCell({ children, sx }) {
+  return <AdminGridHeaderLabel sx={sx}>{children}</AdminGridHeaderLabel>;
 }
 
 function StatCard({ panelSx, icon, label, value, accent }) {
@@ -435,6 +409,7 @@ export default function OrdersPage() {
   }, [orders]);
 
   const { surfaceBackground } = surfaces;
+  const stickyHeaderBg = theme.palette.mode === "dark" ? "#12204A" : surfaceBackground;
 
   return (
     /*
@@ -546,12 +521,7 @@ export default function OrdersPage() {
                 sx={{
                   ...orderSummaryGridSx(),
                   py: 1.25,
-                  borderBottom: "1px solid",
-                  borderColor: surfaceBorderColor,
-                  backgroundColor: surfaceBackground,
-                  position: "sticky",
-                  top: 0,
-                  zIndex: 1,
+                  ...adminStickyHeaderRowSx(stickyHeaderBg, surfaceBorderColor),
                 }}
               >
                 <Box />

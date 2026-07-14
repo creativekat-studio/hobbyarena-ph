@@ -23,6 +23,7 @@ import { useOutletContext, useSearchParams } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { TrashIcon } from "../components/icons.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
+import { AdminTableHeaderCell } from "./adminTableHeader.jsx";
 import { useCatalog } from "../lib/catalogStore.jsx";
 import { useFirebaseData } from "../lib/firebase/config.js";
 import { uploadCmsAsset } from "../lib/firebase/repositories/uploads.js";
@@ -358,11 +359,11 @@ function ProductLinesTab({ panelSx, surfaceBorderColor, lines, addLine, updateLi
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell sx={{ fontWeight: 800, width: 140 }}>Logo</TableCell>
-              <TableCell sx={{ fontWeight: 800, width: "24%" }}>Shop label</TableCell>
-              <TableCell sx={{ fontWeight: 800 }}>Inventory match</TableCell>
-              <TableCell sx={{ fontWeight: 800, width: 88 }} align="center">Active</TableCell>
-              <TableCell sx={{ fontWeight: 800, width: 88 }} align="right" />
+              <AdminTableHeaderCell sx={{ width: 140 }}>Logo</AdminTableHeaderCell>
+              <AdminTableHeaderCell sx={{ width: "24%" }}>Shop label</AdminTableHeaderCell>
+              <AdminTableHeaderCell>Inventory match</AdminTableHeaderCell>
+              <AdminTableHeaderCell sx={{ width: 88 }} align="center">Active</AdminTableHeaderCell>
+              <AdminTableHeaderCell sx={{ width: 88 }} align="right" />
             </TableRow>
           </TableHead>
           <TableBody>
@@ -474,10 +475,10 @@ function ProductTypesTab({ panelSx, surfaceBorderColor, categories, addCategory,
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell sx={{ fontWeight: 800, width: "24%" }}>Type name</TableCell>
-              <TableCell sx={{ fontWeight: 800 }}>Description</TableCell>
-              <TableCell sx={{ fontWeight: 800, width: 88 }} align="center">Active</TableCell>
-              <TableCell sx={{ fontWeight: 800, width: 88 }} align="right" />
+              <AdminTableHeaderCell sx={{ width: "24%" }}>Type name</AdminTableHeaderCell>
+              <AdminTableHeaderCell>Description</AdminTableHeaderCell>
+              <AdminTableHeaderCell sx={{ width: 88 }} align="center">Active</AdminTableHeaderCell>
+              <AdminTableHeaderCell sx={{ width: 88 }} align="right" />
             </TableRow>
           </TableHead>
           <TableBody>

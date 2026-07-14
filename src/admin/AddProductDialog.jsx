@@ -30,6 +30,7 @@ import { useNavigate } from "react-router-dom";
 import ProductDescriptionEditor, { normalizeDescriptionSections, serializeDescriptionSections } from "../components/ProductDescriptionEditor.jsx";
 import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
 import { TrashIcon } from "../components/icons.jsx";
+import { AdminTableHeaderCell } from "./adminTableHeader.jsx";
 import { useCatalog } from "../lib/catalogStore.jsx";
 import { useInventory } from "../lib/inventoryStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
@@ -416,10 +417,10 @@ export default function AddProductDialog({
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 800 }}>Order</TableCell>
-                  <TableCell sx={{ fontWeight: 800 }}>Customer</TableCell>
-                  <TableCell sx={{ fontWeight: 800 }} align="right">Qty</TableCell>
-                  <TableCell sx={{ fontWeight: 800 }}>Status</TableCell>
+                  <AdminTableHeaderCell>Order</AdminTableHeaderCell>
+                  <AdminTableHeaderCell>Customer</AdminTableHeaderCell>
+                  <AdminTableHeaderCell align="right">Qty</AdminTableHeaderCell>
+                  <AdminTableHeaderCell>Status</AdminTableHeaderCell>
                 </TableRow>
               </TableHead>
               <TableBody>

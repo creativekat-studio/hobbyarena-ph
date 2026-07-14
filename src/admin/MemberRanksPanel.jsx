@@ -20,6 +20,7 @@ import { MONO_FONT } from "../theme.js";
 import { TrashIcon } from "../components/icons.jsx";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminColorPicker from "../components/AdminColorPicker.jsx";
+import { AdminTableHeaderCell } from "./adminTableHeader.jsx";
 import { useClientTiers } from "../lib/clientTiersStore.jsx";
 import { resolveClientTier } from "../lib/clientTier.js";
 
@@ -192,12 +193,12 @@ export function MemberRanksPanel({ panelSx, surfaceBorderColor }) {
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell sx={{ fontWeight: 800, width: "22%" }}>Rank</TableCell>
-              <TableCell sx={{ fontWeight: 800, width: 120 }}>Floor</TableCell>
-              <TableCell sx={{ fontWeight: 800, width: 120 }}>Ceiling</TableCell>
-              <TableCell sx={{ fontWeight: 800, width: 160 }}>Badge</TableCell>
-              <TableCell sx={{ fontWeight: 800, width: 88 }} align="center">Active</TableCell>
-              <TableCell sx={{ fontWeight: 800, width: 88 }} align="right" />
+              <AdminTableHeaderCell sx={{ width: "22%" }}>Rank</AdminTableHeaderCell>
+              <AdminTableHeaderCell sx={{ width: 120 }}>Floor</AdminTableHeaderCell>
+              <AdminTableHeaderCell sx={{ width: 120 }}>Ceiling</AdminTableHeaderCell>
+              <AdminTableHeaderCell sx={{ width: 160 }}>Badge</AdminTableHeaderCell>
+              <AdminTableHeaderCell sx={{ width: 88 }} align="center">Active</AdminTableHeaderCell>
+              <AdminTableHeaderCell sx={{ width: 88 }} align="right" />
             </TableRow>
           </TableHead>
           <TableBody>

@@ -232,7 +232,12 @@ export default function AdminLayout() {
             }}
           >
             <AdminPageHeaderMobileMeta />
-            <Box sx={{ flexShrink: 0, width: "100%", minWidth: 0, pb: 1 }}>
+            {/*
+              flex: 1 + minHeight: 0 lets list pages (Orders / Inventory / Customers)
+              fill the pane and scroll their grids internally. Pages without flex:1
+              still grow with content and scroll this outer pane as before.
+            */}
+            <Box sx={{ flex: 1, minHeight: 0, width: "100%", minWidth: 0, display: "flex", flexDirection: "column" }}>
               <Outlet context={{ surfaces, isDarkMode }} />
             </Box>
           </Box>
