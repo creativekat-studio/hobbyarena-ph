@@ -22,6 +22,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableSortLabel,
   Tabs,
   TextField,
   ToggleButton,
@@ -429,6 +430,15 @@ export default function CustomersPage() {
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [sort, setSort] = useState({ key: "joined", dir: "asc" });
+
+  function handleSort(key) {
+    setSort((prev) => (
+      prev.key === key
+        ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: "asc" }
+    ));
+  }
 
   const enrichedCustomers = useMemo(() => {
     const ordersByEmail = new Map();
@@ -476,7 +486,7 @@ export default function CustomersPage() {
   }, [customers, orders, tiers]);
 
   const rows = useMemo(() => {
-    return enrichedCustomers.filter((c) => {
+    const filtered = enrichedCustomers.filter((c) => {
       const matchesQuery =
         !query.trim() ||
         c.name.toLowerCase().includes(query.toLowerCase()) ||
@@ -493,7 +503,21 @@ export default function CustomersPage() {
           return true;
       }
     });
-  }, [enrichedCustomers, filter, query]);
+
+    const dir = sort.dir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      if (sort.key === "name") {
+        const byName = String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" });
+        if (byName) return byName * dir;
+        return String(a.email || "").localeCompare(String(b.email || "")) * dir;
+      }
+      // joined (default): earliest first when ascending
+      const joinedA = String(a.joined || "");
+      const joinedB = String(b.joined || "");
+      if (joinedA !== joinedB) return joinedA.localeCompare(joinedB) * dir;
+      return String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" });
+    });
+  }, [enrichedCustomers, filter, query, sort]);
 
   const stats = useMemo(() => {
     const optIn = enrichedCustomers.filter((c) => c.marketingOptIn).length;
@@ -576,9 +600,30 @@ export default function CustomersPage() {
           <Table stickyHeader>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 800 }}>Customer</TableCell>
+                <TableCell sx={{ fontWeight: 800 }} sortDirection={sort.key === "name" ? sort.dir : false}>
+                  <TableSortLabel
+                    active={sort.key === "name"}
+                    direction={sort.key === "name" ? sort.dir : "asc"}
+                    onClick={() => handleSort("name")}
+                    sx={{ fontWeight: 800, "& .MuiTableSortLabel-icon": { fontSize: "0.95rem" } }}
+                  >
+                    Customer
+                  </TableSortLabel>
+                </TableCell>
                 <TableCell sx={{ fontWeight: 800 }}>Rank</TableCell>
-                <TableCell sx={{ fontWeight: 800, display: { xs: "none", sm: "table-cell" } }}>Joined</TableCell>
+                <TableCell
+                  sx={{ fontWeight: 800, display: { xs: "none", sm: "table-cell" } }}
+                  sortDirection={sort.key === "joined" ? sort.dir : false}
+                >
+                  <TableSortLabel
+                    active={sort.key === "joined"}
+                    direction={sort.key === "joined" ? sort.dir : "asc"}
+                    onClick={() => handleSort("joined")}
+                    sx={{ fontWeight: 800, "& .MuiTableSortLabel-icon": { fontSize: "0.95rem" } }}
+                  >
+                    Joined
+                  </TableSortLabel>
+                </TableCell>
                 <TableCell sx={{ fontWeight: 800, display: { xs: "none", md: "table-cell" } }}>Sign-in</TableCell>
                 <TableCell sx={{ fontWeight: 800 }} align="right">Orders</TableCell>
                 <TableCell sx={{ fontWeight: 800 }} align="right">Total spent</TableCell>
