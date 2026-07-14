@@ -68,11 +68,6 @@ function cartItemBalanceDue(item) {
   return preorderBalanceDue(item, item.quantity);
 }
 
-function shouldAutoOpenCart() {
-  if (typeof window === "undefined") return true;
-  return !window.location.pathname.startsWith("/checkout");
-}
-
 const CartContext = createContext(null);
 
 export function CartProvider({ children }) {
@@ -91,7 +86,6 @@ export function CartProvider({ children }) {
     if (!canAddProduct(product)) return false;
     clearCheckoutConfirmation();
     const qty = Math.max(1, Number(quantity) || 1);
-    const openDrawer = options.openDrawer !== false && shouldAutoOpenCart();
 
     setItems((prev) => {
       const existing = prev.find((item) => item.id === product.id);
@@ -140,10 +134,8 @@ export function CartProvider({ children }) {
       ];
     });
 
-    if (openDrawer) {
-      setDrawerOpen(true);
-      setAddPulse((n) => n + 1);
-    }
+    // Pulse the nav cart icon; drawer opens only via View cart / cart button.
+    setAddPulse((n) => n + 1);
     return true;
   }, []);
 
