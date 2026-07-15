@@ -10,9 +10,18 @@ export function readRetentionMonths() {
 }
 
 export function orderDateFromId(orderId) {
-  const match = String(orderId || "").match(/^HA-(\d{4})(\d{2})(\d{2})/);
-  if (!match) return null;
-  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const raw = String(orderId || "");
+  // Legacy: HA-yyyymmdd####
+  const dayStamp = raw.match(/^HA-(\d{4})(\d{2})(\d{2})\d{4}$/);
+  if (dayStamp) {
+    return new Date(Number(dayStamp[1]), Number(dayStamp[2]) - 1, Number(dayStamp[3]));
+  }
+  // Current / short month: HA-yyyymm###### or HA-yyyymm#### — 1st of that month
+  const monthStamp = raw.match(/^HA-(\d{4})(\d{2})\d{4,6}$/);
+  if (monthStamp) {
+    return new Date(Number(monthStamp[1]), Number(monthStamp[2]) - 1, 1);
+  }
+  return null;
 }
 
 export function resolveOrderDate(order) {
@@ -24,15 +33,12 @@ export function resolveOrderDate(order) {
     return new Date(createdAt.seconds * 1000);
   }
 
-  const fromId = orderDateFromId(order.id);
-  if (fromId) return fromId;
-
   if (order.date) {
     const parsed = new Date(order.date);
     if (!Number.isNaN(parsed.getTime())) return parsed;
   }
 
-  return null;
+  return orderDateFromId(order.id);
 }
 
 export function isOrderPastRetention(order, retentionMonths, now = new Date()) {

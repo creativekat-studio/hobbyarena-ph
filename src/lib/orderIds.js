@@ -1,42 +1,69 @@
-/** Order IDs: HA-yyyymmdd#### (e.g. HA-202606150001). Sequence resets each calendar day. */
+/** Order IDs: HA-yyyymm###### (e.g. HA-202607000001). Sequence resets each calendar month. */
 
-export const ORDER_ID_HELP = "HA-yyyymmdd#### — date stamp plus daily sequence";
+export const ORDER_ID_HELP = "HA-yyyymm###### — month stamp plus monthly sequence";
 
-/** Parse HA-yyyymmdd#### (or legacy HA-yyyymm####) into stamp + sequence. */
+const SEQ_WIDTH = 6;
+
+/**
+ * Parse HA-yyyymm######, or legacy HA-yyyymmdd#### / HA-yyyymm####.
+ * 12-digit bodies are disambiguated: if digits 7–8 look like a calendar day
+ * (01–31), treat as legacy HA-yyyymmdd####; otherwise HA-yyyymm######.
+ */
 export function parseOrderId(id) {
-  const match = String(id ?? "").match(/^HA-(\d{6,8})(\d{4})$/);
-  if (!match) return null;
-  const stamp = match[1];
-  return {
-    stamp,
-    seq: Number(match[2]),
-    // Kept for a later monthly-reset flip; unused while daily reset is active.
-    monthKey: stamp.slice(0, 6),
-  };
+  const raw = String(id ?? "");
+  const body = raw.match(/^HA-(\d{10,12})$/);
+  if (!body) return null;
+  const digits = body[1];
+
+  if (digits.length === 12) {
+    const day = Number(digits.slice(6, 8));
+    if (day >= 1 && day <= 31) {
+      return {
+        stamp: digits.slice(0, 8),
+        seq: Number(digits.slice(8)),
+        monthKey: digits.slice(0, 6),
+      };
+    }
+    return {
+      stamp: digits.slice(0, 6),
+      seq: Number(digits.slice(6)),
+      monthKey: digits.slice(0, 6),
+    };
+  }
+
+  if (digits.length === 10) {
+    return {
+      stamp: digits.slice(0, 6),
+      seq: Number(digits.slice(6)),
+      monthKey: digits.slice(0, 6),
+    };
+  }
+
+  return null;
 }
 
-/** Next ID for `now`: today's date stamp, sequence = max for that day + 1. */
+/** Next ID for `now`: current month stamp, sequence = max in that month + 1. */
 export function makeOrderId(orders, now = new Date()) {
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  const stamp = `${y}${m}${d}`;
+  const monthKey = `${y}${m}`;
 
   let maxSeq = 0;
   for (const order of orders ?? []) {
     const parsed = parseOrderId(order?.id ?? order);
-    if (!parsed || parsed.stamp !== stamp) continue;
+    if (!parsed || parsed.monthKey !== monthKey) continue;
     if (parsed.seq > maxSeq) maxSeq = parsed.seq;
   }
 
-  return `HA-${stamp}${String(maxSeq + 1).padStart(4, "0")}`;
+  return `HA-${monthKey}${String(maxSeq + 1).padStart(SEQ_WIDTH, "0")}`;
 }
 
-/** Bump sequence on collision; keeps the same date stamp. */
+/** Bump sequence on collision; keeps the same month stamp. */
 export function incrementOrderId(id) {
   const parsed = parseOrderId(id);
   if (!parsed) return String(id);
-  return `HA-${parsed.stamp}${String(parsed.seq + 1).padStart(4, "0")}`;
+  const stamp = parsed.monthKey || parsed.stamp.slice(0, 6);
+  return `HA-${stamp}${String(parsed.seq + 1).padStart(SEQ_WIDTH, "0")}`;
 }
 
 /** Maps legacy HA-##### seed IDs to the date-based format. */
@@ -69,7 +96,7 @@ export function migrateLegacyOrderId(order) {
   };
 }
 
-/** Highest order number first (HA-yyyymmdd####). */
+/** Highest order number first. */
 export function compareOrdersByOrderNo(a, b) {
   const idA = String(a?.id ?? a ?? "");
   const idB = String(b?.id ?? b ?? "");

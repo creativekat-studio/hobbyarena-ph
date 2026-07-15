@@ -223,7 +223,7 @@ export default function AdminLayout() {
               flex: 1,
               minHeight: 0,
               minWidth: 0,
-              overflow: "auto",
+              overflow: "hidden",
               display: "flex",
               flexDirection: "column",
               alignItems: "stretch",
@@ -233,11 +233,23 @@ export default function AdminLayout() {
           >
             <AdminPageHeaderMobileMeta />
             {/*
-              flex: 1 + minHeight: 0 lets list pages (Orders / Inventory / Customers)
-              fill the pane and scroll their grids internally. Pages without flex:1
-              still grow with content and scroll this outer pane as before.
+              flex: 1 + minHeight: 0 + overflow: auto:
+              - List pages (Orders / Inventory / Customers) set flex:1 and scroll
+                their grids internally while filling this pane.
+              - Content pages (Dashboard, CMS, …) keep natural height and scroll
+                here, so KPIs and charts stay visible.
             */}
-            <Box sx={{ flex: 1, minHeight: 0, width: "100%", minWidth: 0, display: "flex", flexDirection: "column" }}>
+            <Box
+              sx={{
+                flex: 1,
+                minHeight: 0,
+                width: "100%",
+                minWidth: 0,
+                display: "flex",
+                flexDirection: "column",
+                overflow: "auto",
+              }}
+            >
               <Outlet context={{ surfaces, isDarkMode }} />
             </Box>
           </Box>

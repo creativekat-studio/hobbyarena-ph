@@ -285,7 +285,9 @@ function DashboardPanel({
         ...panelSx,
         overflow: "hidden",
         minWidth: 0,
-        height: collapsible ? "auto" : "100%",
+        // Default to content height. Grid siblings that need equal card
+        // heights pass sx={{ height: "100%" }} — not full-page stretch.
+        height: "auto",
         display: "flex",
         flexDirection: "column",
         ...(collapsible && open
@@ -325,6 +327,9 @@ function KpiStrip({ panelSx, items, periodLabel }) {
     <Box
       sx={{
         ...panelSx,
+        // flex-shrink + overflow:hidden collapses this strip in the page Stack
+        // and clips the KPI values under the labels — keep natural height.
+        flexShrink: 0,
         display: "grid",
         gridTemplateColumns: {
           xs: "repeat(2, minmax(0, 1fr))",
@@ -335,7 +340,7 @@ function KpiStrip({ panelSx, items, periodLabel }) {
         rowGap: { xs: 2.5, md: 0 },
         px: { xs: 2, md: 0 },
         py: { xs: 2, md: 0 },
-        overflow: "hidden",
+        overflow: "visible",
       }}
     >
       {items.map((item, index) => {
@@ -374,6 +379,7 @@ function KpiStrip({ panelSx, items, periodLabel }) {
             </Typography>
             <Typography
               sx={{
+                color: "text.primary",
                 fontWeight: 800,
                 fontSize: { xs: "1.2rem", md: "1.55rem" },
                 lineHeight: 1.15,
@@ -429,7 +435,7 @@ function ChartCard({ panelSx, surfaceBorderColor, title, subtitle, children, min
   );
 
   return (
-    <DashboardPanel panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} title={title} subtitle={subtitle}>
+    <DashboardPanel panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} title={title} subtitle={subtitle} sx={{ height: "100%" }}>
       {body}
     </DashboardPanel>
   );
@@ -444,6 +450,7 @@ function SalesByLineCard({ panelSx, surfaceBorderColor, tooltipStyle, salesByLin
       surfaceBorderColor={surfaceBorderColor}
       title="Sales by line"
       subtitle="Share of paid revenue"
+      sx={{ height: "100%" }}
     >
       <Box sx={{ position: "relative", width: "100%", height: chartHeight, minWidth: 0 }}>
         <ResponsiveContainer width="100%" height={chartHeight}>
@@ -562,7 +569,18 @@ export default function DashboardPage() {
   }
 
   return (
-    <Stack spacing={ADMIN_PAGE_SPACING} sx={{ minWidth: 0, width: "100%", maxWidth: "100%" }}>
+    <Stack
+      spacing={ADMIN_PAGE_SPACING}
+      sx={{
+        minWidth: 0,
+        width: "100%",
+        maxWidth: "100%",
+        flexShrink: 0,
+        // Prevent flex children (esp. overflow:hidden panels) from shrinking
+        // below content and clipping KPIs / chart bodies.
+        "& > *": { flexShrink: 0 },
+      }}
+    >
       <AdminPageHeader
         eyebrow="Overview"
         title="Dashboard"
@@ -738,6 +756,7 @@ export default function DashboardPage() {
             surfaceBorderColor={surfaceBorderColor}
             title="Top products"
             subtitle="By paid revenue in this period"
+            sx={{ height: "100%" }}
           >
             {topProducts.length ? (
               <Stack spacing={1.5}>
