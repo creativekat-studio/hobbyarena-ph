@@ -17,7 +17,10 @@ import { PESO } from "../components/ProductCard.jsx";
 import { OFF_WHITE } from "../lib/colors.js";
 import { productMediaSurface } from "../lib/surfaces.js";
 import { useCart, cartItemDueNow, cartItemBalanceDue } from "../lib/cartStore.jsx";
+import { useInventory } from "../lib/inventoryStore.jsx";
+import { useStockHolds } from "../lib/stockHoldStore.jsx";
 import { isPreorderProduct } from "../lib/preorder.js";
+import { maxStorefrontQuantity } from "../lib/quantityLimits.js";
 
 const addedFlash = keyframes`
   0% { opacity: 0; transform: translateY(-6px); }
@@ -35,11 +38,33 @@ function CloseIcon(props) {
 }
 
 function CartLineItem({ item, onQuantityChange, onRemove, surfaceBorderColor, isDarkMode }) {
+  const { getProduct } = useInventory();
+  const { availableStock } = useStockHolds();
   const Glyph = item.line?.startsWith?.("Pokémon") ? PokeballIcon : CardIcon;
   const isPreorder = isPreorderProduct(item);
   const dueNow = cartItemDueNow(item);
   const balance = cartItemBalanceDue(item);
-  const maxQty = Math.max(1, Number(item.maxQuantity) || 1);
+  const product = getProduct(item.id);
+  const remaining = isPreorder
+    ? undefined
+    : (product
+      ? availableStock(product.id, product.stock)
+      : Math.max(0, Number(item.maxQuantity) || 0));
+  const maxQty = maxStorefrontQuantity(product ?? item, remaining);
+
+  useEffect(() => {
+    if (isPreorder) {
+      if (item.maxQuantity !== maxQty) {
+        onQuantityChange(item.id, item.quantity, { maxQuantity: maxQty });
+      }
+      return;
+    }
+    if (item.quantity > maxQty) {
+      onQuantityChange(item.id, maxQty, { maxQuantity: maxQty });
+    } else if (item.maxQuantity !== maxQty) {
+      onQuantityChange(item.id, item.quantity, { maxQuantity: maxQty });
+    }
+  }, [isPreorder, item.id, item.maxQuantity, item.quantity, maxQty, onQuantityChange]);
 
   return (
     <Stack direction="row" spacing={1.5} alignItems="flex-start">

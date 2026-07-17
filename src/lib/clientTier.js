@@ -14,14 +14,12 @@ export function fulfilledLineItemSpend(item) {
   const lineTotal = Number(item.lineTotal ?? (item.price ?? 0) * qty) || 0;
   const allocated = Math.max(0, Number(item.allocatedQty) || 0);
 
+  // Fulfilled / Ready for Pickup: full line amount (not reduced by refunds or allocation).
   if (FULL_CREDIT_STATUSES.has(status)) {
-    // Fully closed lines count in full; partial preorder fulfillments pro-rate.
-    if (allocated > 0 && allocated < qty) {
-      return (lineTotal * allocated) / qty;
-    }
     return lineTotal;
   }
 
+  // Partial fulfillments: credit only the fulfilled share of the full line total.
   if (ALLOCATED_CREDIT_STATUSES.has(status) && allocated > 0) {
     return (lineTotal * Math.min(allocated, qty)) / qty;
   }

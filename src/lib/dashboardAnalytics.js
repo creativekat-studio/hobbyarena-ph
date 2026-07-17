@@ -1,5 +1,14 @@
 import { sortOrdersByOrderNo } from "./orderIds.js";
-import { migratePaymentStatus } from "../data/orderWorkflow.js";
+import {
+  getDepositPercent,
+  getOrderLineItems,
+  migrateOrderStatus,
+  migratePaymentStatus,
+  refundedAmountForLineItem,
+} from "../data/orderWorkflow.js";
+
+/** Line statuses counted in the “Fulfilled (less refunds)” sales-by-line view. */
+const FULFILLED_LINE_STATUSES = new Set(["Fulfilled", "Ready for Pickup"]);
 
 const PERIOD_DAYS = {
   "1D": 1,
@@ -77,11 +86,54 @@ function parseOrderDate(order) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function lineItemAmount(item) {
+  const qty = Math.max(1, Number(item.quantity) || 1);
+  return Number(item.lineTotal ?? (item.price ?? 0) * qty) || 0;
+}
+
+/**
+ * Cash collected on a line item.
+ * Mixed / multi-item orders must be summed per line — order.payment "Mixed"
+ * previously made whole-order paid revenue ₱0 while fulfilled still counted.
+ */
+function lineItemPaidRevenue(item) {
+  const payment = migratePaymentStatus(item.payment);
+  const lineTotal = lineItemAmount(item);
+  if (payment === "Fully Paid" || payment === "Partially Refunded") return lineTotal;
+  if (payment === "DP Paid" || payment === "Awaiting Balance Payment") {
+    const depositPaid = Number(item.depositPaid) || 0;
+    return depositPaid > 0 ? depositPaid : lineTotal;
+  }
+  return 0;
+}
+
 function orderRevenue(order) {
+  const items = getOrderLineItems(order);
+  if (items.length) {
+    return items.reduce((sum, item) => sum + lineItemPaidRevenue(item), 0);
+  }
   const payment = migratePaymentStatus(order.payment);
-  if (payment === "Fully Paid") return order.fullSubtotal ?? order.total ?? 0;
+  if (payment === "Fully Paid" || payment === "Partially Refunded") {
+    return order.fullSubtotal ?? order.total ?? 0;
+  }
   if (payment === "DP Paid" || payment === "Awaiting Balance Payment") return order.total ?? 0;
   return 0;
+}
+
+/** Completed lines only: paid cash on Fulfilled / Ready for Pickup, minus refunds. */
+function lineItemFulfilledNet(item, depositPercent) {
+  if (!FULFILLED_LINE_STATUSES.has(migrateOrderStatus(item.status))) return 0;
+  const paid = lineItemPaidRevenue(item);
+  if (paid <= 0) return 0;
+  const refunded = refundedAmountForLineItem(item, depositPercent) || 0;
+  return Math.max(0, paid - refunded);
+}
+
+function orderFulfilledNetRevenue(order) {
+  const depositPercent = getDepositPercent(order);
+  const items = getOrderLineItems(order);
+  const list = items.length ? items : orderLineItemsForAnalytics(order);
+  return list.reduce((sum, item) => sum + lineItemFulfilledNet(item, depositPercent), 0);
 }
 
 function orderCogs(order) {
@@ -122,18 +174,29 @@ function uniqueCustomers(orderList) {
   return new Set(orderList.map((o) => (o.email || o.customer || "").toLowerCase()).filter(Boolean)).size;
 }
 
-function aggregateLineItems(orders) {
+function orderLineItemsForAnalytics(order) {
+  if (order.lineItems?.length) return order.lineItems;
+  return [{
+    name: order.items || "Unknown",
+    quantity: order.qty || 1,
+    price: order.total,
+    lineTotal: order.fullSubtotal ?? order.total,
+    line: "Other",
+    status: order.status,
+    payment: order.payment,
+    refundAmount: order.refundAmount,
+  }];
+}
+
+/** Paid revenue share — cash collected per line (handles Mixed orders). */
+function aggregateLineItemsPaid(orders) {
   const byProduct = new Map();
   const byLine = new Map();
 
   for (const order of orders) {
-    if (orderRevenue(order) <= 0) continue;
-    const items = order.lineItems?.length
-      ? order.lineItems
-      : [{ name: order.items || "Unknown", quantity: order.qty || 1, price: order.total, line: "Other" }];
-
-    for (const item of items) {
-      const revenue = (item.price ?? 0) * (item.quantity ?? 1);
+    for (const item of orderLineItemsForAnalytics(order)) {
+      const revenue = lineItemPaidRevenue(item);
+      if (revenue <= 0) continue;
       const key = item.id || item.name;
       const existing = byProduct.get(key) || { name: item.name, units: 0, revenue: 0 };
       existing.units += item.quantity ?? 1;
@@ -148,7 +211,45 @@ function aggregateLineItems(orders) {
   return { byProduct, byLine };
 }
 
-function buildTrendBuckets(orders, period, window, now = new Date()) {
+/**
+ * Fulfilled / Ready for Pickup paid amounts, minus refunds.
+ * Always ≤ paid for the same lines (completed subset of cash in).
+ */
+function aggregateLineItemsFulfilledNet(orders) {
+  const byLine = new Map();
+  let total = 0;
+
+  for (const order of orders) {
+    const depositPercent = getDepositPercent(order);
+    const items = getOrderLineItems(order);
+    for (const item of items.length ? items : orderLineItemsForAnalytics(order)) {
+      const net = lineItemFulfilledNet(item, depositPercent);
+      if (net <= 0) continue;
+      const line = item.line || "Other";
+      byLine.set(line, (byLine.get(line) || 0) + net);
+      total += net;
+    }
+  }
+
+  return { byLine, total };
+}
+
+function toSalesByLineSlices(byLine, emptyLabel) {
+  const entries = [...byLine.entries()];
+  if (!entries.length) {
+    return [{ name: emptyLabel, value: 100, color: "#94a3b8" }];
+  }
+  const lineTotal = entries.reduce((sum, [, revenue]) => sum + revenue, 0) || 1;
+  return entries
+    .map(([name, revenue]) => ({
+      name: name.replace("One Piece Card Game", "One Piece CG"),
+      value: Math.round((revenue / lineTotal) * 100),
+      color: LINE_COLORS[name] || "#94a3b8",
+    }))
+    .sort((a, b) => b.value - a.value);
+}
+
+function buildTrendBuckets(orders, period, window, now = new Date(), revenueFn = orderRevenue) {
   if (window?.start && window?.end) {
     const { start, end } = window;
     const days = Math.max(1, Math.ceil((end - start) / 86400000) + 1);
@@ -163,7 +264,7 @@ function buildTrendBuckets(orders, period, window, now = new Date()) {
         if (!date || date < start || date > end) continue;
         const bucket = buckets[date.getHours()];
         if (bucket) {
-          bucket.revenue += orderRevenue(order);
+          bucket.revenue += revenueFn(order);
           bucket.orders += 1;
         }
       }
@@ -188,7 +289,7 @@ function buildTrendBuckets(orders, period, window, now = new Date()) {
         if (!date) continue;
         const bucket = buckets.find((b) => date >= b.start && date <= b.end);
         if (bucket) {
-          bucket.revenue += orderRevenue(order);
+          bucket.revenue += revenueFn(order);
           bucket.orders += 1;
         }
       }
@@ -217,7 +318,7 @@ function buildTrendBuckets(orders, period, window, now = new Date()) {
         if (!date) continue;
         const bucket = buckets.find((b) => date >= b.start && date <= b.end);
         if (bucket) {
-          bucket.revenue += orderRevenue(order);
+          bucket.revenue += revenueFn(order);
           bucket.orders += 1;
         }
       }
@@ -241,7 +342,7 @@ function buildTrendBuckets(orders, period, window, now = new Date()) {
         if (!date) continue;
         const bucket = buckets.find((b) => date >= b.start && date <= b.end);
         if (bucket) {
-          bucket.revenue += orderRevenue(order);
+          bucket.revenue += revenueFn(order);
           bucket.orders += 1;
         }
       }
@@ -272,7 +373,7 @@ function buildTrendBuckets(orders, period, window, now = new Date()) {
       if (!date || date < start || date > end) continue;
       const bucket = buckets[date.getHours()];
       if (bucket) {
-        bucket.revenue += orderRevenue(order);
+        bucket.revenue += revenueFn(order);
         bucket.orders += 1;
       }
     }
@@ -293,7 +394,7 @@ function buildTrendBuckets(orders, period, window, now = new Date()) {
       if (!date) continue;
       const bucket = buckets.find((b) => date >= b.start && date <= b.end);
       if (bucket) {
-        bucket.revenue += orderRevenue(order);
+        bucket.revenue += revenueFn(order);
         bucket.orders += 1;
       }
     }
@@ -320,7 +421,7 @@ function buildTrendBuckets(orders, period, window, now = new Date()) {
       if (!date) continue;
       const bucket = buckets.find((b) => date >= b.start && date <= b.end);
       if (bucket) {
-        bucket.revenue += orderRevenue(order);
+        bucket.revenue += revenueFn(order);
         bucket.orders += 1;
       }
     }
@@ -364,15 +465,10 @@ export function computeDashboardAnalytics(orders, period = "1M", now = new Date(
   const avgOrder = current.length ? Math.round(currentRevenue / current.length) : 0;
   const prevAvgOrder = previous.length ? Math.round(previousRevenue / previous.length) : 0;
 
-  const { byProduct, byLine } = aggregateLineItems(current);
-  const lineTotal = [...byLine.values()].reduce((a, b) => a + b, 0) || 1;
-  const salesByLine = [...byLine.entries()]
-    .map(([name, revenue]) => ({
-      name: name.replace("One Piece Card Game", "One Piece CG"),
-      value: Math.round((revenue / lineTotal) * 100),
-      color: LINE_COLORS[name] || "#94a3b8",
-    }))
-    .sort((a, b) => b.value - a.value);
+  const { byProduct, byLine } = aggregateLineItemsPaid(current);
+  const salesByLine = toSalesByLineSlices(byLine, "No paid orders");
+  const fulfilledNet = aggregateLineItemsFulfilledNet(current);
+  const salesByLineFulfilled = toSalesByLineSlices(fulfilledNet.byLine, "No fulfilled orders");
 
   const topProducts = [...byProduct.values()]
     .sort((a, b) => b.revenue - a.revenue)
@@ -404,8 +500,11 @@ export function computeDashboardAnalytics(orders, period = "1M", now = new Date(
       avgOrder,
       avgOrderDelta: pctDelta(avgOrder, prevAvgOrder),
     },
-    revenueTrend: buildTrendBuckets(orders, periodKey, customWindow, now),
-    salesByLine: salesByLine.length ? salesByLine : [{ name: "No paid orders", value: 100, color: "#94a3b8" }],
+    revenueTrend: buildTrendBuckets(orders, periodKey, customWindow, now, orderRevenue),
+    revenueTrendFulfilled: buildTrendBuckets(orders, periodKey, customWindow, now, orderFulfilledNetRevenue),
+    salesByLine,
+    salesByLineFulfilled,
+    fulfilledRevenue: fulfilledNet.total,
     channelSplit: channelSplit(current),
     topProducts,
     recentOrders,

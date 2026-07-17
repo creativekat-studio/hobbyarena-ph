@@ -133,6 +133,7 @@ export function compactOrderForFirestore(order) {
     ...(slim.createdAt ? { createdAt: slim.createdAt } : {}),
     notificationSeen: Boolean(slim.notificationSeen),
     manual: Boolean(slim.manual),
+    archivedAt: slim.archivedAt ?? null,
     trail,
     ...(slim.refundDetails && typeof slim.refundDetails === "object"
       ? { refundDetails: slim.refundDetails }

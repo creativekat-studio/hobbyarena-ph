@@ -130,13 +130,14 @@ const MemberRanksPanel = lazy(() =>
 const TABS = [
   { id: "product-lines", label: "Product lines" },
   { id: "product-types", label: "Product types" },
-  { id: "member-ranks", label: "Member ranks" },
+  { id: "member-tiers", label: "Member tiers" },
   { id: "pre-order-terms", label: "Pre-order terms" },
   { id: "in-stock-terms", label: "In-stock terms" },
 ];
 
 function tabIndexFromParam(param) {
-  const idx = TABS.findIndex((tab) => tab.id === param);
+  const normalized = param === "member-ranks" ? "member-tiers" : param;
+  const idx = TABS.findIndex((tab) => tab.id === normalized);
   return idx >= 0 ? idx : 0;
 }
 
@@ -606,7 +607,7 @@ export default function CatalogPage() {
       <AdminPageHeader
         eyebrow="Store setup"
         title="Classifications"
-        subtitle="Product lines, types, member ranks, and legal terms — used by shop filters, inventory, and account badges."
+        subtitle="Product lines, types, member tiers, and legal terms — used by shop filters, inventory, and account badges."
       />
 
       <Tabs

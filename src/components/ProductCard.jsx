@@ -19,6 +19,7 @@ import { CardIcon, HeartIcon, PokeballIcon } from "./icons.jsx";
 import { OFF_WHITE } from "../lib/colors.js";
 import { productMediaSurface } from "../lib/surfaces.js";
 import { getCountdownParts } from "../lib/preorder.js";
+import { maxStorefrontQuantity } from "../lib/quantityLimits.js";
 
 const stockDot = keyframes`
   0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55); }
@@ -69,7 +70,7 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
   const effectiveStock = isPreorder ? product.stock : availableStock(product.id, product.stock);
   const soldOut = !isPreorder && effectiveStock <= 0;
   const preorderClosed = isPreorder && getCountdownParts(product.preorderEndsAt)?.expired;
-  const maxQty = isPreorder ? 99 : Math.max(effectiveStock, 0);
+  const maxQty = maxStorefrontQuantity(product, isPreorder ? undefined : effectiveStock);
 
   let actionLabel = "Add to cart";
   if (isPreorder) actionLabel = "Pre-order";

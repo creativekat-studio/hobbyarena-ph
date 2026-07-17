@@ -17,6 +17,7 @@ import {
   StepLabel,
   Stepper,
   TextField,
+  Tooltip,
   Typography,
   Divider,
 } from "@mui/material";
@@ -26,7 +27,7 @@ import {
   resolveOrderStatusEmailTypeForCurrentState,
 } from "../lib/orderEmailTriggers.js";
 import { MONO_FONT } from "../theme.js";
-import { TrashIcon } from "../components/icons.jsx";
+import { TrashIcon, ZoomInIcon } from "../components/icons.jsx";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
 import {
@@ -1445,6 +1446,7 @@ export function OrderTrailPanel({
   const [previewAttachment, setPreviewAttachment] = useState(null);
   const [attachmentError, setAttachmentError] = useState("");
   const [uploadingEntryId, setUploadingEntryId] = useState("");
+  const [trailExpanded, setTrailExpanded] = useState(false);
   const internalSelection = useOrderLineItemSelection(order);
   const embedded = Boolean(lineItemsProp);
   const lineItems = lineItemsProp ?? internalSelection.lineItems;
@@ -1489,6 +1491,53 @@ export function OrderTrailPanel({
     }
   };
 
+  const handleViewAttachment = (attachment, trailEntry) => {
+    if (!trailEntryShowsAttachment(trailEntry)) return;
+    setAttachmentError("");
+    const hydrated = hydrateProofAttachment(
+      attachment,
+      resolveProofAttachmentUrl(order, trailEntry),
+    );
+    if (hydrated?.url) {
+      setPreviewAttachment(hydrated);
+      return;
+    }
+    setAttachmentError(
+      trailEntry.attachment?.purged
+        ? "This proof was removed after the retention period. Upload a new file below if you need it on record."
+        : "Proof file is not on the server yet. Use Upload proof file below, or ask the customer to open their order once.",
+    );
+  };
+
+  const trailSuffix = orderTrailSuffix(selectedItemId, activeLineItem, lineItems);
+
+  const trailItems = trail.length ? (
+    <Stack spacing={0}>
+      {trail.map((entry, index) => (
+        <TrailTimelineItem
+          key={entry.id}
+          entry={entry}
+          order={order}
+          isLast={index === trail.length - 1}
+          surfaceBorderColor={surfaceBorderColor}
+          onViewAttachment={handleViewAttachment}
+          onUploadProof={uploadTrailProof ? handleUploadTrailProof : null}
+          uploading={uploadingEntryId === entry.id}
+          lineItems={lineItems}
+          lineItemLabel={
+            allItemsView && entry.lineItemName
+              ? trailEntryLineItemLabel(entry, lineItems)
+              : undefined
+          }
+        />
+      ))}
+    </Stack>
+  ) : (
+    <Box sx={{ py: 4, textAlign: "center", color: "text.secondary", border: "1px dashed", borderColor: surfaceBorderColor, borderRadius: 1 }}>
+      No trail entries yet.
+    </Box>
+  );
+
   return (
     <>
       <Box
@@ -1506,14 +1555,31 @@ export function OrderTrailPanel({
           } : {}),
         }}
       >
-        <Box sx={{ flexShrink: 0, mb: compact ? 1.5 : 2.5 }}>
+        <Stack
+          direction="row"
+          alignItems="flex-start"
+          justifyContent="space-between"
+          spacing={1}
+          sx={{ flexShrink: 0, mb: compact ? 1.5 : 2.5 }}
+        >
           <AdminSectionTitle
-            sx={{ lineHeight: 1.35 }}
-            suffix={orderTrailSuffix(selectedItemId, activeLineItem, lineItems)}
+            sx={{ lineHeight: 1.35, minWidth: 0 }}
+            suffix={trailSuffix}
           >
             Order trail
           </AdminSectionTitle>
-        </Box>
+          <Tooltip title="Expand trail">
+            <IconButton
+              size="small"
+              color="inherit"
+              onClick={() => setTrailExpanded(true)}
+              aria-label="Expand order trail"
+              sx={{ flexShrink: 0, mt: -0.25 }}
+            >
+              <ZoomInIcon sx={{ fontSize: 20 }} />
+            </IconButton>
+          </Tooltip>
+        </Stack>
 
         {!embedded ? (
           <Box sx={{ flexShrink: 0 }}>
@@ -1588,48 +1654,7 @@ export function OrderTrailPanel({
             mr: -0.5,
           } : undefined}
         >
-          {trail.length ? (
-            <Stack spacing={0}>
-              {trail.map((entry, index) => (
-                <TrailTimelineItem
-                  key={entry.id}
-                  entry={entry}
-                  order={order}
-                  isLast={index === trail.length - 1}
-                  surfaceBorderColor={surfaceBorderColor}
-                  onViewAttachment={(attachment, trailEntry) => {
-                    if (!trailEntryShowsAttachment(trailEntry)) return;
-                    setAttachmentError("");
-                    const hydrated = hydrateProofAttachment(
-                      attachment,
-                      resolveProofAttachmentUrl(order, trailEntry),
-                    );
-                    if (hydrated?.url) {
-                      setPreviewAttachment(hydrated);
-                      return;
-                    }
-                    setAttachmentError(
-                      trailEntry.attachment?.purged
-                        ? "This proof was removed after the retention period. Upload a new file below if you need it on record."
-                        : "Proof file is not on the server yet. Use Upload proof file below, or ask the customer to open their order once.",
-                    );
-                  }}
-                  onUploadProof={uploadTrailProof ? handleUploadTrailProof : null}
-                  uploading={uploadingEntryId === entry.id}
-                  lineItems={lineItems}
-                  lineItemLabel={
-                    allItemsView && entry.lineItemName
-                      ? trailEntryLineItemLabel(entry, lineItems)
-                      : undefined
-                  }
-                />
-              ))}
-            </Stack>
-          ) : (
-            <Box sx={{ py: 4, textAlign: "center", color: "text.secondary", border: "1px dashed", borderColor: surfaceBorderColor, borderRadius: 1 }}>
-              No trail entries yet.
-            </Box>
-          )}
+          {trailItems}
         </Box>
       </Box>
 
@@ -1638,6 +1663,44 @@ export function OrderTrailPanel({
           {attachmentError}
         </Alert>
       ) : null}
+
+      <Dialog
+        open={trailExpanded}
+        onClose={() => setTrailExpanded(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            ...panelSx,
+            bgcolor: "background.paper",
+            backgroundImage: "none",
+            maxHeight: "90dvh",
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 800, pr: 1.5 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+            <AdminSectionTitle sx={{ mb: 0, fontSize: "0.95rem" }} suffix={trailSuffix}>
+              Order trail
+            </AdminSectionTitle>
+            <IconButton
+              size="small"
+              onClick={() => setTrailExpanded(false)}
+              aria-label="Close expanded trail"
+            >
+              <Typography component="span" sx={{ fontSize: "1.25rem", lineHeight: 1, px: 0.5 }}>×</Typography>
+            </IconButton>
+          </Stack>
+        </DialogTitle>
+        <DialogContent dividers sx={{ py: 2.5 }}>
+          {trailItems}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 1.5 }}>
+          <Button onClick={() => setTrailExpanded(false)} variant="contained" color="primary">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <AttachmentPreviewModal
         open={Boolean(previewAttachment)}

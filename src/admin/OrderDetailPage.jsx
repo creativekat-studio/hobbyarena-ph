@@ -3,15 +3,19 @@ import {
   Alert,
   Box,
   Button,
+  IconButton,
   Snackbar,
   Stack,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { Link as RouterLink, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
-import { useOrders } from "../lib/ordersStore.jsx";
+import { ArchiveIcon, RestoreIcon } from "../components/icons.jsx";
+import { isArchivedOrder, useOrders } from "../lib/ordersStore.jsx";
 import { ORDER_STATUS_EMAIL_LABELS } from "../lib/orderEmailTriggers.js";
+import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
 import {
   OrderDetailLayout,
 } from "./orderDetailShared.jsx";
@@ -29,10 +33,22 @@ export default function OrderDetailPage() {
   const navigate = useNavigate();
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
-  const { orders, setPaymentAndStatus, setAllocation, markOrderSeen, addTrailEntry, uploadTrailProof, sendOrderStatusEmail } = useOrders();
+  const {
+    orders,
+    setPaymentAndStatus,
+    setAllocation,
+    markOrderSeen,
+    addTrailEntry,
+    uploadTrailProof,
+    sendOrderStatusEmail,
+    archiveOrders,
+    restoreOrders,
+  } = useOrders();
   const [emailNotice, setEmailNotice] = useState(null);
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
 
   const order = orders.find((row) => row.id === orderId) ?? null;
+  const archived = order ? isArchivedOrder(order) : false;
 
   useEffect(() => {
     if (orderId) markOrderSeen(orderId);
@@ -97,9 +113,24 @@ export default function OrderDetailPage() {
       </Button>
 
       <AdminPageHeader
-        eyebrow="Order detail"
+        eyebrow={archived ? "Archived order" : "Order detail"}
         title={order.id}
         subtitle={`${order.date} · ${order.customer} · ${order.email}`}
+        action={(
+          archived ? (
+            <Tooltip title="Restore">
+              <IconButton aria-label="Restore order" color="primary" onClick={() => restoreOrders([order.id])}>
+                <RestoreIcon />
+              </IconButton>
+            </Tooltip>
+          ) : (
+            <Tooltip title="Archive">
+              <IconButton aria-label="Archive order" onClick={() => setArchiveConfirmOpen(true)} sx={{ color: "text.secondary" }}>
+                <ArchiveIcon />
+              </IconButton>
+            </Tooltip>
+          )
+        )}
       />
 
       <Box
@@ -119,6 +150,17 @@ export default function OrderDetailPage() {
           sendOrderStatusEmail={sendOrderStatusEmail}
         />
       </Box>
+
+      <TypeConfirmDialog
+        open={archiveConfirmOpen}
+        onClose={() => setArchiveConfirmOpen(false)}
+        onConfirm={() => archiveOrders([order.id])}
+        title="Archive order"
+        description="Archive this order. It will be hidden from active queues and dashboard stats, but can be restored from the Archived filter."
+        confirmLabel="Archive"
+        confirmWord="archive"
+        surfaceBorderColor={surfaceBorderColor}
+      />
     </Stack>
   );
 }

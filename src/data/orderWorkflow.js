@@ -578,6 +578,7 @@ export function openOrdersByProductId(orders) {
   const map = new Map();
   if (!Array.isArray(orders)) return map;
   for (const order of orders) {
+    if (order?.archivedAt) continue;
     for (const item of getOrderLineItems(order)) {
       if (!isLineItemInProgress(item) || !item.id) continue;
       const list = map.get(item.id);

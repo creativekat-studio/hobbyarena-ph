@@ -8,6 +8,7 @@ import {
   preorderBalanceDue,
   preorderDueNow,
 } from "./preorder.js";
+import { maxStorefrontQuantity } from "./quantityLimits.js";
 
 /**
  * Shopping cart store.
@@ -22,7 +23,8 @@ function normalizeCartItem(item) {
   if (!item || typeof item !== "object" || !item.id) return null;
   const quantity = Math.max(1, Number(item.quantity) || 1);
   const price = Number(item.price) || 0;
-  const maxQuantity = Math.max(quantity, Number(item.maxQuantity) || (item.tag === "Pre-order" ? 99 : quantity));
+  const fallbackMax = maxStorefrontQuantity(item);
+  const maxQuantity = Math.max(quantity, Number(item.maxQuantity) || fallbackMax);
 
   return {
     ...item,
@@ -56,8 +58,7 @@ function canAddProduct(product) {
 }
 
 function maxQuantity(product) {
-  if (isPreorderProduct(product)) return 99;
-  return Math.max(product.stock, 0);
+  return maxStorefrontQuantity(product);
 }
 
 function cartItemDueNow(item) {
@@ -142,14 +143,17 @@ export function CartProvider({ children }) {
   const setQuantity = useCallback((id, quantity, options = {}) => {
     setItems((prev) => {
       if (quantity <= 0) return prev.filter((item) => item.id !== id);
-      return prev.map((item) => {
-        if (item.id !== id) return item;
-        const limit = Math.max(
-          1,
-          Number(options.maxQuantity ?? item.maxQuantity) || item.maxQuantity || 1,
-        );
-        const nextQty = Math.min(Math.max(Number(quantity) || 1, 1), limit);
-        return { ...item, quantity: nextQty, maxQuantity: limit };
+      return prev.flatMap((item) => {
+        if (item.id !== id) return [item];
+        const isPreorder = item.tag === "Pre-order";
+        const rawLimit = Number(options.maxQuantity ?? item.maxQuantity);
+        const limit = Number.isFinite(rawLimit) && rawLimit >= 0
+          ? rawLimit
+          : maxStorefrontQuantity(item);
+        if (!isPreorder && limit <= 0) return [];
+        const effectiveLimit = isPreorder ? Math.max(limit, 1) : limit;
+        const nextQty = Math.min(Math.max(Number(quantity) || 1, 1), effectiveLimit);
+        return [{ ...item, quantity: nextQty, maxQuantity: effectiveLimit }];
       });
     });
   }, []);

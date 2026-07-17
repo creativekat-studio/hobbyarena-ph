@@ -35,7 +35,7 @@ import { PESO } from "../components/ProductCard.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import { computeDashboardAnalytics } from "../lib/dashboardAnalytics.js";
 import { STATUS_COLOR as ORDER_STATUS_COLOR, orderStatusLabel } from "../data/orderWorkflow.js";
-import { useOrders } from "../lib/ordersStore.jsx";
+import { isArchivedOrder, useOrders } from "../lib/ordersStore.jsx";
 import { useIsMobileMd } from "../lib/mobileUi.js";
 
 const RECENT_ORDERS_GRID = "minmax(140px, 1.1fr) minmax(120px, 1fr) minmax(140px, 1.3fr) minmax(120px, 0.9fr)";
@@ -423,7 +423,18 @@ function KpiStrip({ panelSx, items, periodLabel }) {
   );
 }
 
-function ChartCard({ panelSx, surfaceBorderColor, title, subtitle, children, minHeight = 240, empty = false, emptyMessage, emptyHint }) {
+function ChartCard({
+  panelSx,
+  surfaceBorderColor,
+  title,
+  subtitle,
+  headerRight,
+  children,
+  minHeight = 240,
+  empty = false,
+  emptyMessage,
+  emptyHint,
+}) {
   const body = empty ? (
     <CardEmptyState message={emptyMessage} hint={emptyHint} minHeight={minHeight} />
   ) : (
@@ -435,28 +446,86 @@ function ChartCard({ panelSx, surfaceBorderColor, title, subtitle, children, min
   );
 
   return (
-    <DashboardPanel panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} title={title} subtitle={subtitle} sx={{ height: "100%" }}>
+    <DashboardPanel
+      panelSx={panelSx}
+      surfaceBorderColor={surfaceBorderColor}
+      title={title}
+      subtitle={subtitle}
+      headerRight={headerRight}
+      sx={{ height: "100%" }}
+    >
       {body}
     </DashboardPanel>
   );
 }
 
-function SalesByLineCard({ panelSx, surfaceBorderColor, tooltipStyle, salesByLine, revenue }) {
+/** Paid = cash collected. Fulfilled = completed lines minus refunds. */
+const REVENUE_BASIS_FILTERS = [
+  { id: "paid", label: "Paid" },
+  { id: "fulfilled", label: "Fulfilled" },
+];
+
+const REVENUE_BASIS_FILTER_SX = {
+  px: 1,
+  py: 0.25,
+  fontFamily: MONO_FONT,
+  fontSize: "0.62rem",
+  letterSpacing: 0.35,
+  textTransform: "uppercase",
+  fontWeight: 700,
+  lineHeight: 1.4,
+};
+
+function RevenueBasisToggle({ value, onChange }) {
+  return (
+    <ToggleButtonGroup
+      exclusive
+      size="small"
+      value={value}
+      onChange={(_, next) => { if (next) onChange(next); }}
+    >
+      {REVENUE_BASIS_FILTERS.map((item) => (
+        <ToggleButton key={item.id} value={item.id} sx={REVENUE_BASIS_FILTER_SX}>
+          {item.label}
+        </ToggleButton>
+      ))}
+    </ToggleButtonGroup>
+  );
+}
+
+function SalesByLineCard({
+  panelSx,
+  surfaceBorderColor,
+  tooltipStyle,
+  salesByLine,
+  salesByLineFulfilled,
+  paidRevenue,
+  fulfilledRevenue,
+  mode,
+  onModeChange,
+}) {
   const chartHeight = 200;
+  const slices = mode === "fulfilled" ? salesByLineFulfilled : salesByLine;
+  const revenue = mode === "fulfilled" ? fulfilledRevenue : paidRevenue;
+  const subtitle = mode === "fulfilled"
+    ? "Completed items only, minus refunds"
+    : "Cash in — deposits & full payments";
+  const centerLabel = mode === "fulfilled" ? "fulfilled − refunds" : "paid in period";
 
   return (
     <DashboardPanel
       panelSx={panelSx}
       surfaceBorderColor={surfaceBorderColor}
       title="Sales by line"
-      subtitle="Share of paid revenue"
+      subtitle={subtitle}
       sx={{ height: "100%" }}
+      headerRight={<RevenueBasisToggle value={mode} onChange={onModeChange} />}
     >
       <Box sx={{ position: "relative", width: "100%", height: chartHeight, minWidth: 0 }}>
         <ResponsiveContainer width="100%" height={chartHeight}>
           <PieChart>
-            <Pie data={salesByLine} dataKey="value" nameKey="name" innerRadius="64%" outerRadius="94%" paddingAngle={3} stroke="none">
-              {salesByLine.map((entry) => (
+            <Pie data={slices} dataKey="value" nameKey="name" innerRadius="64%" outerRadius="94%" paddingAngle={3} stroke="none">
+              {slices.map((entry) => (
                 <Cell key={entry.name} fill={entry.color} />
               ))}
             </Pie>
@@ -467,11 +536,11 @@ function SalesByLineCard({ panelSx, surfaceBorderColor, tooltipStyle, salesByLin
           <Typography sx={{ fontWeight: 800, fontSize: { xs: "1.05rem", md: "1.25rem" }, lineHeight: 1, textAlign: "center" }}>
             {revenue >= 1e6 ? `₱${(revenue / 1e6).toFixed(2)}M` : PESO.format(revenue)}
           </Typography>
-          <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>period revenue</Typography>
+          <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>{centerLabel}</Typography>
         </Box>
       </Box>
       <Stack spacing={1} sx={{ mt: 1.5, minWidth: 0 }}>
-        {salesByLine.map((entry) => (
+        {slices.map((entry) => (
           <Stack key={entry.name} direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0 }}>
             <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: entry.color, flexShrink: 0 }} />
             <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, flexGrow: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.name}</Typography>
@@ -499,6 +568,7 @@ export default function DashboardPage() {
   const [period, setPeriod] = useState("1M");
   const [customRange, setCustomRange] = useState(defaultCustomRange);
   const [customAnchor, setCustomAnchor] = useState(null);
+  const [revenueBasis, setRevenueBasis] = useState("paid");
   const customOpen = Boolean(customAnchor);
 
   const periodQuery = useMemo(() => {
@@ -509,24 +579,36 @@ export default function DashboardPage() {
   }, [period, customRange.from, customRange.to]);
 
   const analytics = useMemo(
-    () => computeDashboardAnalytics(orders, periodQuery),
+    () => computeDashboardAnalytics(orders.filter((order) => !isArchivedOrder(order)), periodQuery),
     [orders, periodQuery],
   );
 
   const revenuePeriodLabel = period === "custom" ? "Custom" : period;
 
   const salesByLine = useMemo(
-    () =>
-      analytics.salesByLine.map((entry) => ({
-        ...entry,
-        color:
-          entry.name.includes("Pokémon")
-            ? chartColors.pokemon ?? entry.color
-            : entry.name.includes("One Piece")
-              ? chartColors.onePiece ?? entry.color
-              : chartColors.accessories ?? entry.color,
-      })),
+    () => analytics.salesByLine.map((entry) => ({
+      ...entry,
+      color:
+        entry.name.includes("Pokémon")
+          ? chartColors.pokemon ?? entry.color
+          : entry.name.includes("One Piece")
+            ? chartColors.onePiece ?? entry.color
+            : chartColors.accessories ?? entry.color,
+    })),
     [analytics.salesByLine, chartColors.pokemon, chartColors.onePiece, chartColors.accessories],
+  );
+
+  const salesByLineFulfilled = useMemo(
+    () => analytics.salesByLineFulfilled.map((entry) => ({
+      ...entry,
+      color:
+        entry.name.includes("Pokémon")
+          ? chartColors.pokemon ?? entry.color
+          : entry.name.includes("One Piece")
+            ? chartColors.onePiece ?? entry.color
+            : chartColors.accessories ?? entry.color,
+    })),
+    [analytics.salesByLineFulfilled, chartColors.pokemon, chartColors.onePiece, chartColors.accessories],
   );
 
   const tooltipStyle = {
@@ -537,14 +619,32 @@ export default function DashboardPage() {
     color: theme.palette.text.primary,
   };
 
-  const { kpis, revenueTrend, channelSplit, topProducts, recentOrders, periodLabel, periodKey } = analytics;
-  const trendSubtitle = periodKey === "custom"
-    ? "Revenue in selected range (PHP)"
-    : period === "1D"
-      ? "Hourly gross revenue (PHP)"
-      : period === "1Y"
-        ? "Monthly gross revenue (PHP)"
-        : "Revenue by period (PHP)";
+  const {
+    kpis,
+    revenueTrend,
+    revenueTrendFulfilled,
+    channelSplit,
+    topProducts,
+    recentOrders,
+    periodLabel,
+    periodKey,
+  } = analytics;
+  const activeRevenueTrend = revenueBasis === "fulfilled" ? revenueTrendFulfilled : revenueTrend;
+  const trendSubtitle = revenueBasis === "fulfilled"
+    ? (periodKey === "custom"
+      ? "Fulfilled − refunds in selected range"
+      : period === "1D"
+        ? "Hourly fulfilled − refunds"
+        : period === "1Y"
+          ? "Monthly fulfilled − refunds"
+          : "Fulfilled − refunds by period")
+    : (periodKey === "custom"
+      ? "Paid cash in selected range (PHP)"
+      : period === "1D"
+        ? "Hourly paid cash in (PHP)"
+        : period === "1Y"
+          ? "Monthly paid cash in (PHP)"
+          : "Paid cash in by period (PHP)");
 
   function selectPeriod(next) {
     setPeriod(next);
@@ -697,8 +797,14 @@ export default function DashboardPage() {
 
       <Grid container spacing={2.5} sx={{ width: "100%", m: 0 }}>
         <Grid size={{ xs: 12, md: 8 }} sx={{ minWidth: 0 }}>
-          <ChartCard panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} title="Revenue trend" subtitle={trendSubtitle}>
-            <AreaChart data={revenueTrend} margin={{ top: 0, right: 4, left: 0, bottom: 0 }}>
+          <ChartCard
+            panelSx={panelSx}
+            surfaceBorderColor={surfaceBorderColor}
+            title="Revenue trend"
+            subtitle={trendSubtitle}
+            headerRight={<RevenueBasisToggle value={revenueBasis} onChange={setRevenueBasis} />}
+          >
+            <AreaChart data={activeRevenueTrend} margin={{ top: 0, right: 4, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={primary} stopOpacity={0.5} />
@@ -719,7 +825,11 @@ export default function DashboardPage() {
             surfaceBorderColor={surfaceBorderColor}
             tooltipStyle={tooltipStyle}
             salesByLine={salesByLine}
-            revenue={kpis.revenue}
+            salesByLineFulfilled={salesByLineFulfilled}
+            paidRevenue={kpis.revenue}
+            fulfilledRevenue={analytics.fulfilledRevenue}
+            mode={revenueBasis}
+            onModeChange={setRevenueBasis}
           />
         </Grid>
       </Grid>

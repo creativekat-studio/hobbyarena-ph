@@ -35,17 +35,19 @@ import { avatarStyles } from "../lib/surfaces.js";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import { CardIcon, SearchIcon, SparkleIcon, UserIcon } from "../components/icons.jsx";
+import { InfiniteScrollTableSentinel } from "../components/InfiniteScrollSentinel.jsx";
 import { AdminTableHeaderCell, AdminTableSortHeader } from "./adminTableHeader.jsx";
 import { useCustomers } from "../lib/customersStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { useClientTiers } from "../lib/clientTiersStore.jsx";
+import { useInfiniteScroll } from "../lib/useInfiniteScroll.js";
 import {
   computeFulfilledSpendForEmail,
   getNextTierProgress,
   resolveClientTier,
 } from "../lib/clientTier.js";
 import { sortOrdersByOrderNo } from "../lib/orderIds.js";
-import { migrateOrderStatus, orderStatusLabel, STATUS_COLOR } from "../data/orderWorkflow.js";
+import { migrateOrderStatus, orderStatusLabel, refundedAmountForOrder, STATUS_COLOR } from "../data/orderWorkflow.js";
 
 const FILTERS = [
   { id: "all", label: "All" },
@@ -94,6 +96,47 @@ function customerStatus(orderCount, lastOrderDate) {
   if (!lastOrderDate) return "Active";
   const days = (Date.now() - new Date(lastOrderDate).getTime()) / (1000 * 60 * 60 * 24);
   return days > 90 ? "Dormant" : "Active";
+}
+
+/** Soft filled tags — not outlined, so they don’t read as buttons beside View. */
+function customerStatusChipSx(status, theme) {
+  const dark = theme.palette.mode === "dark";
+  const tones = {
+    New: {
+      color: dark ? theme.palette.info.light : theme.palette.info.dark,
+      bgcolor: alpha(theme.palette.info.main, dark ? 0.22 : 0.12),
+    },
+    Active: {
+      color: dark ? theme.palette.success.light : theme.palette.success.dark,
+      bgcolor: alpha(theme.palette.success.main, dark ? 0.22 : 0.12),
+    },
+    Dormant: {
+      color: theme.palette.text.secondary,
+      bgcolor: alpha(theme.palette.text.secondary, dark ? 0.16 : 0.1),
+    },
+  };
+  const tone = tones[status] || tones.Dormant;
+  return {
+    height: 22,
+    fontSize: "0.62rem",
+    fontFamily: MONO_FONT,
+    fontWeight: 800,
+    letterSpacing: 0.4,
+    border: "none",
+    ...tone,
+  };
+}
+
+function CustomerStatusChip({ status }) {
+  const theme = useTheme();
+  return (
+    <Chip
+      label={status}
+      size="small"
+      variant="filled"
+      sx={customerStatusChipSx(status, theme)}
+    />
+  );
 }
 
 function formatAddress(address) {
@@ -145,7 +188,6 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
   if (!customer) return null;
 
   const tierColor = customer.tier?.badgeColor || theme.palette.primary.main;
-  const progressAccent = customer.tierProgress?.nextTier?.badgeColor || tierColor;
   const progressPct = Math.round((customer.tierProgress?.progress || 0) * 100);
   const addressLine = formatAddress(customer.address);
 
@@ -192,7 +234,7 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
               }}
               variant="outlined"
             />
-            <Chip label={customer.status} size="small" color={customer.status === "Active" ? "primary" : "default"} variant="outlined" />
+            <CustomerStatusChip status={customer.status} />
           </Stack>
         </Stack>
       </DialogTitle>
@@ -234,23 +276,23 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
             </Grid>
           </Grid>
 
-          <Box sx={{ p: 1.75, borderRadius: 1, border: "1px solid", borderColor: alpha(progressAccent, 0.45), bgcolor: alpha(progressAccent, 0.08) }}>
+          <Box sx={{ p: 1.75, borderRadius: 1, border: "1px solid", borderColor: alpha(tierColor, 0.45), bgcolor: alpha(tierColor, 0.08) }}>
             <Stack spacing={1}>
               <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
-                <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 800, letterSpacing: 1, color: progressAccent, textTransform: "uppercase" }}>
-                  Member rank
+                <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 800, letterSpacing: 1, color: tierColor, textTransform: "uppercase" }}>
+                  Member tier
                 </Typography>
                 <Typography sx={{ fontWeight: 700, fontSize: "0.85rem" }}>{customer.tier?.name || "Member"}</Typography>
               </Stack>
               {customer.tierProgress?.atTop ? (
-                <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>Top rank reached.</Typography>
+                <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>Top tier reached.</Typography>
               ) : customer.tierProgress?.nextTier ? (
                 <>
                   <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>
                     {PESO.format(customer.tierProgress.remaining)} more fulfilled spend to reach {customer.tierProgress.nextTier.name}.
                   </Typography>
                   <Stack direction="row" justifyContent="space-between" alignItems="baseline">
-                    <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 800, color: progressAccent }}>
+                    <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 800, color: tierColor }}>
                       {progressPct}%
                     </Typography>
                     <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", color: "text.secondary" }}>
@@ -263,8 +305,8 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
                     sx={{
                       height: 8,
                       borderRadius: 1,
-                      bgcolor: alpha(progressAccent, 0.18),
-                      "& .MuiLinearProgress-bar": { bgcolor: progressAccent, borderRadius: 1 },
+                      bgcolor: alpha(tierColor, 0.18),
+                      "& .MuiLinearProgress-bar": { bgcolor: tierColor, borderRadius: 1 },
                     }}
                   />
                   {(customer.fulfilledSpend || 0) <= 0 ? (
@@ -447,10 +489,12 @@ export default function CustomersPage() {
       if (!key) return;
       const current = ordersByEmail.get(key) || { count: 0, totalSpent: 0, lastOrderDate: null, list: [] };
       const orderTotal = Number(order.total) || 0;
+      // Total spent = order totals minus refunds (refunded amounts never count).
+      const netSpent = Math.max(0, orderTotal - (refundedAmountForOrder(order) || 0));
       const orderDate = order.date || null;
       ordersByEmail.set(key, {
         count: current.count + 1,
-        totalSpent: current.totalSpent + orderTotal,
+        totalSpent: current.totalSpent + netSpent,
         lastOrderDate:
           !current.lastOrderDate || (orderDate && orderDate > current.lastOrderDate)
             ? orderDate
@@ -519,6 +563,15 @@ export default function CustomersPage() {
     });
   }, [enrichedCustomers, filter, query, sort]);
 
+  const {
+    visibleItems,
+    rootRef: scrollRootRef,
+    sentinelRef,
+    hasMore,
+    visibleCount,
+    totalCount,
+  } = useInfiniteScroll(rows, { pageSize: 40 });
+
   const stats = useMemo(() => {
     const optIn = enrichedCustomers.filter((c) => c.marketingOptIn).length;
     const ltv = enrichedCustomers.reduce((sum, c) => sum + c.totalSpent, 0);
@@ -549,7 +602,7 @@ export default function CustomersPage() {
       <AdminPageHeader
         eyebrow="People"
         title="Customers"
-        subtitle="Storefront accounts and guest checkouts — open a row to view profile, rank, and orders."
+        subtitle="Storefront accounts and guest checkouts — open a row to view profile, tier, and orders."
         action={(
           <Button variant="contained" color="primary" onClick={exportMarketingList} disabled={!stats.optIn} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.78rem" }}>
             Export opt-in list
@@ -596,7 +649,7 @@ export default function CustomersPage() {
       </Stack>
 
       <Box sx={{ flex: 1, minHeight: 0, ...panelSx, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        <TableContainer sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+        <TableContainer ref={scrollRootRef} sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
           <Table stickyHeader>
             <TableHead>
               <TableRow>
@@ -606,7 +659,7 @@ export default function CustomersPage() {
                   sort={sort}
                   onSort={handleSort}
                 />
-                <AdminTableHeaderCell>Rank</AdminTableHeaderCell>
+                <AdminTableHeaderCell>Tier</AdminTableHeaderCell>
                 <AdminTableSortHeader
                   id="joined"
                   label="Joined"
@@ -623,7 +676,7 @@ export default function CustomersPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {rows.map((customer) => (
+              {visibleItems.map((customer) => (
                 <TableRow
                   key={customer.id || customer.uid || customer.email}
                   hover
@@ -668,7 +721,7 @@ export default function CustomersPage() {
                     <Chip label={customer.marketingOptIn ? "Opted in" : "No"} size="small" color={customer.marketingOptIn ? "success" : "default"} variant="outlined" />
                   </TableCell>
                   <TableCell align="center">
-                    <Chip label={customer.status} size="small" color={customer.status === "Active" ? "primary" : "default"} variant="outlined" />
+                    <CustomerStatusChip status={customer.status} />
                   </TableCell>
                   <TableCell align="right">
                     <Button
@@ -685,13 +738,21 @@ export default function CustomersPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {rows.length === 0 ? (
+              {totalCount === 0 ? (
                 <TableRow>
                   <TableCell colSpan={9} sx={{ textAlign: "center", py: 5, color: "text.secondary" }}>
                     No customers yet. Accounts appear here after Google/email sign-up or guest checkout.
                   </TableCell>
                 </TableRow>
-              ) : null}
+              ) : (
+                <InfiniteScrollTableSentinel
+                  sentinelRef={sentinelRef}
+                  hasMore={hasMore}
+                  visibleCount={visibleCount}
+                  totalCount={totalCount}
+                  colSpan={9}
+                />
+              )}
             </TableBody>
           </Table>
         </TableContainer>

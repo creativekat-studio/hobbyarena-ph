@@ -11,27 +11,27 @@ import {
 } from "@mui/material";
 import { MONO_FONT } from "../theme.js";
 
-const CONFIRM_WORD = "delete";
-
 /**
- * Destructive confirm: user must type "delete" before confirming.
+ * Destructive confirm: user must type a confirmation word before confirming.
  */
 export default function TypeConfirmDialog({
   open,
   onClose,
   onConfirm,
-  title = "Confirm delete",
+  title = "Confirm",
   description,
-  confirmLabel = "Delete",
+  confirmLabel = "Confirm",
+  confirmWord = "archive",
   surfaceBorderColor,
 }) {
   const [typed, setTyped] = useState("");
+  const word = String(confirmWord || "archive").toLowerCase();
 
   useEffect(() => {
     if (!open) setTyped("");
   }, [open]);
 
-  const canConfirm = typed.trim().toLowerCase() === CONFIRM_WORD;
+  const canConfirm = typed.trim().toLowerCase() === word;
 
   function handleConfirm() {
     if (!canConfirm) return;
@@ -50,7 +50,7 @@ export default function TypeConfirmDialog({
             </Typography>
           ) : null}
           <Typography sx={{ fontSize: "0.85rem" }}>
-            Type <strong>{CONFIRM_WORD}</strong> to confirm.
+            Type <strong>{word}</strong> to confirm.
           </Typography>
           <TextField
             autoFocus
@@ -58,14 +58,14 @@ export default function TypeConfirmDialog({
             fullWidth
             value={typed}
             onChange={(event) => setTyped(event.target.value)}
-            placeholder={CONFIRM_WORD}
+            placeholder={word}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
                 handleConfirm();
               }
             }}
-            inputProps={{ "aria-label": `Type ${CONFIRM_WORD} to confirm` }}
+            inputProps={{ "aria-label": `Type ${word} to confirm` }}
           />
         </Stack>
       </DialogContent>

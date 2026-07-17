@@ -312,6 +312,18 @@ export function EyeIcon(props) {
   );
 }
 
+/** Magnifier with plus — expand / zoom affordance. */
+export function ZoomInIcon(props) {
+  return (
+    <SvgIcon viewBox="0 0 24 24" {...props}>
+      <path
+        d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5Zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14Zm.5-5h2v1h-2v2h-1v-2h-2V9h2V7h1v2Z"
+        fill="currentColor"
+      />
+    </SvgIcon>
+  );
+}
+
 export function EyeOffIcon(props) {
   return (
     <SvgIcon viewBox="0 0 24 24" {...props}>
@@ -329,6 +341,30 @@ export function TrashIcon(props) {
     <SvgIcon viewBox="0 0 24 24" {...props}>
       <path
         d="M9.2 3.75h5.6c.3 0 .55.25.55.55V5.5h3.4c.4 0 .75.35.75.75s-.35.75-.75.75h-1.05v11.2c0 1.2-.95 2.15-2.15 2.15H8.45c-1.2 0-2.15-.95-2.15-2.15V7h-1.05c-.4 0-.75-.35-.75-.75s.35-.75.75-.75h3.4V4.3c0-.3.25-.55.55-.55Zm1.05 1.75v-.5h3.5v.5h-3.5ZM7.8 7v11.2c0 .36.29.65.65.65h7.1c.36 0 .65-.29.65-.65V7H7.8Zm2.2 2.4c.4 0 .75.35.75.75v5.6c0 .4-.35.75-.75.75s-.75-.35-.75-.75v-5.6c0-.4.35-.75.75-.75Zm4 0c.4 0 .75.35.75.75v5.6c0 .4-.35.75-.75.75s-.75-.35-.75-.75v-5.6c0-.4.35-.75.75-.75Z"
+        fill="currentColor"
+      />
+    </SvgIcon>
+  );
+}
+
+/** Archive box — soft-archive affordance (orders / inventory). */
+export function ArchiveIcon(props) {
+  return (
+    <SvgIcon viewBox="0 0 24 24" {...props}>
+      <path
+        d="M4.5 4.25h15c.69 0 1.25.56 1.25 1.25v2.1c0 .5-.3.94-.75 1.13v9.52c0 1.05-.85 1.9-1.9 1.9H7.9c-1.05 0-1.9-.85-1.9-1.9V8.73c-.45-.19-.75-.63-.75-1.13V5.5c0-.69.56-1.25 1.25-1.25Zm1.25 1.5v1.35h12.5V5.75H5.75Zm1.65 3.98v9.02c0 .22.18.4.4.4h8.4c.22 0 .4-.18.4-.4V9.73H7.4Zm2.85 2.35h3.5c.41 0 .75.34.75.75s-.34.75-.75.75h-3.5c-.41 0-.75-.34-.75-.75s.34-.75.75-.75Z"
+        fill="currentColor"
+      />
+    </SvgIcon>
+  );
+}
+
+/** Unarchive / restore from archive. */
+export function RestoreIcon(props) {
+  return (
+    <SvgIcon viewBox="0 0 24 24" {...props}>
+      <path
+        d="M4.5 4.25h15c.69 0 1.25.56 1.25 1.25v2.1c0 .5-.3.94-.75 1.13v9.52c0 1.05-.85 1.9-1.9 1.9H7.9c-1.05 0-1.9-.85-1.9-1.9V8.73c-.45-.19-.75-.63-.75-1.13V5.5c0-.69.56-1.25 1.25-1.25Zm1.25 1.5v1.35h12.5V5.75H5.75Zm1.65 3.98v9.02c0 .22.18.4.4.4h8.4c.22 0 .4-.18.4-.4v-3.15h-1.5v2.25h-6.2V13.6H7.4Zm4.1-.35v3.35c0 .41.34.75.75.75s.75-.34.75-.75v-3.35l1.05 1.05c.29.29.77.29 1.06 0 .29-.29.29-.77 0-1.06l-2.33-2.33a.75.75 0 0 0-1.06 0L8.99 11.24c-.29.29-.29.77 0 1.06.29.29.77.29 1.06 0l1.05-1.05Z"
         fill="currentColor"
       />
     </SvgIcon>

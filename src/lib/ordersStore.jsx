@@ -155,7 +155,12 @@ function normalizeOrder(order) {
   };
 }
 
+export function isArchivedOrder(order) {
+  return Boolean(order?.archivedAt);
+}
+
 export function isUnseenOrder(order) {
+  if (isArchivedOrder(order)) return false;
   if (order.notificationSeen === true) return false;
   // New checkouts awaiting verification (including legacy without the flag)
   if (migratePaymentStatus(order.payment) === "Pending Verification") return true;
@@ -1149,6 +1154,33 @@ export function OrdersProvider({ children }) {
       return saved;
     };
 
+    const archiveOrders = (ids) => {
+      const idSet = new Set(ids);
+      const archivedAt = new Date().toISOString();
+      setOrders((prev) => {
+        const next = prev.map((order) => (
+          idSet.has(order.id) && !order.archivedAt
+            ? { ...order, archivedAt }
+            : order
+        ));
+        next.filter((order) => idSet.has(order.id)).forEach((order) => persistOrder(order));
+        return next;
+      });
+    };
+
+    const restoreOrders = (ids) => {
+      const idSet = new Set(ids);
+      setOrders((prev) => {
+        const next = prev.map((order) => (
+          idSet.has(order.id) && order.archivedAt
+            ? { ...order, archivedAt: null }
+            : order
+        ));
+        next.filter((order) => idSet.has(order.id)).forEach((order) => persistOrder(order));
+        return next;
+      });
+    };
+
     return {
       placeOrder,
       updateOrder,
@@ -1163,6 +1195,8 @@ export function OrdersProvider({ children }) {
       sendOrderStatusEmail,
       markOrderSeen,
       markAllOrdersSeen,
+      archiveOrders,
+      restoreOrders,
     };
   }, [firebaseEnabled]);
 

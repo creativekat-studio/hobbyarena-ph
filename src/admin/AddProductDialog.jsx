@@ -761,7 +761,7 @@ export default function AddProductDialog({
           <Box sx={{ mr: "auto" }} />
         )}
         {isEdit && onDelete ? (
-          <Tooltip title={deleteBlocked ? "Unable to delete — existing in-progress order" : "Delete product"}>
+          <Tooltip title={deleteBlocked ? "Unable to archive — existing in-progress order" : "Archive product"}>
             <span>
               <Button
                 color="error"
@@ -770,7 +770,7 @@ export default function AddProductDialog({
                 startIcon={<TrashIcon sx={{ fontSize: 18 }} />}
                 sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
               >
-                Delete
+                Archive
               </Button>
             </span>
           </Tooltip>
@@ -787,17 +787,18 @@ export default function AddProductDialog({
         open={deleteConfirmOpen}
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={confirmDelete}
-        title="Delete product"
-        description="Soft-delete this product. It will be hidden from the storefront and inventory, but can be restored from the Deleted filter."
-        confirmLabel="Delete"
+        title="Archive product"
+        description="Archive this product. It will be hidden from the storefront and inventory, but can be restored from the Archived filter."
+        confirmLabel="Archive"
+        confirmWord="archive"
         surfaceBorderColor={surfaceBorderColor}
       />
 
       <Dialog open={deleteBlockedOpen} onClose={() => setDeleteBlockedOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 800 }}>Unable to delete product</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800 }}>Unable to archive product</DialogTitle>
         <DialogContent dividers>
           <Typography sx={{ color: "text.secondary", fontSize: "0.9rem", lineHeight: 1.5 }}>
-            Unable to delete — there is an existing in-progress order for this product.
+            Unable to archive — there is an existing in-progress order for this product.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>

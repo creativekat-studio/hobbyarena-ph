@@ -12,7 +12,7 @@ export default function QtyStepper({
   value,
   onChange,
   min = 1,
-  max = 99,
+  max = Number.MAX_SAFE_INTEGER,
   disabled = false,
   size = "medium",
   clearAtZero = true,
@@ -22,13 +22,16 @@ export default function QtyStepper({
   const btnSize = compact ? 36 : 44;
   const [draft, setDraft] = useState(String(value));
   const [focused, setFocused] = useState(false);
+  const safeMax = Number.isFinite(Number(max)) ? Math.max(0, Number(max)) : Number.MAX_SAFE_INTEGER;
+  // Cap typed digits so huge uncapped maxes (pre-order) stay usable; 7 digits → up to 9,999,999.
+  const digitCap = Math.min(7, Math.max(1, String(Math.trunc(Math.min(safeMax, 9_999_999)) || 0).length));
 
   useEffect(() => {
     setDraft(String(value));
   }, [value]);
 
   function commit(nextRaw) {
-    const next = clampQty(nextRaw, min, max);
+    const next = clampQty(nextRaw, min, safeMax);
     setDraft(String(next));
     if (next !== value) onChange(next);
   }
@@ -44,11 +47,10 @@ export default function QtyStepper({
   }
 
   function inc() {
-    if (value < max) onChange(value + 1);
+    if (value < safeMax) onChange(value + 1);
   }
 
   const canDecrease = value > min || (clearAtZero && value === min);
-  const safeMax = Math.max(min, max);
   const inputDisabled = disabled || safeMax < min;
 
   return (
@@ -82,7 +84,7 @@ export default function QtyStepper({
           value={draft}
           disabled={inputDisabled}
           onChange={(event) => {
-            const digits = event.target.value.replace(/\D/g, "").slice(0, 4);
+            const digits = event.target.value.replace(/\D/g, "").slice(0, digitCap);
             setDraft(digits);
           }}
           onBlur={() => {

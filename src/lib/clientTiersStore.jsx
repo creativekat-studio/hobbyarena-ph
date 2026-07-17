@@ -105,7 +105,7 @@ export function ClientTiersProvider({ children }) {
 
   const saveTiers = useCallback(async () => {
     if (firebaseEnabled && (!adminWrite.ready || !adminWrite.allowed)) {
-      setSaveError("Sign in as admin to save member ranks.");
+      setSaveError("Sign in as admin to save member tiers.");
       return { ok: false };
     }
 
@@ -125,7 +125,7 @@ export function ClientTiersProvider({ children }) {
       return { ok: true };
     } catch (error) {
       console.error("[client-tiers] Failed to save:", error);
-      setSaveError(error?.message || "Could not save member ranks.");
+      setSaveError(error?.message || "Could not save member tiers.");
       return { ok: false, error };
     } finally {
       setSaving(false);
@@ -150,7 +150,7 @@ export function ClientTiersProvider({ children }) {
           ...prev.tiers,
           {
             id: `tier_${Date.now()}`,
-            name: "New rank",
+            name: "New tier",
             badgeColor: "#2563EB",
             minSpend: 0,
             maxSpend: null,

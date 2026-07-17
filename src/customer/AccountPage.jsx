@@ -268,7 +268,7 @@ function StatCard({ panelSx, icon, label, value, accent }) {
 
 function TierQuestCard({ clientTier, tierProgress, fulfilledSpend }) {
   const theme = useTheme();
-  const accent = tierProgress.nextTier?.badgeColor || clientTier?.badgeColor || theme.palette.primary.main;
+  const accent = clientTier?.badgeColor || theme.palette.primary.main;
   const pct = Math.round((tierProgress.progress || 0) * 100);
 
   return (
@@ -287,7 +287,7 @@ function TierQuestCard({ clientTier, tierProgress, fulfilledSpend }) {
           <Stack direction="row" spacing={1} alignItems="center">
             <SparkleIcon sx={{ color: accent, fontSize: 22 }} />
             <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 800, letterSpacing: 1.4, textTransform: "uppercase", color: accent }}>
-              Member rank
+              Member tier
             </Typography>
           </Stack>
           <Chip
@@ -554,15 +554,8 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
   const profileLoading = authLoading && !user;
 
   return (
-    <Stack
-      spacing={2.5}
-      sx={{
-        flex: 1,
-        minHeight: 0,
-        overflow: { xs: "visible", md: "hidden" },
-      }}
-    >
-      <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 }, flexShrink: 0 }}>
+    <Stack spacing={2.5} sx={{ width: "100%", pb: { xs: 4, md: 5 } }}>
+      <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2.5} alignItems={{ xs: "flex-start", sm: "center" }} justifyContent="space-between">
           <Stack direction="row" spacing={2} alignItems="center" sx={{ minWidth: 0 }}>
             <Box sx={{ width: 56, height: 56, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1.35rem", flexShrink: 0, ...avatarStyles(theme) }}>
@@ -598,7 +591,7 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
         </Stack>
       </Box>
 
-      <Grid container spacing={2} sx={{ flexShrink: 0 }}>
+      <Grid container spacing={2}>
         <Grid size={{ xs: 6, sm: 6 }}>
           <StatCard panelSx={panelSx} icon={CardIcon} label="Total orders" value={customerOrders.length} accent={accents[0]} />
         </Grid>
@@ -607,34 +600,18 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
         </Grid>
       </Grid>
 
-      <Box
-        sx={{
-          ...panelSx,
-          flex: 1,
-          minHeight: 0,
-          display: "flex",
-          flexDirection: "column",
-          overflow: { xs: "visible", md: "hidden" },
-        }}
-      >
+      <Box sx={{ ...panelSx, display: "flex", flexDirection: "column" }}>
         <Tabs
           value={tab}
           onChange={(_, value) => setTab(value)}
-          sx={{ px: 2, flexShrink: 0, borderBottom: "1px solid", borderColor: surfaceBorderColor }}
+          sx={{ px: 2, borderBottom: "1px solid", borderColor: surfaceBorderColor }}
         >
           <Tab label={`Orders (${customerOrders.length})`} />
           <Tab label={`Wishlist (${wishlistItems.length})`} />
           <Tab label="Profile" />
         </Tabs>
 
-        <Box
-          sx={{
-            flex: 1,
-            minHeight: 0,
-            overflowY: { xs: "visible", md: "auto" },
-            overscrollBehavior: "contain",
-          }}
-        >
+        <Box>
           {tab === 0 ? (
             <Stack spacing={2} sx={{ p: 3 }}>
               {customerOrders.length > 0 ? (
@@ -767,20 +744,9 @@ export default function AccountPage() {
       sx={{
         py: { xs: 2.5, md: showAuth ? 2 : 3 },
         width: "100%",
-        display: "flex",
-        flexDirection: "column",
-        ...(showAuth
-          ? {
-              // Let the page scroll — nested overflow:auto puts a scrollbar
-              // inside the centered container instead of at the window edge.
-              flex: "0 1 auto",
-              overflow: "visible",
-            }
-          : {
-              flex: 1,
-              minHeight: 0,
-              overflow: { xs: "visible", md: "hidden" },
-            }),
+        // Page-level scroll — nested overflow:hidden clipped the orders list.
+        flex: "0 1 auto",
+        overflow: "visible",
       }}
     >
       {isCustomer || loading ? (

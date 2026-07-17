@@ -42,6 +42,11 @@ import { MAX_FEATURED_PRODUCTS, useInventory } from "../lib/inventoryStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { openOrdersByProductId } from "../data/orderWorkflow.js";
 import { sortRowsBy, toggleSortState } from "../lib/tableSort.js";
+import { useInfiniteScroll } from "../lib/useInfiniteScroll.js";
+import {
+  InfiniteScrollSentinel,
+  InfiniteScrollTableSentinel,
+} from "../components/InfiniteScrollSentinel.jsx";
 import { AdminTableHeaderCell, AdminTableSortHeader, ADMIN_TABLE_SORT_LABEL_SX } from "./adminTableHeader.jsx";
 import AddProductDialog from "./AddProductDialog.jsx";
 import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
@@ -52,18 +57,22 @@ const STATUS_FILTERS = [
   { id: "draft", label: "Draft" },
   { id: "featured", label: "Featured" },
   { id: "low", label: "Low stock" },
-  { id: "deleted", label: "Deleted" },
+  { id: "archived", label: "Archived" },
 ];
 
 const CATALOG_FILTERS = [
   { id: "all", label: "All catalog" },
   { id: "pokemon", label: "Pokémon" },
   { id: "onepiece", label: "One Piece" },
-  { id: "sealed", label: "Sealed" },
+];
+
+const TYPE_FILTERS = [
+  { id: "all", label: "All types" },
+  { id: "sealed", label: "Sealed / on-hand" },
   { id: "preorder", label: "Pre-order" },
 ];
 
-function isDeletedRow(row) {
+function isArchivedRow(row) {
   return Boolean(row?.deletedAt || row?.deleted);
 }
 
@@ -73,15 +82,23 @@ function stockStatus(row) {
   return { label: "In stock", color: "success" };
 }
 
+/** On-hand inventory value — sealed only (matches KPI). */
+function onHandStockValue(row) {
+  if (!row || row.type === "Pre-order") return null;
+  return (Number(row.cost) || 0) * Math.max(Number(row.stock) || 0, 0);
+}
+
 const INVENTORY_SORT_ACCESSORS = {
   sku: (row) => row.sku || "",
   product: (row) => row.name || "",
   type: (row) => row.type || "",
   price: (row) => Number(row.price) || 0,
+  cost: (row) => Number(row.cost) || 0,
   stock: (row) => Number(row.stock) || 0,
+  value: (row) => onHandStockValue(row) ?? -1,
   live: (row) => Boolean(row.published),
   featured: (row) => Boolean(row.featured),
-  status: (row) => (isDeletedRow(row) ? "Deleted" : stockStatus(row).label),
+  status: (row) => (isArchivedRow(row) ? "Archived" : stockStatus(row).label),
 };
 
 function StatCard({ panelSx, icon, label, value, accent }) {
@@ -111,7 +128,7 @@ function PublishControl({ row, togglePublished }) {
         onChange={() => togglePublished(row.id)}
         color="primary"
         size="small"
-        disabled={isDeletedRow(row)}
+        disabled={isArchivedRow(row)}
         inputProps={{ "aria-label": row.published ? "Unpublish product" : "Publish product" }}
       />
       <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color: row.published ? "success.main" : "text.secondary", minWidth: 36 }}>
@@ -122,15 +139,15 @@ function PublishControl({ row, togglePublished }) {
 }
 
 function FeaturedCheckbox({ row, featuredCountSealed, featuredCountPreorder, toggleFeatured }) {
-  const deleted = isDeletedRow(row);
+  const archived = isArchivedRow(row);
   const outOfStock = row.stock <= 0;
   const isPreorder = row.type === "Pre-order";
   const kindCount = isPreorder ? featuredCountPreorder : featuredCountSealed;
   const kindLabel = isPreorder ? "pre-order" : "in-stock";
   const atLimit = !row.featured && kindCount >= MAX_FEATURED_PRODUCTS;
-  const disabled = deleted || atLimit || (outOfStock && !row.featured);
-  const title = deleted
-    ? "Deleted products can’t be featured"
+  const disabled = archived || atLimit || (outOfStock && !row.featured);
+  const title = archived
+    ? "Archived products can’t be featured"
     : outOfStock && !row.featured
       ? "Out of stock items can’t be featured"
       : atLimit
@@ -171,6 +188,11 @@ function InventoryTableView({
   onEdit,
   onDelete,
   openOrdersByProduct,
+  scrollRootRef,
+  sentinelRef,
+  hasMore,
+  visibleCount,
+  totalCount,
 }) {
   const allSelected = rows.length > 0 && rows.every((row) => selectedIds.has(row.id));
   const someSelected = rows.some((row) => selectedIds.has(row.id));
@@ -189,7 +211,7 @@ function InventoryTableView({
   }
 
   return (
-    <TableContainer sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+    <TableContainer ref={scrollRootRef} sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
       <Table stickyHeader>
         <TableHead>
           <TableRow>
@@ -206,7 +228,9 @@ function InventoryTableView({
             <SortHeader id="product" label="Product" />
             <SortHeader id="type" label="Type" sx={{ display: { xs: "none", md: "table-cell" } }} />
             <SortHeader id="price" label="Price" align="right" sx={{ display: { xs: "none", sm: "table-cell" } }} />
+            <SortHeader id="cost" label="Cost" align="right" sx={{ display: { xs: "none", md: "table-cell" } }} />
             <SortHeader id="stock" label="Stock" align="right" />
+            <SortHeader id="value" label="Value" align="right" sx={{ display: { xs: "none", sm: "table-cell" } }} />
             <SortHeader id="live" label="Live" align="center" />
             <TableCell
               align="center"
@@ -249,15 +273,16 @@ function InventoryTableView({
           {rows.map((row) => {
             const status = stockStatus(row);
             const isSelected = selectedIds.has(row.id);
-            const deleted = isDeletedRow(row);
+            const archived = isArchivedRow(row);
             const openOrders = openOrdersByProduct?.get(row.id) ?? [];
             const deleteBlocked = openOrders.length > 0;
+            const stockValue = onHandStockValue(row);
             return (
               <TableRow
                 key={row.id}
                 hover
                 selected={isSelected}
-                sx={{ opacity: deleted ? 0.55 : row.published ? 1 : 0.72, cursor: "pointer" }}
+                sx={{ opacity: archived ? 0.55 : row.published ? 1 : 0.72, cursor: "pointer" }}
                 onClick={() => onToggleSelect(row.id)}
               >
                 <TableCell padding="checkbox" onClick={(event) => event.stopPropagation()}>
@@ -279,7 +304,13 @@ function InventoryTableView({
                   <Chip label={row.type} size="small" variant="outlined" color={row.type === "Pre-order" ? "secondary" : "default"} />
                 </TableCell>
                 <TableCell align="right" sx={{ fontWeight: 700, display: { xs: "none", sm: "table-cell" } }}>{PESO.format(row.price)}</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, display: { xs: "none", md: "table-cell" }, color: "text.secondary" }}>
+                  {PESO.format(Number(row.cost) || 0)}
+                </TableCell>
                 <TableCell align="right" sx={{ fontWeight: 800, fontFamily: MONO_FONT }}>{row.stock}</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, display: { xs: "none", sm: "table-cell" }, fontFamily: MONO_FONT }}>
+                  {stockValue == null ? "—" : PESO.format(stockValue)}
+                </TableCell>
                 <TableCell align="center">
                   <PublishControl row={row} togglePublished={togglePublished} />
                 </TableCell>
@@ -292,8 +323,8 @@ function InventoryTableView({
                   />
                 </TableCell>
                 <TableCell align="right">
-                  {deleted ? (
-                    <Chip label="Deleted" size="small" color="error" variant="outlined" />
+                  {archived ? (
+                    <Chip label="Archived" size="small" color="error" variant="outlined" />
                   ) : (
                     <Chip label={status.label} size="small" color={status.color} variant="outlined" />
                   )}
@@ -302,18 +333,18 @@ function InventoryTableView({
                   <Stack direction="row" spacing={0.25} justifyContent="flex-end">
                     <Tooltip title="Edit">
                       <span>
-                        <IconButton size="small" aria-label={`Edit ${row.name}`} onClick={() => onEdit(row)} disabled={deleted}>
+                        <IconButton size="small" aria-label={`Edit ${row.name}`} onClick={() => onEdit(row)} disabled={archived}>
                           <EditIcon sx={{ fontSize: 18 }} />
                         </IconButton>
                       </span>
                     </Tooltip>
-                    <Tooltip title={deleted ? "Already deleted" : deleteBlocked ? "Unable to delete — existing in-progress order" : "Delete"}>
+                    <Tooltip title={archived ? "Already archived" : deleteBlocked ? "Unable to archive — existing in-progress order" : "Archive"}>
                       <span>
                         <IconButton
                           size="small"
-                          aria-label={`Delete ${row.name}`}
+                          aria-label={`Archive ${row.name}`}
                           onClick={() => onDelete(row)}
-                          disabled={deleted || deleteBlocked}
+                          disabled={archived || deleteBlocked}
                           color="error"
                         >
                           <TrashIcon sx={{ fontSize: 18 }} />
@@ -327,11 +358,19 @@ function InventoryTableView({
           })}
           {rows.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={11} sx={{ textAlign: "center", py: 5, color: "text.secondary" }}>
+              <TableCell colSpan={13} sx={{ textAlign: "center", py: 5, color: "text.secondary" }}>
                 No products match your filters.
               </TableCell>
             </TableRow>
-          ) : null}
+          ) : (
+            <InfiniteScrollTableSentinel
+              sentinelRef={sentinelRef}
+              hasMore={hasMore}
+              visibleCount={visibleCount}
+              totalCount={totalCount}
+              colSpan={13}
+            />
+          )}
         </TableBody>
       </Table>
     </TableContainer>
@@ -351,11 +390,15 @@ function InventoryCardView({
   onEdit,
   onDelete,
   openOrdersByProduct,
+  sentinelRef,
+  hasMore,
+  visibleCount,
+  totalCount,
 }) {
   const theme = useTheme();
   const hoverAccent = theme.palette.secondary.main;
 
-  if (!rows.length) {
+  if (!totalCount) {
     return (
       <Box sx={{ ...panelSx, p: 5, textAlign: "center", color: "text.secondary" }}>
         No products match your filters.
@@ -364,13 +407,15 @@ function InventoryCardView({
   }
 
   return (
+    <>
     <Grid container spacing={2.5}>
       {rows.map((row) => {
         const status = stockStatus(row);
         const isSelected = selectedIds.has(row.id);
-        const deleted = isDeletedRow(row);
+        const archived = isArchivedRow(row);
         const openOrders = openOrdersByProduct?.get(row.id) ?? [];
         const deleteBlocked = openOrders.length > 0;
+        const stockValue = onHandStockValue(row);
         return (
           <Grid size={{ xs: 12, sm: 6, lg: 4 }} key={row.id}>
             <Box
@@ -381,7 +426,7 @@ function InventoryCardView({
                 p: 2,
                 pb: 5.5,
                 height: "100%",
-                opacity: deleted ? 0.55 : row.published ? 1 : 0.78,
+                opacity: archived ? 0.55 : row.published ? 1 : 0.78,
                 display: "flex",
                 flexDirection: "column",
                 gap: 1.5,
@@ -421,14 +466,14 @@ function InventoryCardView({
               >
                 <Tooltip title="Edit">
                   <span>
-                    <IconButton size="small" aria-label={`Edit ${row.name}`} onClick={() => onEdit(row)} disabled={deleted}>
+                    <IconButton size="small" aria-label={`Edit ${row.name}`} onClick={() => onEdit(row)} disabled={archived}>
                       <EditIcon sx={{ fontSize: 18 }} />
                     </IconButton>
                   </span>
                 </Tooltip>
-                <Tooltip title={deleted ? "Already deleted" : deleteBlocked ? "Unable to delete — existing in-progress order" : "Delete"}>
+                <Tooltip title={archived ? "Already archived" : deleteBlocked ? "Unable to archive — existing in-progress order" : "Archive"}>
                   <span>
-                    <IconButton size="small" aria-label={`Delete ${row.name}`} onClick={() => onDelete(row)} disabled={deleted || deleteBlocked} color="error">
+                    <IconButton size="small" aria-label={`Archive ${row.name}`} onClick={() => onDelete(row)} disabled={archived || deleteBlocked} color="error">
                       <TrashIcon sx={{ fontSize: 18 }} />
                     </IconButton>
                   </span>
@@ -448,17 +493,18 @@ function InventoryCardView({
                 </Box>
               </Stack>
 
-              <Stack direction="row" justifyContent="space-between" alignItems="baseline" sx={{ mt: "auto", pl: 4 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="baseline" sx={{ mt: "auto", pl: 4 }} useFlexGap flexWrap="wrap" spacing={1}>
                 <Typography sx={{ fontWeight: 800, fontSize: "1.05rem" }}>{PESO.format(row.price)}</Typography>
                 <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 700, color: "text.secondary" }}>
                   Stock: {row.stock}
+                  {stockValue != null ? ` · Value ${PESO.format(stockValue)}` : ""}
                 </Typography>
               </Stack>
 
               <Box sx={{ position: "absolute", bottom: 12, left: 12, display: "flex", gap: 0.5, flexWrap: "wrap", alignItems: "center" }}>
                 <Chip label={row.type} size="small" variant="outlined" color={row.type === "Pre-order" ? "secondary" : "default"} />
-                {deleted ? (
-                  <Chip label="Deleted" size="small" color="error" variant="outlined" />
+                {archived ? (
+                  <Chip label="Archived" size="small" color="error" variant="outlined" />
                 ) : (
                   <Chip label={status.label} size="small" color={status.color} variant="outlined" />
                 )}
@@ -484,6 +530,13 @@ function InventoryCardView({
         );
       })}
     </Grid>
+    <InfiniteScrollSentinel
+      sentinelRef={sentinelRef}
+      hasMore={hasMore}
+      visibleCount={visibleCount}
+      totalCount={totalCount}
+    />
+    </>
   );
 }
 
@@ -507,6 +560,7 @@ export default function InventoryPage() {
   const openOrdersByProduct = useMemo(() => openOrdersByProductId(orders), [orders]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [catalogFilter, setCatalogFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [view, setView] = useState("table");
   const [formOpen, setFormOpen] = useState(false);
@@ -520,7 +574,7 @@ export default function InventoryPage() {
 
   function handleSort(key) {
     setSort((prev) => toggleSortState(prev, key, {
-      defaultDir: key === "price" || key === "stock" ? "desc" : "asc",
+      defaultDir: key === "price" || key === "cost" || key === "stock" || key === "value" ? "desc" : "asc",
     }));
   }
 
@@ -550,10 +604,10 @@ export default function InventoryPage() {
 
   const rows = useMemo(() => {
     const filtered = items.filter((row) => {
-      const deleted = isDeletedRow(row);
-      if (statusFilter === "deleted") {
-        if (!deleted) return false;
-      } else if (deleted) {
+      const archived = isArchivedRow(row);
+      if (statusFilter === "archived") {
+        if (!archived) return false;
+      } else if (archived) {
         return false;
       }
 
@@ -580,15 +634,22 @@ export default function InventoryPage() {
           break;
       }
 
+      switch (typeFilter) {
+        case "sealed":
+          if (row.type === "Pre-order") return false;
+          break;
+        case "preorder":
+          if (row.type !== "Pre-order") return false;
+          break;
+        default:
+          break;
+      }
+
       switch (catalogFilter) {
         case "pokemon":
           return row.line.startsWith("Pokémon");
         case "onepiece":
           return row.line.startsWith("One Piece");
-        case "sealed":
-          return row.type === "Sealed";
-        case "preorder":
-          return row.type === "Pre-order";
         default:
           return true;
       }
@@ -596,7 +657,16 @@ export default function InventoryPage() {
     return sortRowsBy(filtered, sort, INVENTORY_SORT_ACCESSORS, (a, b) =>
       String(a.sku || "").localeCompare(String(b.sku || ""), undefined, { numeric: true }),
     );
-  }, [items, statusFilter, catalogFilter, query, sort]);
+  }, [items, statusFilter, catalogFilter, typeFilter, query, sort]);
+
+  const {
+    visibleItems,
+    rootRef: scrollRootRef,
+    sentinelRef,
+    hasMore,
+    visibleCount,
+    totalCount,
+  } = useInfiniteScroll(rows, { pageSize: 40, observeKey: view });
 
   const itemIds = useMemo(() => new Set(items.map((row) => row.id)), [items]);
 
@@ -607,12 +677,15 @@ export default function InventoryPage() {
     });
   }, [itemIds]);
 
-  const activeItems = useMemo(() => items.filter((row) => !isDeletedRow(row)), [items]);
+  const activeItems = useMemo(() => items.filter((row) => !isArchivedRow(row)), [items]);
 
   const stats = useMemo(() => {
     const totalUnits = activeItems.reduce((sum, row) => sum + Math.max(row.stock, 0), 0);
     const outOfStock = activeItems.filter((row) => row.stock <= 0).length;
-    const value = activeItems.reduce((sum, row) => sum + row.cost * Math.max(row.stock, 0), 0);
+    // Cost of on-hand / sealed only — pre-orders are not inventory on the shelf.
+    const value = activeItems
+      .filter((row) => row.type !== "Pre-order")
+      .reduce((sum, row) => sum + (Number(row.cost) || 0) * Math.max(row.stock, 0), 0);
     const published = activeItems.filter((row) => row.published).length;
     return { skus: activeItems.length, totalUnits, outOfStock, value, published };
   }, [activeItems]);
@@ -627,13 +700,13 @@ export default function InventoryPage() {
   }
 
   function toggleSelectAllVisible() {
-    const allVisibleSelected = rows.length > 0 && rows.every((row) => selectedIds.has(row.id));
+    const allLoadedSelected = visibleItems.length > 0 && visibleItems.every((row) => selectedIds.has(row.id));
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (allVisibleSelected) {
-        rows.forEach((row) => next.delete(row.id));
+      if (allLoadedSelected) {
+        visibleItems.forEach((row) => next.delete(row.id));
       } else {
-        rows.forEach((row) => next.add(row.id));
+        visibleItems.forEach((row) => next.add(row.id));
       }
       return next;
     });
@@ -649,8 +722,8 @@ export default function InventoryPage() {
     const openOrders = openOrdersByProduct.get(row.id) ?? [];
     if (openOrders.length) {
       setDeleteBlockAlert({
-        title: "Unable to delete product",
-        message: "Unable to delete — there is an existing in-progress order for this product.",
+        title: "Unable to archive product",
+        message: "Unable to archive — there is an existing in-progress order for this product.",
       });
       return;
     }
@@ -660,7 +733,7 @@ export default function InventoryPage() {
   function requestBulkDelete() {
     const candidates = [...selectedIds].filter((id) => {
       const row = items.find((entry) => entry.id === id);
-      return row && !isDeletedRow(row);
+      return row && !isArchivedRow(row);
     });
     setActionsAnchor(null);
     if (!candidates.length) return;
@@ -676,10 +749,10 @@ export default function InventoryPage() {
     if (blocked.length) {
       setDeleteBlockAlert({
         title: blocked.length === candidates.length
-          ? "Unable to delete products"
-          : "Some products can’t be deleted",
+          ? "Unable to archive products"
+          : "Some products can’t be archived",
         message: blocked.length === candidates.length
-          ? "Unable to delete — selected products have existing in-progress orders."
+          ? "Unable to archive — selected products have existing in-progress orders."
           : `${blocked.length} of ${candidates.length} selected products have in-progress orders and were skipped.`,
       });
     }
@@ -708,10 +781,10 @@ export default function InventoryPage() {
   }
 
   const selectedCount = selectedIds.size;
-  const allVisibleSelected = rows.length > 0 && rows.every((row) => selectedIds.has(row.id));
+  const allVisibleSelected = visibleItems.length > 0 && visibleItems.every((row) => selectedIds.has(row.id));
   const deleteCount = deleteTargetIds.length;
   const deleteDialogOpen = deleteCount > 0;
-  const viewingDeleted = statusFilter === "deleted";
+  const viewingArchived = statusFilter === "archived";
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, gap: (t) => t.spacing(ADMIN_PAGE_SPACING) }}>
@@ -747,7 +820,7 @@ export default function InventoryPage() {
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={InventoryIcon} label="Total SKUs" value={stats.skus} accent={accents[0]} /></Grid>
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={SparkleIcon} label="Published on shop" value={stats.published} accent={accents[1]} /></Grid>
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={ShieldIcon} label="Out of stock" value={stats.outOfStock} accent={accents[2]} /></Grid>
-          <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={BoxIcon} label="Stock value (cost)" value={PESO.format(stats.value)} accent={accents[3]} /></Grid>
+          <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={BoxIcon} label="On-hand value (cost)" value={PESO.format(stats.value)} accent={accents[3]} /></Grid>
         </Grid>
 
         <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
@@ -777,6 +850,20 @@ export default function InventoryPage() {
                   </ToggleButton>
                 ))}
               </ToggleButtonGroup>
+
+              <FormControl size="small" sx={{ minWidth: { xs: "100%", md: 170 } }}>
+                <InputLabel id="inventory-type-filter">Type</InputLabel>
+                <Select
+                  labelId="inventory-type-filter"
+                  label="Type"
+                  value={typeFilter}
+                  onChange={(event) => setTypeFilter(event.target.value)}
+                >
+                  {TYPE_FILTERS.map((item) => (
+                    <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
 
               <FormControl size="small" sx={{ minWidth: { xs: "100%", md: 160 } }}>
                 <InputLabel id="inventory-catalog-filter">Catalog</InputLabel>
@@ -816,22 +903,22 @@ export default function InventoryPage() {
                       open={Boolean(actionsAnchor)}
                       onClose={() => setActionsAnchor(null)}
                     >
-                      {viewingDeleted ? (
+                      {viewingArchived ? (
                         <MenuItem onClick={bulkRestore}>Restore</MenuItem>
                       ) : (
                         [
                           <MenuItem key="publish" onClick={() => bulkPublish(true)}>Publish</MenuItem>,
                           <MenuItem key="unpublish" onClick={() => bulkPublish(false)}>Unpublish</MenuItem>,
-                          <MenuItem key="delete" onClick={requestBulkDelete} sx={{ color: "error.main" }}>Delete…</MenuItem>,
+                          <MenuItem key="archive" onClick={requestBulkDelete} sx={{ color: "error.main" }}>Archive…</MenuItem>,
                         ]
                       )}
                     </Menu>
                   </>
                 ) : (
                   <Chip
-                    label={allVisibleSelected ? "Deselect visible" : "Select visible"}
+                    label={allVisibleSelected ? "Deselect loaded" : "Select loaded"}
                     onClick={toggleSelectAllVisible}
-                    disabled={!rows.length}
+                    disabled={!visibleItems.length}
                     variant="outlined"
                     sx={{ fontWeight: 700 }}
                   />
@@ -872,7 +959,7 @@ export default function InventoryPage() {
       {view === "table" ? (
         <Box sx={{ flex: 1, minHeight: 0, ...panelSx, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <InventoryTableView
-            rows={rows}
+            rows={visibleItems}
             sort={sort}
             onSort={handleSort}
             togglePublished={togglePublished}
@@ -886,12 +973,17 @@ export default function InventoryPage() {
             onEdit={openEditForm}
             onDelete={requestDeleteRow}
             openOrdersByProduct={openOrdersByProduct}
+            scrollRootRef={scrollRootRef}
+            sentinelRef={sentinelRef}
+            hasMore={hasMore}
+            visibleCount={visibleCount}
+            totalCount={totalCount}
           />
         </Box>
       ) : (
-        <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", pb: 0.5 }}>
+        <Box ref={scrollRootRef} sx={{ flex: 1, minHeight: 0, overflow: "auto", pb: 0.5 }}>
           <InventoryCardView
-            rows={rows}
+            rows={visibleItems}
             panelSx={panelSx}
             togglePublished={togglePublished}
             toggleFeatured={toggleFeatured}
@@ -903,6 +995,10 @@ export default function InventoryPage() {
             onEdit={openEditForm}
             onDelete={requestDeleteRow}
             openOrdersByProduct={openOrdersByProduct}
+            sentinelRef={sentinelRef}
+            hasMore={hasMore}
+            visibleCount={visibleCount}
+            totalCount={totalCount}
           />
         </Box>
       )}
@@ -927,13 +1023,14 @@ export default function InventoryPage() {
         open={deleteDialogOpen}
         onClose={() => setDeleteTargetIds([])}
         onConfirm={confirmSoftDelete}
-        title={deleteCount > 1 ? `Delete ${deleteCount} products` : "Delete product"}
+        title={deleteCount > 1 ? `Archive ${deleteCount} products` : "Archive product"}
         description={
           deleteCount > 1
-            ? `Soft-delete ${deleteCount} selected products. They will be hidden from the storefront and inventory, but can be restored from the Deleted filter.`
-            : "Soft-delete this product. It will be hidden from the storefront and inventory, but can be restored from the Deleted filter."
+            ? `Archive ${deleteCount} selected products. They will be hidden from the storefront and inventory, but can be restored from the Archived filter.`
+            : "Archive this product. It will be hidden from the storefront and inventory, but can be restored from the Archived filter."
         }
-        confirmLabel={deleteCount > 1 ? `Delete ${deleteCount}` : "Delete"}
+        confirmLabel={deleteCount > 1 ? `Archive ${deleteCount}` : "Archive"}
+        confirmWord="archive"
         surfaceBorderColor={surfaceBorderColor}
       />
 
@@ -943,7 +1040,7 @@ export default function InventoryPage() {
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle sx={{ fontWeight: 800 }}>{deleteBlockAlert?.title || "Unable to delete"}</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800 }}>{deleteBlockAlert?.title || "Unable to archive"}</DialogTitle>
         <DialogContent dividers>
           <Typography sx={{ color: "text.secondary", fontSize: "0.9rem", lineHeight: 1.5 }}>
             {deleteBlockAlert?.message}

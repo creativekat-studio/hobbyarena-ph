@@ -35,6 +35,7 @@ import { useAuth } from "../auth/AuthProvider.jsx";
 import { useCart } from "../lib/cartStore.jsx";
 import { useWishlist } from "../lib/wishlistStore.jsx";
 import { getCountdownParts, getDepositPercent } from "../lib/preorder.js";
+import { maxStorefrontQuantity } from "../lib/quantityLimits.js";
 
 const stockDot = keyframes`
   0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55); }
@@ -98,7 +99,7 @@ export default function ProductPage() {
   const effectiveStock = product && !isPreorder ? availableStock(product.id, product.stock) : (product?.stock ?? 0);
   const soldOut = product && !isPreorder && effectiveStock <= 0;
   const preorderClosed = isPreorder && getCountdownParts(product?.preorderEndsAt)?.expired;
-  const maxQty = isPreorder ? 99 : Math.max(effectiveStock, 0);
+  const maxQty = maxStorefrontQuantity(product, isPreorder ? undefined : effectiveStock);
 
   useEffect(() => {
     if (product) setWishlisted(isWishlisted(product.id));

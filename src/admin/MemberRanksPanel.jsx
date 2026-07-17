@@ -95,7 +95,7 @@ function nextRankDefaults(tiers) {
   const badgeColor = FALLBACK_COLORS.find((c) => !used.has(c.toLowerCase()))
     || FALLBACK_COLORS[tiers.length % FALLBACK_COLORS.length];
   return {
-    name: "New rank",
+    name: "New tier",
     badgeColor,
     minSpend: floor,
     maxSpend: null,
@@ -113,7 +113,7 @@ function ActiveSwitch({ checked, onChange }) {
   );
 }
 
-/** Member ranks editor — matches Product lines layout inside Classifications. */
+/** Member tiers editor — matches Product lines layout inside Classifications. */
 export function MemberRanksPanel({ panelSx, surfaceBorderColor }) {
   const { tiers, addTier, updateTier, removeTier } = useClientTiers();
   const [previewSpend, setPreviewSpend] = useState("15000");
@@ -149,9 +149,9 @@ export function MemberRanksPanel({ panelSx, surfaceBorderColor }) {
         sx={{ mb: 2, gap: 1.5, flexWrap: "wrap" }}
       >
         <Box sx={{ minWidth: 0 }}>
-          <Typography sx={{ fontWeight: 800, fontSize: "0.95rem", lineHeight: 1.3 }}>Member ranks</Typography>
+          <Typography sx={{ fontWeight: 800, fontSize: "0.95rem", lineHeight: 1.3 }}>Member tiers</Typography>
           <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", mt: 0.35, lineHeight: 1.4 }}>
-            {tiers.length} rank{tiers.length === 1 ? "" : "s"} · {activeCount} active
+            {tiers.length} tier{tiers.length === 1 ? "" : "s"} · {activeCount} active
           </Typography>
         </Box>
         <Button
@@ -161,13 +161,13 @@ export function MemberRanksPanel({ panelSx, surfaceBorderColor }) {
           onClick={handleAdd}
           sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.68rem", flexShrink: 0 }}
         >
-          + Add rank
+          + Add tier
         </Button>
       </Stack>
 
       <Typography sx={{ fontSize: "0.84rem", color: "text.secondary", lineHeight: 1.55, mb: 2 }}>
         Loyalty badges based on total <strong>fulfilled</strong> order spend.
-        Shoppers see their rank on Account; admins see it on Customers.
+        Shoppers see their tier on Account; admins see it on Customers.
       </Typography>
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }} sx={{ mb: 2.5 }}>
@@ -193,7 +193,7 @@ export function MemberRanksPanel({ panelSx, surfaceBorderColor }) {
         <Table size="small">
           <TableHead>
             <TableRow>
-              <AdminTableHeaderCell sx={{ width: "22%" }}>Rank</AdminTableHeaderCell>
+              <AdminTableHeaderCell sx={{ width: "22%" }}>Tier</AdminTableHeaderCell>
               <AdminTableHeaderCell sx={{ width: 120 }}>Floor</AdminTableHeaderCell>
               <AdminTableHeaderCell sx={{ width: 120 }}>Ceiling</AdminTableHeaderCell>
               <AdminTableHeaderCell sx={{ width: 160 }}>Badge</AdminTableHeaderCell>
@@ -256,7 +256,7 @@ export function MemberRanksPanel({ panelSx, surfaceBorderColor }) {
                     size="small"
                     color="error"
                     disabled={tiers.length <= 1}
-                    aria-label="Remove rank"
+                    aria-label="Remove tier"
                     onClick={() => removeTier(tier.id)}
                   >
                     <TrashIcon sx={{ fontSize: 18 }} />
@@ -271,7 +271,7 @@ export function MemberRanksPanel({ panelSx, surfaceBorderColor }) {
       <Stack spacing={1.5} sx={{ display: { xs: "flex", md: "none" } }}>
         {sorted.map((tier) => (
           <Box key={tier.id} sx={{ p: 1.5, border: "1px solid", borderColor: surfaceBorderColor, borderRadius: 1, opacity: tier.active !== false ? 1 : 0.55 }}>
-            <TextField size="small" fullWidth label="Rank" value={tier.name} onChange={(e) => updateTier(tier.id, { name: e.target.value })} sx={{ mb: 1.5 }} />
+            <TextField size="small" fullWidth label="Tier" value={tier.name} onChange={(e) => updateTier(tier.id, { name: e.target.value })} sx={{ mb: 1.5 }} />
             <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
               <TextField size="small" type="number" fullWidth label="Floor" value={tier.minSpend ?? 0} onChange={(e) => updateTier(tier.id, { minSpend: Math.max(0, Number(e.target.value) || 0) })} />
               <TextField
@@ -294,7 +294,7 @@ export function MemberRanksPanel({ panelSx, surfaceBorderColor }) {
                 <Typography sx={{ fontSize: "0.82rem" }}>Active</Typography>
               </Stack>
             </Stack>
-            <IconButton size="small" color="error" disabled={tiers.length <= 1} aria-label="Remove rank" onClick={() => removeTier(tier.id)}>
+            <IconButton size="small" color="error" disabled={tiers.length <= 1} aria-label="Remove tier" onClick={() => removeTier(tier.id)}>
               <TrashIcon sx={{ fontSize: 18 }} />
             </IconButton>
           </Box>
@@ -303,7 +303,7 @@ export function MemberRanksPanel({ panelSx, surfaceBorderColor }) {
 
       {tiers.length === 0 ? (
         <Box sx={{ py: 4, textAlign: "center", color: "text.secondary", fontSize: "0.88rem" }}>
-          No ranks yet. Click + Add rank to create one.
+          No tiers yet. Click + Add tier to create one.
         </Box>
       ) : null}
 
