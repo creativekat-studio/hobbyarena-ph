@@ -3,6 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import DesignPreviewSettings from "../components/DesignPreviewSettings.jsx";
 import DesignPreviewMockup from "../components/DesignPreviewMockup.jsx";
+import DemoDataResetPanel from "./DemoDataResetPanel.jsx";
 
 const PREVIEW_STICKY_SX = {
   position: { lg: "sticky" },
@@ -14,9 +15,16 @@ const PREVIEW_STICKY_SX = {
   flexDirection: "column",
 };
 
+function isLocalhostHost() {
+  if (typeof window === "undefined") return false;
+  const host = window.location.hostname;
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+}
+
 export default function DesignPreviewPage() {
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
+  const showDangerZone = isLocalhostHost();
 
   return (
     <Stack spacing={ADMIN_PAGE_SPACING}>
@@ -36,6 +44,10 @@ export default function DesignPreviewPage() {
           </Box>
         </Grid>
       </Grid>
+
+      {showDangerZone ? (
+        <DemoDataResetPanel panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} />
+      ) : null}
     </Stack>
   );
 }

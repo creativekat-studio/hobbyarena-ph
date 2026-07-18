@@ -47,7 +47,15 @@ import {
   InfiniteScrollSentinel,
   InfiniteScrollTableSentinel,
 } from "../components/InfiniteScrollSentinel.jsx";
-import { AdminTableHeaderCell, AdminTableSortHeader, ADMIN_TABLE_SORT_LABEL_SX } from "./adminTableHeader.jsx";
+import {
+  AdminTableHeaderCell,
+  AdminTableSortHeader,
+  ADMIN_LIST_PAGE_SX,
+  ADMIN_LIST_PANEL_SX,
+  ADMIN_LIST_SCROLL_SX,
+  ADMIN_TABLE_SORT_LABEL_SX,
+} from "./adminTableHeader.jsx";
+import { useIsMobileMd } from "../lib/mobileUi.js";
 import AddProductDialog from "./AddProductDialog.jsx";
 import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
 
@@ -210,9 +218,18 @@ function InventoryTableView({
     );
   }
 
+  const isMobile = useIsMobileMd();
+
   return (
-    <TableContainer ref={scrollRootRef} sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-      <Table stickyHeader>
+    <Box sx={isMobile ? { overflowX: "auto", WebkitOverflowScrolling: "touch" } : undefined}>
+    <TableContainer
+      ref={isMobile ? undefined : scrollRootRef}
+      sx={{
+        ...ADMIN_LIST_SCROLL_SX,
+        ...(isMobile ? { overflow: "visible" } : {}),
+      }}
+    >
+      <Table stickyHeader={!isMobile}>
         <TableHead>
           <TableRow>
             <TableCell padding="checkbox">
@@ -374,6 +391,7 @@ function InventoryTableView({
         </TableBody>
       </Table>
     </TableContainer>
+    </Box>
   );
 }
 
@@ -785,9 +803,10 @@ export default function InventoryPage() {
   const deleteCount = deleteTargetIds.length;
   const deleteDialogOpen = deleteCount > 0;
   const viewingArchived = statusFilter === "archived";
+  const isMobile = useIsMobileMd();
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, gap: (t) => t.spacing(ADMIN_PAGE_SPACING) }}>
+    <Box sx={{ ...ADMIN_LIST_PAGE_SX, gap: (t) => t.spacing(ADMIN_PAGE_SPACING) }}>
       <AdminPageHeader
         eyebrow="Inventory"
         title="Products & stock"
@@ -957,7 +976,7 @@ export default function InventoryPage() {
       </Stack>
 
       {view === "table" ? (
-        <Box sx={{ flex: 1, minHeight: 0, ...panelSx, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <Box sx={{ ...ADMIN_LIST_PANEL_SX, ...panelSx }}>
           <InventoryTableView
             rows={visibleItems}
             sort={sort}
@@ -981,7 +1000,10 @@ export default function InventoryPage() {
           />
         </Box>
       ) : (
-        <Box ref={scrollRootRef} sx={{ flex: 1, minHeight: 0, overflow: "auto", pb: 0.5 }}>
+        <Box
+          ref={isMobile ? undefined : scrollRootRef}
+          sx={{ ...ADMIN_LIST_SCROLL_SX, pb: 0.5 }}
+        >
           <InventoryCardView
             rows={visibleItems}
             panelSx={panelSx}

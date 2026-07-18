@@ -45,7 +45,14 @@ import {
   UserIcon,
 } from "../components/icons.jsx";
 import { InfiniteScrollTableSentinel } from "../components/InfiniteScrollSentinel.jsx";
-import { AdminTableHeaderCell, AdminTableSortHeader } from "./adminTableHeader.jsx";
+import {
+  AdminTableHeaderCell,
+  AdminTableSortHeader,
+  ADMIN_LIST_PAGE_SX,
+  ADMIN_LIST_PANEL_SX,
+  ADMIN_LIST_SCROLL_SX,
+} from "./adminTableHeader.jsx";
+import { useIsMobileMd } from "../lib/mobileUi.js";
 import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
 import { useCustomers } from "../lib/customersStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
@@ -710,8 +717,10 @@ export default function CustomersPage() {
     URL.revokeObjectURL(url);
   }
 
+  const isMobile = useIsMobileMd();
+
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, gap: (t) => t.spacing(ADMIN_PAGE_SPACING) }}>
+    <Box sx={{ ...ADMIN_LIST_PAGE_SX, gap: (t) => t.spacing(ADMIN_PAGE_SPACING) }}>
       <AdminPageHeader
         eyebrow="People"
         title="Customers"
@@ -761,9 +770,16 @@ export default function CustomersPage() {
         </Box>
       </Stack>
 
-      <Box sx={{ flex: 1, minHeight: 0, ...panelSx, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        <TableContainer ref={scrollRootRef} sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-          <Table stickyHeader>
+      <Box sx={{ ...ADMIN_LIST_PANEL_SX, ...panelSx }}>
+        <Box sx={isMobile ? { overflowX: "auto", WebkitOverflowScrolling: "touch" } : undefined}>
+        <TableContainer
+          ref={isMobile ? undefined : scrollRootRef}
+          sx={{
+            ...ADMIN_LIST_SCROLL_SX,
+            ...(isMobile ? { overflow: "visible" } : {}),
+          }}
+        >
+          <Table stickyHeader={!isMobile}>
             <TableHead>
               <TableRow>
                 <AdminTableSortHeader
@@ -870,6 +886,7 @@ export default function CustomersPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        </Box>
       </Box>
 
       <CustomerDetailDialog

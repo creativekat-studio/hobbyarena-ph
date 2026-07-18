@@ -20,17 +20,41 @@ export const ADMIN_TABLE_SORT_LABEL_SX = {
   "& .MuiTableSortLabel-icon": { fontSize: "0.95rem", color: "inherit !important" },
 };
 
-/** Sticky header row fill for CSS-grid tables (Orders). */
+/** Sticky header row fill for CSS-grid tables (Orders). Sticky on md+ only. */
 export function adminStickyHeaderRowSx(surfaceBackground, surfaceBorderColor) {
   return {
     backgroundColor: surfaceBackground || "#12204A",
     borderBottom: "1px solid",
     borderColor: surfaceBorderColor,
-    position: "sticky",
+    position: { xs: "static", md: "sticky" },
     top: 0,
     zIndex: 2,
   };
 }
+
+/** List-page shell: fill + nested scroll on desktop; natural height (page scroll) on mobile. */
+export const ADMIN_LIST_PAGE_SX = {
+  display: "flex",
+  flexDirection: "column",
+  flex: { xs: "0 0 auto", md: 1 },
+  minHeight: { xs: "auto", md: 0 },
+};
+
+/** Grid/table panel around an internal scroller (desktop) or full-page flow (mobile). */
+export const ADMIN_LIST_PANEL_SX = {
+  flex: { xs: "0 0 auto", md: 1 },
+  minHeight: { xs: "auto", md: 0 },
+  overflow: { xs: "visible", md: "hidden" },
+  display: "flex",
+  flexDirection: "column",
+};
+
+/** Inner scroll root — overflow/sticky only from md up. */
+export const ADMIN_LIST_SCROLL_SX = {
+  flex: { xs: "0 0 auto", md: 1 },
+  minHeight: { xs: "auto", md: 0 },
+  overflow: { xs: "visible", md: "auto" },
+};
 
 /** Non-sortable header cell for MUI Table. */
 export function AdminTableHeaderCell({ children, sx, ...props }) {

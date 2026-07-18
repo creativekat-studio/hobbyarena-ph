@@ -54,7 +54,15 @@ import { sortRowsBy, toggleSortState } from "../lib/tableSort.js";
 import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
 import { InfiniteScrollSentinel } from "../components/InfiniteScrollSentinel.jsx";
 import { useInfiniteScroll } from "../lib/useInfiniteScroll.js";
-import { AdminGridHeaderLabel, AdminGridSortHeader, adminStickyHeaderRowSx } from "./adminTableHeader.jsx";
+import {
+  AdminGridHeaderLabel,
+  AdminGridSortHeader,
+  ADMIN_LIST_PAGE_SX,
+  ADMIN_LIST_PANEL_SX,
+  ADMIN_LIST_SCROLL_SX,
+  adminStickyHeaderRowSx,
+} from "./adminTableHeader.jsx";
+import { useIsMobileMd } from "../lib/mobileUi.js";
 import AddOrderDialog from "./AddOrderDialog.jsx";
 
 const ORDER_SORT_ACCESSORS = {
@@ -609,14 +617,14 @@ export default function OrdersPage() {
 
   const { surfaceBackground } = surfaces;
   const stickyHeaderBg = theme.palette.mode === "dark" ? "#12204A" : surfaceBackground;
+  const isMobile = useIsMobileMd();
 
   return (
     /*
-     * flex: 1 + minHeight: 0 makes this page fill the scrollable content pane in AdminLayout.
-     * The chrome (stats + filters) is flexShrink: 0 so it never scrolls away.
-     * The grid panel takes flex: 1 and scrolls its rows internally.
+     * Desktop: fill AdminLayout pane; chrome stays put; grid scrolls with sticky headers.
+     * Mobile: natural page height so the whole Orders view scrolls in AdminLayout.
      */
-    <Box sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, gap: (t) => t.spacing(ADMIN_PAGE_SPACING) }}>
+    <Box sx={{ ...ADMIN_LIST_PAGE_SX, gap: (t) => t.spacing(ADMIN_PAGE_SPACING) }}>
       <AdminPageHeader
         eyebrow="Sales"
         title="Orders"
@@ -740,8 +748,8 @@ export default function OrdersPage() {
         </Box>
       </Stack>
 
-      {/* ── Scrolling grid panel ── */}
-      <Box sx={{ flex: 1, minHeight: 0, ...panelSx, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      {/* ── Grid panel (internal scroll + sticky header on desktop only) ── */}
+      <Box sx={{ ...ADMIN_LIST_PANEL_SX, ...panelSx }}>
         {!ordersReady ? (
           <Stack spacing={1.5} alignItems="center" sx={{ py: 6, color: "text.secondary" }}>
             <CircularProgress size={26} />
@@ -752,9 +760,9 @@ export default function OrdersPage() {
             No orders match your filters.
           </Typography>
         ) : (
-          /* Single overflow: auto container handles both horizontal and vertical scroll.
-             The column header row is position: sticky so it stays visible while rows scroll. */
-          <Box ref={scrollRootRef} sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+          /* Desktop: overflow auto + sticky header. Mobile: page scrolls; X-scroll on wide grid. */
+          <Box ref={isMobile ? undefined : scrollRootRef} sx={ADMIN_LIST_SCROLL_SX}>
+            <Box sx={isMobile ? { overflowX: "auto", WebkitOverflowScrolling: "touch" } : undefined}>
             <Box sx={{ minWidth: ORDER_TABLE_MIN_WIDTH }}>
               <Box
                 sx={{
@@ -800,6 +808,7 @@ export default function OrdersPage() {
                 visibleCount={visibleCount}
                 totalCount={totalCount}
               />
+            </Box>
             </Box>
           </Box>
         )}
