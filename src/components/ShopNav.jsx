@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Button,
   Menu,
@@ -7,6 +7,7 @@ import {
 } from "@mui/material";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getNavConfig } from "../data/shopNav.js";
+import { useCatalog } from "../lib/catalogStore.jsx";
 import { useShopNavLayout } from "../lib/shopNavLayout.jsx";
 
 function NavButton({ children, onClick, sx }) {
@@ -60,7 +61,8 @@ export default function ShopNav({ onSectionNav }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { layoutId } = useShopNavLayout();
-  const config = getNavConfig(layoutId);
+  const { activeLines } = useCatalog();
+  const config = useMemo(() => getNavConfig(layoutId, activeLines), [layoutId, activeLines]);
 
   if (config.type === "dock") return null;
 
@@ -132,7 +134,8 @@ export default function ShopNav({ onSectionNav }) {
 /** Mobile drawer links — flat list for classic layouts. */
 export function ShopNavMobileItems({ onNavigate, onClose }) {
   const { layoutId } = useShopNavLayout();
-  const config = getNavConfig(layoutId);
+  const { activeLines } = useCatalog();
+  const config = useMemo(() => getNavConfig(layoutId, activeLines), [layoutId, activeLines]);
 
   function handle(item) {
     onNavigate(item);

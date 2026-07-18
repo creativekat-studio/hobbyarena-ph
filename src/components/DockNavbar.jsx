@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   Button,
@@ -13,7 +13,8 @@ import {
 import { alpha, useTheme } from "@mui/material/styles";
 import { useLocation, useNavigate } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
-import { groupIsActive, NAV_GROUPS, NAV_DESTINATIONS } from "../data/navDestinations.js";
+import { buildNavDestinations, buildNavGroups, groupIsActive } from "../data/navDestinations.js";
+import { useCatalog } from "../lib/catalogStore.jsx";
 import { useColorMode } from "../lib/colorMode.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import BrandLogo from "./BrandLogo.jsx";
@@ -40,10 +41,16 @@ function groupIcon(id) {
   return BoxIcon;
 }
 
+const MEGA_GRID_LIMIT = 9;
+
 function MegaPanel({ group, onNavigate, onClose, surfaceBorderColor }) {
   const theme = useTheme();
   const Icon = groupIcon(group.id);
   const accent = group.accent || theme.palette.primary.main;
+  const [expanded, setExpanded] = useState(false);
+  const items = group.items ?? [];
+  const hasMore = items.length > MEGA_GRID_LIMIT;
+  const visibleItems = expanded || !hasMore ? items : items.slice(0, MEGA_GRID_LIMIT);
 
   return (
     <Box
@@ -52,7 +59,7 @@ function MegaPanel({ group, onNavigate, onClose, surfaceBorderColor }) {
         top: "calc(100% + 10px)",
         left: "50%",
         transform: "translateX(-50%)",
-        width: { md: 480, lg: 520 },
+        width: { md: 560, lg: 640 },
         zIndex: 20,
         borderRadius: 2,
         border: "1px solid",
@@ -99,8 +106,8 @@ function MegaPanel({ group, onNavigate, onClose, surfaceBorderColor }) {
         </Stack>
       </Box>
       <Grid container sx={{ p: 1.5 }}>
-        {(group.items ?? []).map((item) => (
-          <Grid size={{ xs: 12, sm: 6 }} key={item.label}>
+        {visibleItems.map((item) => (
+          <Grid size={{ xs: 12, sm: 4 }} key={item.label}>
             <Button
               fullWidth
               onClick={() => {
@@ -111,27 +118,58 @@ function MegaPanel({ group, onNavigate, onClose, surfaceBorderColor }) {
                 justifyContent: "flex-start",
                 textAlign: "left",
                 py: 1.5,
-                px: 2,
+                px: 1.5,
                 borderRadius: 1.5,
                 color: "text.primary",
                 "&:hover": { bgcolor: alpha(accent, 0.1) },
               }}
             >
-              <Stack spacing={0.25} alignItems="flex-start">
-                <Typography sx={{ fontWeight: 700, fontSize: "0.92rem" }}>{item.label}</Typography>
+              <Stack spacing={0.25} alignItems="flex-start" sx={{ minWidth: 0 }}>
+                <Typography sx={{ fontWeight: 700, fontSize: "0.88rem", lineHeight: 1.3 }}>{item.label}</Typography>
                 {item.hint ? (
-                  <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>{item.hint}</Typography>
+                  <Typography
+                    sx={{
+                      color: "text.secondary",
+                      fontSize: "0.68rem",
+                      lineHeight: 1.35,
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {item.hint}
+                  </Typography>
                 ) : null}
               </Stack>
             </Button>
           </Grid>
         ))}
       </Grid>
+      {hasMore ? (
+        <Box sx={{ px: 1.5, pb: 1.5, pt: 0 }}>
+          <Button
+            fullWidth
+            onClick={() => setExpanded((prev) => !prev)}
+            sx={{
+              py: 1.1,
+              borderRadius: 1.5,
+              fontWeight: 700,
+              fontSize: "0.82rem",
+              color: accent,
+              bgcolor: alpha(accent, 0.08),
+              "&:hover": { bgcolor: alpha(accent, 0.14) },
+            }}
+          >
+            {expanded ? "Show less" : `See more (${items.length - MEGA_GRID_LIMIT})`}
+          </Button>
+        </Box>
+      ) : null}
     </Box>
   );
 }
 
-function CatalogOverlay({ open, onClose, onNavigate, surfaceBorderColor }) {
+function CatalogOverlay({ open, onClose, onNavigate, surfaceBorderColor, navGroups }) {
   const theme = useTheme();
 
   return (
@@ -165,7 +203,7 @@ function CatalogOverlay({ open, onClose, onNavigate, surfaceBorderColor }) {
         </Typography>
 
         <Stack spacing={2.5}>
-          {NAV_GROUPS.map((group) => {
+          {navGroups.map((group) => {
             const Icon = groupIcon(group.id);
             const accent = group.accent || theme.palette.primary.main;
             return (
@@ -251,6 +289,9 @@ export default function DockNavbar({ surfaces, onOpenCart, onOpenSearch }) {
   const location = useLocation();
   const { mode, toggle } = useColorMode();
   const { user } = useAuth();
+  const { activeLines } = useCatalog();
+  const navDestinations = useMemo(() => buildNavDestinations(activeLines), [activeLines]);
+  const navGroups = useMemo(() => buildNavGroups(activeLines), [activeLines]);
   const [openGroup, setOpenGroup] = useState(null);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const dockRef = useRef(null);
@@ -354,8 +395,8 @@ export default function DockNavbar({ surfaces, onOpenCart, onOpenSearch }) {
                   py: 0.75,
                 }}
               >
-                <DockSegment label="Home" active={homeActive()} onClick={() => handleItem(NAV_DESTINATIONS.home)} />
-                {NAV_GROUPS.map((group) => (
+                <DockSegment label="Home" active={homeActive()} onClick={() => handleItem(navDestinations.home)} />
+                {navGroups.map((group) => (
                   <Box key={group.id} sx={{ position: "relative" }}>
                     <DockSegment
                       label={group.label}
@@ -369,7 +410,7 @@ export default function DockNavbar({ surfaces, onOpenCart, onOpenSearch }) {
                     ) : null}
                   </Box>
                 ))}
-                <DockSegment label="Contact" active={contactActive()} onClick={() => handleItem(NAV_DESTINATIONS.contact)} />
+                <DockSegment label="Contact" active={contactActive()} onClick={() => handleItem(navDestinations.contact)} />
               </Stack>
             </Box>
 
@@ -455,7 +496,13 @@ export default function DockNavbar({ surfaces, onOpenCart, onOpenSearch }) {
         </Container>
       </Box>
 
-      <CatalogOverlay open={catalogOpen} onClose={() => setCatalogOpen(false)} onNavigate={handleItem} surfaceBorderColor={surfaceBorderColor} />
+      <CatalogOverlay
+        open={catalogOpen}
+        onClose={() => setCatalogOpen(false)}
+        onNavigate={handleItem}
+        surfaceBorderColor={surfaceBorderColor}
+        navGroups={navGroups}
+      />
     </>
   );
 }

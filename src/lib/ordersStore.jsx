@@ -457,7 +457,15 @@ export function OrdersProvider({ children }) {
         ...(item.balanceReceived != null ? { balanceReceived: item.balanceReceived } : {}),
       }));
 
-      const statusAttachment = findLatestAdminTrailAttachment(order, primaryItem.id);
+      const latestAttachment = findLatestAdminTrailAttachment(order, primaryItem.id);
+      // Only pass http(s) URLs into emails — data: base64 blobs render as gibberish.
+      const statusAttachment = latestAttachment
+        ? {
+          label: latestAttachment.label || "Attachment",
+          url: /^https?:\/\//i.test(latestAttachment.url || "") ? latestAttachment.url : "",
+          type: latestAttachment.type || "image",
+        }
+        : null;
 
       return {
         emailType,
@@ -553,7 +561,7 @@ export function OrdersProvider({ children }) {
     });
 
     const sendOrderStatusEmail = async (orderId, lineItemIds) => {
-      const order = ordersRef.current.find((row) => row.id === orderId);
+      let order = ordersRef.current.find((row) => row.id === orderId);
       if (!order) throw new Error("Order not found.");
 
       const ids = Array.isArray(lineItemIds) ? lineItemIds.filter(Boolean) : [];
@@ -566,6 +574,17 @@ export function OrdersProvider({ children }) {
       const emailType = resolveOrderStatusEmailTypeForCurrentState(selected[0]);
       if (!emailType) {
         throw new Error("No status email template matches the selected item's current payment/status.");
+      }
+
+      // Upload any pending proof blobs so the email can link/embed a real https URL.
+      if (firebaseEnabled && orderNeedsProofBackfill(order) && orderHasLocalProofData(order)) {
+        try {
+          const saved = await upsertOrder(order);
+          order = saved;
+          setOrders((current) => current.map((row) => (row.id === saved.id ? { ...row, ...saved } : row)));
+        } catch (error) {
+          console.warn("[orders] Could not upload proofs before status email:", error);
+        }
       }
 
       const payload = buildStatusEmailPayload(order, selected, selected[0], emailType);

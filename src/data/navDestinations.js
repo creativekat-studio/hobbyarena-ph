@@ -1,38 +1,29 @@
 /**
  * Shared nav destinations for all layout styles.
  */
-import { CRATE_DROP_NAV } from "./shopNav.js";
+import { DEFAULT_PRODUCT_LINES } from "./catalogDefaults.js";
+import { buildCrateDropNav, CRATE_DROP_NAV } from "./shopNav.js";
 
 export { CRATE_DROP_NAV };
 
-export const NAV_DESTINATIONS = {
-  home: CRATE_DROP_NAV.home,
-  contact: { label: "Contact", to: "/contact" },
-  preorders: {
-    id: "preorders",
-    label: "Pre-Orders",
-    tagline: "Reserve incoming sets before they sell out.",
-    accent: "#F5C518",
-    to: "/preorders",
-    items: CRATE_DROP_NAV.groups.find((g) => g.id === "preorders")?.items.map((item) => ({
-      ...item,
-      to: item.to.replace("/shop?category=preorder", "/preorders").replace("category=preorder&", "preorders?"),
-    })) ?? [],
-  },
-  products: {
-    id: "products",
-    label: "Products",
-    tagline: "In-stock sealed products ready to ship.",
-    accent: "#2563EB",
-    to: "/products",
-    items: CRATE_DROP_NAV.groups.find((g) => g.id === "products")?.items.map((item) => ({
-      ...item,
-      to: item.to.replace("/shop?category=sealed", "/products").replace("category=sealed&", "products?"),
-    })) ?? [],
-  },
-};
+export function buildNavDestinations(lines = DEFAULT_PRODUCT_LINES) {
+  const crate = buildCrateDropNav(lines);
+  return {
+    home: crate.home,
+    contact: { label: "Contact", to: "/contact" },
+    preorders: crate.groups.find((g) => g.id === "preorders"),
+    products: crate.groups.find((g) => g.id === "products"),
+  };
+}
 
-export const NAV_GROUPS = [NAV_DESTINATIONS.preorders, NAV_DESTINATIONS.products];
+export function buildNavGroups(lines = DEFAULT_PRODUCT_LINES) {
+  const destinations = buildNavDestinations(lines);
+  return [destinations.preorders, destinations.products];
+}
+
+/** Static defaults — prefer buildNavDestinations / buildNavGroups with active catalog lines. */
+export const NAV_DESTINATIONS = buildNavDestinations();
+export const NAV_GROUPS = buildNavGroups();
 
 /** @deprecated Use NAV_GROUPS — kept for callers expecting a groups array on destinations. */
 NAV_DESTINATIONS.groups = NAV_GROUPS;

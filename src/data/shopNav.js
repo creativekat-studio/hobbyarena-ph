@@ -1,6 +1,7 @@
 /**
  * Shop navigation layouts — switch in Admin → Design preview.
  */
+import { DEFAULT_PRODUCT_LINES } from "./catalogDefaults.js";
 
 export const SHOP_NAV_LAYOUTS = {
   dock: {
@@ -25,42 +26,73 @@ export const SHOP_NAV_LAYOUTS = {
   },
 };
 
-function lineUrl(base, line) {
+export function lineUrl(base, line) {
   if (!line || line === "all") return base;
   return `${base}?line=${line}`;
 }
 
-export const CRATE_DROP_NAV = {
-  home: { label: "Home", to: "/" },
-  contact: { label: "Contact", to: "/contact" },
-  groups: [
-    {
-      id: "preorders",
-      label: "Pre-Orders",
-      tagline: "Reserve incoming sets before they sell out.",
-      accent: "#F5C518",
-      to: "/preorders",
-      items: [
-        { label: "All Pre-Orders", to: "/preorders", hint: "Full pre-order catalog" },
-        { label: "One Piece", to: lineUrl("/preorders", "one-piece"), hint: "OP TCG pre-orders" },
-        { label: "Pokémon", to: lineUrl("/preorders", "pokemon"), hint: "Pokémon TCG pre-orders" },
-      ],
-    },
-    {
-      id: "products",
-      label: "Products",
-      tagline: "In-stock sealed products ready to ship.",
-      accent: "#2563EB",
-      to: "/products",
-      items: [
-        { label: "All Products", to: "/products", hint: "Everything in stock" },
-        { label: "One Piece", to: lineUrl("/products", "one-piece"), hint: "OP sealed products" },
-        { label: "Pokémon", to: lineUrl("/products", "pokemon"), hint: "Pokémon sealed products" },
-        { label: "Gundam", to: lineUrl("/products", "gundam"), hint: "Gundam products" },
-      ],
-    },
-  ],
-};
+/** Short label for mega-menu links (e.g. "Pokémon TCG" → "Pokémon"). */
+export function navLineLabel(line) {
+  const raw = String(line?.label || line?.match || "").trim();
+  if (!raw) return "Line";
+  return raw
+    .replace(/\s+TCG$/i, "")
+    .replace(/\s+CG$/i, "")
+    .replace(/\s+Card Game$/i, "")
+    .trim() || raw;
+}
+
+export function buildLineNavItems(basePath, lines, { allLabel, allHint, lineHint } = {}) {
+  const active = (Array.isArray(lines) ? lines : []).filter((line) => line?.active !== false && line?.id);
+  return [
+    { label: allLabel, to: basePath, hint: allHint },
+    ...active.map((line) => {
+      const label = navLineLabel(line);
+      const hint = typeof lineHint === "function" ? lineHint(label, line) : `${label} products`;
+      return {
+        label,
+        to: lineUrl(basePath, line.id),
+        hint,
+      };
+    }),
+  ];
+}
+
+export function buildCrateDropNav(lines = DEFAULT_PRODUCT_LINES) {
+  return {
+    home: { label: "Home", to: "/" },
+    contact: { label: "Contact", to: "/contact" },
+    groups: [
+      {
+        id: "preorders",
+        label: "Pre-Orders",
+        tagline: "Reserve incoming sets before they sell out.",
+        accent: "#F5C518",
+        to: "/preorders",
+        items: buildLineNavItems("/preorders", lines, {
+          allLabel: "All Pre-Orders",
+          allHint: "Full pre-order catalog",
+          lineHint: (label) => `${label} pre-orders`,
+        }),
+      },
+      {
+        id: "products",
+        label: "Products",
+        tagline: "In-stock sealed products ready to ship.",
+        accent: "#2563EB",
+        to: "/products",
+        items: buildLineNavItems("/products", lines, {
+          allLabel: "All Products",
+          allHint: "Everything in stock",
+          lineHint: (label) => `${label} products`,
+        }),
+      },
+    ],
+  };
+}
+
+/** Static default — prefer buildCrateDropNav(activeLines) in the UI. */
+export const CRATE_DROP_NAV = buildCrateDropNav();
 
 export const FLAT_NAV = {
   home: { label: "Home", to: "/" },
@@ -72,24 +104,30 @@ export const FLAT_NAV = {
   ],
 };
 
-export const COMPACT_NAV = {
-  home: { label: "Home", to: "/" },
-  contact: { label: "Contact", to: "/contact" },
-  shopMenu: {
-    label: "Shop",
-    groups: CRATE_DROP_NAV.groups,
-  },
-};
+export function buildCompactNav(lines = DEFAULT_PRODUCT_LINES) {
+  const crate = buildCrateDropNav(lines);
+  return {
+    home: crate.home,
+    contact: crate.contact,
+    shopMenu: {
+      label: "Shop",
+      groups: crate.groups,
+    },
+  };
+}
 
-export function getNavConfig(layoutId) {
+export const COMPACT_NAV = buildCompactNav();
+
+export function getNavConfig(layoutId, lines = DEFAULT_PRODUCT_LINES) {
+  const crate = buildCrateDropNav(lines);
   switch (layoutId) {
     case "flat":
       return { type: "flat", ...FLAT_NAV };
     case "compact":
-      return { type: "compact", ...COMPACT_NAV };
+      return { type: "compact", ...buildCompactNav(lines) };
     case "crateDrop":
-      return { type: "crateDrop", ...CRATE_DROP_NAV };
+      return { type: "crateDrop", ...crate };
     default:
-      return { type: "dock", ...CRATE_DROP_NAV };
+      return { type: "dock", ...crate };
   }
 }

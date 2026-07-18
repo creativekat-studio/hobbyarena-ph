@@ -277,7 +277,7 @@ export function customerResponseButtons({
 
 /** Single Messenger CTA (e.g. ready for pickup). */
 export function messengerButton({
-  caption = "Message us to schedule pickup.",
+  caption = "",
   label = "Message Hobby Arena PH",
   href,
 } = {}) {

@@ -53,7 +53,6 @@ function customerActionButtonsBlock(emailType) {
 
   if (emailType === "ready_for_pickup" || emailType === "partial_refund_sent") {
     return messengerButton({
-      caption: "Message us to schedule pickup during processing hours (Mon–Fri, 8:00 AM – 8:00 PM).",
       label: "Message Hobby Arena PH",
     });
   }
@@ -61,12 +60,34 @@ function customerActionButtonsBlock(emailType) {
   return "";
 }
 
+/** Email clients cannot reliably load data: URLs; dumping base64 looks like gibberish. */
+function isEmailSafeAttachmentUrl(url) {
+  return typeof url === "string" && /^https?:\/\//i.test(url.trim());
+}
+
 function statusAttachmentBlock(attachment) {
-  if (!attachment?.url) return "";
+  if (!attachment) return "";
   const c = EMAIL_BRAND.colors;
   const label = escapeHtml(attachment.label || "Attachment");
-  const href = escapeHtml(attachment.url);
-  const isPdf = attachment.type === "pdf" || href.includes(".pdf") || href.includes("application/pdf");
+  const rawUrl = String(attachment.url || "").trim();
+  const links = getEmailLinks();
+
+  // Never embed data: / blob: URLs — they break rendering and flood the plain-text part.
+  if (!isEmailSafeAttachmentUrl(rawUrl)) {
+    const accountHref = escapeHtml(links.accountUrl);
+    return `
+      <div style="margin:20px 0;padding:14px 16px;border-radius:8px;background:${c.page};border:1px solid ${c.border}">
+        <p style="margin:0 0 8px;font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:${c.muted}">Attachment</p>
+        <p style="margin:0;font-family:Inter,Arial,sans-serif;font-size:14px;line-height:1.5;color:${c.ink}">
+          <a href="${accountHref}" style="color:${c.accent};font-weight:700;text-decoration:none">View ${label} in your account</a>
+        </p>
+      </div>`;
+  }
+
+  const href = escapeHtml(rawUrl);
+  const isPdf = attachment.type === "pdf"
+    || /\.pdf(?:\?|#|$)/i.test(rawUrl)
+    || /application\/pdf/i.test(rawUrl);
 
   if (isPdf) {
     return `
@@ -676,8 +697,12 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     text.push("", "Message Hobby Arena PH:", links.messengerUrl);
   }
 
-  if (order.statusAttachment?.url) {
-    text.push("", `Attachment: ${order.statusAttachment.url}`);
+  if (order.statusAttachment) {
+    if (isEmailSafeAttachmentUrl(order.statusAttachment.url)) {
+      text.push("", `Attachment: ${order.statusAttachment.url}`);
+    } else {
+      text.push("", `Attachment: view in your account — ${links.accountUrl}`);
+    }
   }
 
   const assignedFooter = resolveReminderFooter(options.reminder, emailType);
