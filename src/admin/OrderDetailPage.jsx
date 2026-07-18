@@ -15,6 +15,7 @@ import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHead
 import { ArchiveIcon, RestoreIcon } from "../components/icons.jsx";
 import { isArchivedOrder, useOrders } from "../lib/ordersStore.jsx";
 import { ORDER_STATUS_EMAIL_LABELS } from "../lib/orderEmailTriggers.js";
+import { formatOrderTimestamp } from "../lib/orderTimestamps.js";
 import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
 import {
   OrderDetailLayout,
@@ -133,7 +134,7 @@ export default function OrderDetailPage() {
       <AdminPageHeader
         eyebrow={archived ? "Archived order" : "Order detail"}
         title={order.id}
-        subtitle={`${order.date} · ${order.customer} · ${order.email}`}
+        subtitle={`${formatOrderTimestamp(order)} · ${order.customer} · ${order.email}`}
         action={(
           archived ? (
             <Tooltip title="Restore">

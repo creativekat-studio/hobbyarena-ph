@@ -452,6 +452,9 @@ export function OrdersProvider({ children }) {
         refundAmount: item.refundAmount ?? 0,
         allocatedQty: item.allocatedQty ?? 0,
         depositPaid: item.depositPaid ?? 0,
+        creditAmount: item.creditAmount ?? 0,
+        ...(item.depositReceived != null ? { depositReceived: item.depositReceived } : {}),
+        ...(item.balanceReceived != null ? { balanceReceived: item.balanceReceived } : {}),
       }));
 
       const statusAttachment = findLatestAdminTrailAttachment(order, primaryItem.id);
@@ -489,6 +492,7 @@ export function OrdersProvider({ children }) {
             refundAmount: primaryItem.refundAmount ?? 0,
             allocatedQty: primaryItem.allocatedQty ?? 0,
             depositPaid: primaryItem.depositPaid ?? 0,
+            creditAmount: primaryItem.creditAmount ?? 0,
             lineTotal: primaryItem.lineTotal ?? 0,
           },
           ...(statusAttachment ? { statusAttachment } : {}),
@@ -596,6 +600,7 @@ export function OrdersProvider({ children }) {
           name: item.name,
           quantity,
           price: item.price,
+          cost: item.cost ?? 0,
           lineTotal,
           tag: item.tag,
           line: item.line,
@@ -722,7 +727,17 @@ export function OrdersProvider({ children }) {
       });
     };
 
-    const setPaymentAndStatus = async (id, payment, status, lineItemId = null, note = "", attachment, draftAllocatedQty = undefined, draftRefundAmount = undefined) => {
+    const setPaymentAndStatus = async (
+      id,
+      payment,
+      status,
+      lineItemId = null,
+      note = "",
+      attachment,
+      draftAllocatedQty = undefined,
+      draftRefundAmount = undefined,
+      draftAmountReceived = undefined,
+    ) => {
       let resolvedAttachment = attachment;
       if (attachment?.url) {
         const compressedUrl = await normalizeProofDataUrl(attachment.url);
@@ -744,7 +759,14 @@ export function OrdersProvider({ children }) {
 
           const lineItems = items.map((item) =>
             item.id === targetId
-              ? applyPaymentStatusToLineItem(item, payment, status, draftAllocatedQty, draftRefundAmount)
+              ? applyPaymentStatusToLineItem(
+                item,
+                payment,
+                status,
+                draftAllocatedQty,
+                draftRefundAmount,
+                draftAmountReceived,
+              )
               : item,
           );
           const targetItem = lineItems.find((item) => item.id === targetId);
@@ -755,7 +777,20 @@ export function OrdersProvider({ children }) {
             || (targetItem.allocatedQty ?? 0) === (prevItem.allocatedQty ?? 0);
           const refundUnchanged = draftRefundAmount === undefined
             || (targetItem.refundAmount ?? 0) === (prevItem.refundAmount ?? 0);
-          if (statusUnchanged && paymentUnchanged && allocUnchanged && refundUnchanged) return o;
+          const creditUnchanged = (targetItem.creditAmount ?? 0) === (prevItem.creditAmount ?? 0);
+          const receivedUnchanged = draftAmountReceived === undefined
+            || (
+              (targetItem.depositReceived ?? prevItem.depositReceived) === (prevItem.depositReceived)
+              && (targetItem.balanceReceived ?? prevItem.balanceReceived) === (prevItem.balanceReceived)
+            );
+          if (
+            statusUnchanged
+            && paymentUnchanged
+            && allocUnchanged
+            && refundUnchanged
+            && creditUnchanged
+            && receivedUnchanged
+          ) return o;
 
           const allocationCheck = validateAllocationForStatus(targetItem, status);
           if (!allocationCheck.ok) return o;

@@ -1,5 +1,14 @@
 /** Pre-order + in-stock order lifecycle for admin. */
 
+import {
+  creditPatchForReceived,
+  expectedAmountReceived,
+  lineOpenCredit,
+  netBalanceDueAfterCredit,
+  shouldCaptureAmountReceived,
+  statusClearsCredit,
+} from "../lib/orderCredit.js";
+
 /** Case 1: 100% stock allocated — customer must pay remaining balance. */
 export const ALLOCATION_FULFILLED_PAY_BALANCE = "Allocation Fulfilled & Pay Balance";
 
@@ -288,6 +297,13 @@ export function refundAfterAllocation(orderOrItem, allocatedQty, depositPercent 
   return Math.max(0, depositPaid - allocatedFull);
 }
 
+/** Base allocation refund + unused order-scoped overpayment credit. */
+export function refundAfterAllocationWithCredit(orderOrItem, allocatedQty, depositPercent = 30) {
+  const base = refundAfterAllocation(orderOrItem, allocatedQty, depositPercent);
+  const credit = Math.max(0, Number(orderOrItem?.creditAmount) || 0);
+  return base + credit;
+}
+
 export function inferStatusesAfterAllocation(order, allocatedQty) {
   const qty = Math.max(1, order.qty ?? 1);
   const clamped = Math.max(0, Math.min(qty, allocatedQty));
@@ -308,11 +324,12 @@ export function inferStatusesAfterAllocation(order, allocatedQty) {
     status = ALLOCATION_FULFILLED_PAY_BALANCE;
   }
 
+  const grossBalance = balanceAfterAllocation(order, clamped);
   return {
     payment,
     status,
     allocatedQty: clamped,
-    balanceDue: balanceAfterAllocation(order, clamped),
+    balanceDue: netBalanceDueAfterCredit(grossBalance, order?.creditAmount),
   };
 }
 
@@ -514,21 +531,33 @@ export function normalizeLineItem(item, orderDefaults = {}) {
   }
   const quantity = migrated.quantity ?? 1;
   const price = migrated.price ?? 0;
+  const cost = migrated.cost != null && migrated.cost !== ""
+    ? Math.max(0, Number(migrated.cost) || 0)
+    : undefined;
   const lineTotal = migrated.lineTotal ?? price * quantity;
 
   return {
     allocatedQty: 0,
     balanceDue: 0,
     depositPaid: lineTotal,
+    creditAmount: 0,
     ...migrated,
     quantity,
     price,
+    ...(cost != null ? { cost } : {}),
     lineTotal,
     payment,
     status,
     allocatedQty: migrated.allocatedQty ?? 0,
     balanceDue: migrated.balanceDue ?? 0,
     depositPaid: migrated.depositPaid ?? migrated.linePaid ?? lineTotal,
+    creditAmount: Math.max(0, Number(migrated.creditAmount) || 0),
+    ...(migrated.depositReceived != null
+      ? { depositReceived: Math.max(0, Number(migrated.depositReceived) || 0) }
+      : {}),
+    ...(migrated.balanceReceived != null
+      ? { balanceReceived: Math.max(0, Number(migrated.balanceReceived) || 0) }
+      : {}),
   };
 }
 
@@ -682,6 +711,7 @@ export function syncOrderRollup(lineItems) {
     qty: lineItems.reduce((sum, item) => sum + (item.quantity ?? 1), 0),
     allocatedQty: lineItems.reduce((sum, item) => sum + (item.allocatedQty ?? 0), 0),
     balanceDue: lineItems.reduce((sum, item) => sum + (item.balanceDue ?? 0), 0),
+    creditAmount: lineItems.reduce((sum, item) => sum + (item.creditAmount ?? 0), 0),
   };
 }
 
@@ -838,23 +868,29 @@ export function refundedAmountForLineItem(item, depositPercent = 30) {
   const isPreorder = resolveOrderKindForItem(item) === "Pre-order";
   const payment = migratePaymentStatus(item.payment);
   const status = migrateOrderStatus(item.status);
+  const credit = lineOpenCredit(item);
 
   if (item.refundAmount != null && item.refundAmount >= 0) {
     return item.refundAmount;
   }
 
   if (!isPreorder) {
-    return status === "Refunded" || payment === "Refunded" ? fullLine : 0;
+    const base = status === "Refunded" || payment === "Refunded" ? fullLine : 0;
+    return base > 0 ? base + credit : credit;
   }
 
   const allocated = item.allocatedQty ?? 0;
 
   if (status === "Refunded" || payment === "Refunded" || status === "For Full Refund") {
-    return lineDepositPaid(item, depositPercent);
+    return lineDepositPaid(item, depositPercent) + credit;
   }
 
-  if (status === "Partially Fulfilled & For Refund" || payment === "Partially Refunded") {
-    return refundAfterAllocation(item, allocated, depositPercent);
+  if (
+    status === "Partially Fulfilled & For Refund"
+    || payment === "For Partial Refund"
+    || payment === "Partially Refunded"
+  ) {
+    return refundAfterAllocationWithCredit(item, allocated, depositPercent);
   }
 
   return 0;
@@ -914,12 +950,21 @@ export function validateAllocationForStatus(lineItem, status) {
   return { ok: true };
 }
 
-export function applyPaymentStatusToLineItem(item, payment, status, draftAllocatedQty = undefined, draftRefundAmount = undefined) {
+export function applyPaymentStatusToLineItem(
+  item,
+  payment,
+  status,
+  draftAllocatedQty = undefined,
+  draftRefundAmount = undefined,
+  draftAmountReceived = undefined,
+) {
   const normalized = migrateOrderStatus(status);
+  const paymentNorm = migratePaymentStatus(payment);
   const qty = Math.max(1, item.quantity ?? 1);
   let allocatedQty = item.allocatedQty ?? 0;
   const isPreorder = resolveOrderKindForItem(item) === "Pre-order";
   const depositPercent = item.depositPercent ?? 30;
+  const kind = isPreorder ? "Pre-order" : "In-stock";
 
   if (isPreorder) {
     if (normalized === ALLOCATION_FULFILLED_PAY_BALANCE) {
@@ -946,6 +991,27 @@ export function applyPaymentStatusToLineItem(item, payment, status, draftAllocat
     }
   }
 
+  let creditAmount = lineOpenCredit(item);
+  let depositReceived = item.depositReceived;
+  let balanceReceived = item.balanceReceived;
+
+  // Record cash received on DP Paid / Fully Paid (defaults to exact due → consumes credit).
+  if (shouldCaptureAmountReceived(paymentNorm)) {
+    const receiveOpts = {
+      depositDue: lineDepositPaid(item, depositPercent),
+      balanceDueNet: Math.max(0, Number(item.balanceDue) || 0),
+      lineTotal: item.lineTotal ?? (item.price ?? 0) * qty,
+      kind,
+    };
+    const received = draftAmountReceived != null && Number(draftAmountReceived) >= 0
+      ? Number(draftAmountReceived)
+      : expectedAmountReceived(paymentNorm, receiveOpts);
+    const patch = creditPatchForReceived(item, paymentNorm, received, receiveOpts);
+    if (patch.creditAmount != null) creditAmount = patch.creditAmount;
+    if (patch.depositReceived != null) depositReceived = patch.depositReceived;
+    if (patch.balanceReceived != null) balanceReceived = patch.balanceReceived;
+  }
+
   let balanceDue = item.balanceDue;
   if (isPreorder) {
     const stub = {
@@ -956,8 +1022,8 @@ export function applyPaymentStatusToLineItem(item, payment, status, draftAllocat
       depositPercent,
       payment,
       status: normalized,
+      creditAmount,
     };
-    const paymentNorm = migratePaymentStatus(payment);
     // Settled — never keep a stale "balance before release" after pay / fulfill.
     if (
       paymentNorm === "Fully Paid"
@@ -974,26 +1040,47 @@ export function applyPaymentStatusToLineItem(item, payment, status, draftAllocat
       normalized === ALLOCATION_FULFILLED_PAY_BALANCE
       || normalized === "Partially Fulfilled & Pay Balance"
     ) {
-      balanceDue = balanceAfterAllocation(stub, allocatedQty, depositPercent);
+      const gross = balanceAfterAllocation(stub, allocatedQty, depositPercent);
+      balanceDue = netBalanceDueAfterCredit(gross, creditAmount);
     }
   }
 
   let refundAmount = item.refundAmount;
+  const itemForRefund = {
+    ...item,
+    allocatedQty,
+    payment,
+    status: normalized,
+    creditAmount,
+    refundAmount: undefined,
+  };
   if (draftRefundAmount != null && draftRefundAmount >= 0) {
     refundAmount = draftRefundAmount;
   } else if (statusNeedsRefundAmount(normalized)) {
+    refundAmount = refundedAmountForLineItem(itemForRefund, depositPercent);
+  } else if (normalized === "Refunded" || paymentNorm === "Refunded") {
     refundAmount = refundedAmountForLineItem(
-      { ...item, allocatedQty, payment, status: normalized, refundAmount: undefined },
-      depositPercent,
-    );
-  } else if (normalized === "Refunded" || payment === "Refunded") {
-    refundAmount = refundedAmountForLineItem(
-      { ...item, allocatedQty: 0, payment, status: normalized, refundAmount: undefined },
+      { ...itemForRefund, allocatedQty: 0 },
       depositPercent,
     );
   }
 
-  return { ...item, payment, status: normalized, allocatedQty, balanceDue, refundAmount };
+  // Refund path folds unused credit into the refund amount.
+  if (statusClearsCredit(normalized, paymentNorm)) {
+    creditAmount = 0;
+  }
+
+  return {
+    ...item,
+    payment,
+    status: normalized,
+    allocatedQty,
+    balanceDue,
+    refundAmount,
+    creditAmount,
+    ...(depositReceived != null ? { depositReceived } : {}),
+    ...(balanceReceived != null ? { balanceReceived } : {}),
+  };
 }
 
 export function inferLineItemAfterAllocation(item, allocatedQty) {
@@ -1008,6 +1095,7 @@ export function inferLineItemAfterAllocation(item, allocatedQty) {
     depositPercent: 30,
     payment: item.payment,
     status: currentStatus,
+    creditAmount: item.creditAmount ?? 0,
   };
   const inferred = inferStatusesAfterAllocation(stubOrder, clamped);
 

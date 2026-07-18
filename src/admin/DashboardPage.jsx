@@ -12,6 +12,7 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
@@ -33,9 +34,12 @@ import {
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
+import { InfoIcon } from "../components/icons.jsx";
 import { computeDashboardAnalytics } from "../lib/dashboardAnalytics.js";
 import { STATUS_COLOR as ORDER_STATUS_COLOR, orderStatusLabel } from "../data/orderWorkflow.js";
+import { buildCostByProductId } from "../lib/orderRevenue.js";
 import { isArchivedOrder, useOrders } from "../lib/ordersStore.jsx";
+import { useInventory } from "../lib/inventoryStore.jsx";
 import { useIsMobileMd } from "../lib/mobileUi.js";
 
 const RECENT_ORDERS_GRID = "minmax(140px, 1.1fr) minmax(120px, 1fr) minmax(140px, 1.3fr) minmax(120px, 0.9fr)";
@@ -360,23 +364,60 @@ function KpiStrip({ panelSx, items, periodLabel }) {
               display: "flex",
               flexDirection: "column",
               alignItems: "flex-start",
+              position: "relative",
             }}
           >
-            <Typography
-              variant="overline"
-              sx={{
-                color: "primary.main",
-                fontWeight: 800,
-                letterSpacing: "0.08em",
-                fontSize: "0.65rem",
-                lineHeight: 1.25,
-                display: "block",
-                minHeight: "2.5em",
-                width: "100%",
-              }}
+            <Stack
+              direction="row"
+              alignItems="center"
+              spacing={0.5}
+              sx={{ width: "100%", minHeight: "2.5em" }}
             >
-              {item.label}
-            </Typography>
+              <Typography
+                variant="overline"
+                sx={{
+                  color: "primary.main",
+                  fontWeight: 800,
+                  letterSpacing: "0.08em",
+                  fontSize: "0.65rem",
+                  lineHeight: 1.25,
+                  minWidth: 0,
+                }}
+              >
+                {item.label}
+              </Typography>
+              {item.info ? (
+                <Tooltip
+                  title={(
+                    <Box>
+                      <Typography sx={{ fontWeight: 700, fontSize: "0.75rem", mb: 0.25 }}>
+                        {item.label}
+                      </Typography>
+                      <Typography sx={{ fontSize: "0.75rem", lineHeight: 1.35 }}>
+                        {item.info}
+                      </Typography>
+                    </Box>
+                  )}
+                  placement="top"
+                  arrow
+                >
+                  <Box
+                    component="span"
+                    sx={{
+                      display: "inline-flex",
+                      color: "text.secondary",
+                      cursor: "help",
+                      lineHeight: 0,
+                      flexShrink: 0,
+                      "&:hover": { color: "text.primary" },
+                    }}
+                    aria-label={`${item.label}: ${item.info}`}
+                  >
+                    <InfoIcon sx={{ fontSize: 14 }} />
+                  </Box>
+                </Tooltip>
+              ) : null}
+            </Stack>
             <Typography
               sx={{
                 color: "text.primary",
@@ -393,13 +434,6 @@ function KpiStrip({ panelSx, items, periodLabel }) {
             >
               {item.value}
             </Typography>
-            {item.subLabel ? (
-              <Typography sx={{ color: "text.secondary", fontSize: "0.7rem", mt: 0.4, lineHeight: 1.3 }}>
-                {item.subLabel}
-              </Typography>
-            ) : (
-              <Box sx={{ display: { xs: "none", md: "block" }, height: "1.05rem", mt: 0.4 }} />
-            )}
             <Stack direction="row" spacing={0.5} alignItems="baseline" flexWrap="wrap" useFlexGap sx={{ mt: "auto", pt: 0.75 }}>
               <Typography
                 sx={{
@@ -550,6 +584,7 @@ export default function DashboardPage() {
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
   const { orders } = useOrders();
+  const { items: inventoryItems } = useInventory();
 
   const primary = theme.palette.primary.main;
   const secondary = theme.palette.secondary.main;
@@ -570,14 +605,21 @@ export default function DashboardPage() {
     return period;
   }, [period, customRange.from, customRange.to]);
 
+  // Use raw inventory rows (always have cost) — catalogProducts previously omitted cost.
+  const costByProductId = useMemo(
+    () => buildCostByProductId(inventoryItems),
+    [inventoryItems],
+  );
+
   const analytics = useMemo(
     () => computeDashboardAnalytics(
       orders.filter((order) => !isArchivedOrder(order)),
       periodQuery,
       new Date(),
       revenueBasis,
+      costByProductId,
     ),
-    [orders, periodQuery, revenueBasis],
+    [orders, periodQuery, revenueBasis, costByProductId],
   );
 
   const salesByLine = useMemo(
@@ -625,12 +667,12 @@ export default function DashboardPage() {
         : period === "1Y"
           ? "Monthly gross income"
           : "Gross income by period");
-  const kpiRevenueSub = revenueBasis === "fulfilled"
-    ? "From fulfilled lines"
-    : "Sales before product cost";
-  const kpiNetSub = revenueBasis === "fulfilled"
-    ? "Fulfilled after product cost"
-    : "After product cost";
+  const kpiRevenueInfo = revenueBasis === "fulfilled"
+    ? "Allocated × price on fulfilled lines."
+    : "Allocated × price after allocation; deposit only before allocation.";
+  const kpiNetInfo = revenueBasis === "fulfilled"
+    ? "(Price − cost) × fulfilled units."
+    : "(Price − cost) × allocated units. Deposit-only pre-orders count as ₱0 until allocated.";
 
   function selectPeriod(next) {
     setPeriod(next);
@@ -775,8 +817,8 @@ export default function DashboardPage() {
         panelSx={panelSx}
         periodLabel={periodLabel}
         items={[
-          { label: "Gross Income", value: PESO.format(kpis.revenue), delta: kpis.revenueDelta, subLabel: kpiRevenueSub },
-          { label: "Net Income", value: PESO.format(kpis.netRevenue), delta: kpis.netRevenueDelta, subLabel: kpiNetSub },
+          { label: "Gross Income", value: PESO.format(kpis.revenue), delta: kpis.revenueDelta, info: kpiRevenueInfo },
+          { label: "Net Income", value: PESO.format(kpis.netRevenue), delta: kpis.netRevenueDelta, info: kpiNetInfo },
           { label: "Orders", value: kpis.orders, delta: kpis.ordersDelta },
           { label: "Customers", value: kpis.customers.toLocaleString(), delta: kpis.customersDelta },
           { label: "Avg. order", value: PESO.format(kpis.avgOrder), delta: kpis.avgOrderDelta },
@@ -956,7 +998,7 @@ export default function DashboardPage() {
                     >
                       {order.id}
                     </MuiLink>
-                    <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", whiteSpace: "nowrap" }}>
+                    <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", whiteSpace: "nowrap", fontFamily: MONO_FONT }}>
                       {order.date}
                     </Typography>
                   </Box>

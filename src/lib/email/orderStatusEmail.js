@@ -109,6 +109,7 @@ function normalizeLineItems(order) {
       refundAmount: Number(item.refundAmount) || 0,
       allocatedQty: Number(item.allocatedQty) || 0,
       depositPaid: Number(item.depositPaid) || 0,
+      creditAmount: Number(item.creditAmount) || 0,
     }));
   }
   return [{
@@ -124,6 +125,7 @@ function normalizeLineItems(order) {
     refundAmount: Number(order.refundAmount) || 0,
     allocatedQty: Number(order.allocatedQty) || 0,
     depositPaid: Number(order.total) || 0,
+    creditAmount: Number(order.creditAmount) || 0,
   }];
 }
 
@@ -140,6 +142,7 @@ function getUpdatedItem(order) {
       refundAmount: Number(order.updatedLineItem.refundAmount) || 0,
       allocatedQty: Number(order.updatedLineItem.allocatedQty) || 0,
       depositPaid: Number(order.updatedLineItem.depositPaid) || 0,
+      creditAmount: Number(order.updatedLineItem.creditAmount) || 0,
       lineTotal: Number(order.updatedLineItem.lineTotal) || 0,
     };
   }
@@ -152,6 +155,7 @@ function getUpdatedItem(order) {
       refundAmount: Number(order.refundAmount) || 0,
       allocatedQty: Number(order.allocatedQty) || 0,
       depositPaid: Number(order.total) || 0,
+      creditAmount: Number(order.creditAmount ?? lineItems[0].creditAmount) || 0,
     };
   }
 
@@ -306,6 +310,9 @@ function invoiceSummary(order) {
     if (item.depositPaid > 0) {
       rows.push({ label: `Deposit paid (${dp}%)`, value: formatPeso(item.depositPaid) });
     }
+    if ((item.creditAmount || 0) > 0) {
+      rows.push({ label: "Order credit", value: formatPeso(item.creditAmount) });
+    }
     if (item.balanceDue > 0) {
       rows.push({ label: `Balance due now (${bal}%)`, value: formatPeso(item.balanceDue), strong: true });
     }
@@ -314,10 +321,14 @@ function invoiceSummary(order) {
     }
   } else if (lineItems.length > 1) {
     const depositTotal = lineItems.reduce((sum, line) => sum + line.depositPaid, 0);
+    const creditTotal = lineItems.reduce((sum, line) => sum + (line.creditAmount || 0), 0);
     const balanceTotal = lineItems.reduce((sum, line) => sum + line.balanceDue, 0);
     const refundTotal = lineItems.reduce((sum, line) => sum + line.refundAmount, 0);
     if (depositTotal > 0) {
       rows.push({ label: `Deposit paid (${dp}%)`, value: formatPeso(depositTotal) });
+    }
+    if (creditTotal > 0) {
+      rows.push({ label: "Order credit", value: formatPeso(creditTotal) });
     }
     if (balanceTotal > 0) {
       rows.push({ label: `Balance due now (${bal}%)`, value: formatPeso(balanceTotal), strong: true });
@@ -327,6 +338,9 @@ function invoiceSummary(order) {
     }
   } else {
     rows.push({ label: `Paid now DP (${dp}%)`, value: formatPeso(order.total) });
+    if ((order.creditAmount || 0) > 0) {
+      rows.push({ label: "Order credit", value: formatPeso(order.creditAmount) });
+    }
     if (order.balanceDue > 0) {
       rows.push({ label: `Balance Due (${bal}%)`, value: formatPeso(order.balanceDue), strong: true });
     }

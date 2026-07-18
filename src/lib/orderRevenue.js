@@ -63,8 +63,32 @@ export function lineItemUnitPrice(item) {
   return lineItemAmount(item) / qty;
 }
 
-export function lineItemUnitCost(item) {
-  if (item?.cost != null && item.cost !== "") return Math.max(0, Number(item.cost) || 0);
+/**
+ * Unit cost for COGS.
+ * Prefer line snapshot, then optional catalog lookup (for older orders),
+ * then last-resort % of price so net is never blank.
+ *
+ * @param {object} item
+ * @param {Record<string, number>|Map<string, number>|null} [costByProductId]
+ */
+export function lineItemUnitCost(item, costByProductId = null) {
+  const lineCost = item?.cost != null && item.cost !== ""
+    ? Number(item.cost)
+    : null;
+  // Prefer a real snapshotted cost (> 0). Treat 0 as "unset" so catalog can fill in.
+  if (lineCost != null && !Number.isNaN(lineCost) && lineCost > 0) {
+    return lineCost;
+  }
+  if (costByProductId && item?.id != null) {
+    const fromCatalog = costByProductId instanceof Map
+      ? costByProductId.get(item.id)
+      : costByProductId[item.id];
+    if (fromCatalog != null && fromCatalog !== "") {
+      const n = Number(fromCatalog);
+      if (!Number.isNaN(n) && n >= 0) return Math.max(0, n);
+    }
+  }
+  if (lineCost != null && !Number.isNaN(lineCost)) return Math.max(0, lineCost);
   return Math.round(lineItemUnitPrice(item) * 0.72);
 }
 
@@ -154,10 +178,10 @@ export function lineItemAllocatedRevenue(item) {
   return lineItemUnitPrice(item) * lineItemQty(item);
 }
 
-export function lineItemCogs(item) {
+export function lineItemCogs(item, costByProductId = null) {
   if (lineItemGrossRevenue(item) <= 0) return 0;
 
-  const cost = lineItemUnitCost(item);
+  const cost = lineItemUnitCost(item, costByProductId);
   const allocated = lineItemAllocatedQty(item);
   const qty = lineItemQty(item);
   const payment = migratePaymentStatus(item?.payment);
@@ -171,6 +195,34 @@ export function lineItemCogs(item) {
   }
 
   return qty * cost;
+}
+
+function isPreorderLine(item) {
+  return item?.tag === "Pre-order" || item?.type === "Pre-order";
+}
+
+/**
+ * Net margin for a line: (price − cost) × kept units.
+ * Deposit-only pre-orders (no allocation yet) contribute ₱0 net — cash held, not earned.
+ */
+export function lineItemNetRevenue(item, depositPercent = 30, costByProductId = null) {
+  const gross = lineItemGrossRevenue(item, depositPercent);
+  if (gross <= 0) return 0;
+
+  const allocated = lineItemAllocatedQty(item);
+  const payment = migratePaymentStatus(item?.payment);
+  const status = migrateOrderStatus(item?.status);
+
+  if (
+    isPreorderLine(item)
+    && allocated <= 0
+    && DEPOSIT_STAGE_PAYMENTS.has(payment)
+    && !COMPLETED_STATUSES.has(status)
+  ) {
+    return 0;
+  }
+
+  return Math.max(0, gross - lineItemCogs(item, costByProductId));
 }
 
 export function isFulfilledLineItem(item) {
@@ -231,8 +283,11 @@ export function orderRevenue(order, basis = "paid") {
   return legacyOrderGross(order);
 }
 
-export function orderCogs(order, basis = "paid") {
-  return lineItemsForBasis(order, basis).reduce((sum, item) => sum + lineItemCogs(item), 0);
+export function orderCogs(order, basis = "paid", costByProductId = null) {
+  return lineItemsForBasis(order, basis).reduce(
+    (sum, item) => sum + lineItemCogs(item, costByProductId),
+    0,
+  );
 }
 
 /** Explicit refund amounts (for reporting). Gross already nets via DP + balance. */
@@ -247,11 +302,51 @@ export function orderRefunds(order, basis = "paid") {
 }
 
 /**
- * Net = gross − allocated cost.
+ * Net = (price − cost) × kept units.
+ * Pre-order deposits before allocation do not count as net income.
  * Do not subtract refunds again — gross is already DP + balance (final price).
  */
-export function orderNetRevenue(order, basis = "paid") {
-  return Math.max(0, orderRevenue(order, basis) - orderCogs(order, basis));
+export function orderNetRevenue(order, basis = "paid", costByProductId = null) {
+  const depositPercent = getDepositPercent(order);
+  const items = lineItemsForBasis(order, basis);
+  if (items.length) {
+    return items.reduce(
+      (sum, item) => sum + lineItemNetRevenue(item, depositPercent, costByProductId),
+      0,
+    );
+  }
+  // Legacy single-line orders without lineItems[]
+  const gross = orderRevenue(order, basis);
+  if (gross <= 0) return 0;
+  const allocated = Math.max(0, Number(order?.allocatedQty) || 0);
+  const payment = migratePaymentStatus(order?.payment);
+  if (
+    (order?.type === "Pre-order" || isPreorderOrderLike(order))
+    && allocated <= 0
+    && DEPOSIT_STAGE_PAYMENTS.has(payment)
+  ) {
+    return 0;
+  }
+  return Math.max(0, gross - orderCogs(order, basis, costByProductId));
+}
+
+function isPreorderOrderLike(order) {
+  return order?.type === "Pre-order"
+    || order?.type === "Mixed"
+    || getOrderLineItems(order).some(isPreorderLine);
+}
+
+/** Build productId/sku → unit cost map from catalog/inventory products. */
+export function buildCostByProductId(products = []) {
+  const map = new Map();
+  for (const product of products) {
+    if (product?.cost == null || product.cost === "") continue;
+    const cost = Math.max(0, Number(product.cost) || 0);
+    if (product.id) map.set(product.id, cost);
+    // Orders/cart may key by either inventory id or display SKU.
+    if (product.sku) map.set(product.sku, cost);
+  }
+  return map;
 }
 
 /**

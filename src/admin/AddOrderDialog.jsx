@@ -154,6 +154,7 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
           id: picker.id,
           name: picker.name,
           price: picker.price,
+          cost: picker.cost ?? 0,
           quantity: qty,
           tag: picker.tag,
           line: picker.line,

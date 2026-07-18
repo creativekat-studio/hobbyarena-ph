@@ -45,23 +45,44 @@ function pad2(n) {
   return String(n).padStart(2, "0");
 }
 
-/** Local calendar date + time: `YYYY-MM-DD HH:mm:ss`. Falls back to date-only when no clock time exists. */
-export function formatOrderTimestamp(order, { withSeconds = true } = {}) {
-  const date = resolveOrderPlacedAt(order);
-  if (!date) return order?.date || "—";
-
+function formatLocalParts(date, { withSeconds = true } = {}) {
   const yyyy = date.getFullYear();
   const mm = pad2(date.getMonth() + 1);
   const dd = pad2(date.getDate());
   const hh = pad2(date.getHours());
   const mi = pad2(date.getMinutes());
   const ss = pad2(date.getSeconds());
-
-  if (!hasClockTime(order)) return `${yyyy}-${mm}-${dd}`;
-
   return withSeconds
     ? `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`
     : `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+}
+
+/**
+ * Format any instant (trail entry, proof upload, etc.) as `YYYY-MM-DD HH:mm:ss`.
+ * Shared across admin + storefront order details / movements.
+ */
+export function formatDateTime(value, { withSeconds = true, fallback = "—" } = {}) {
+  const date = coerceDate(value);
+  if (!date) {
+    if (value == null || value === "") return fallback;
+    return String(value);
+  }
+  return formatLocalParts(date, { withSeconds });
+}
+
+/** Local calendar date + time: `YYYY-MM-DD HH:mm:ss`. Falls back to date-only when no clock time exists. */
+export function formatOrderTimestamp(order, { withSeconds = true } = {}) {
+  const date = resolveOrderPlacedAt(order);
+  if (!date) return order?.date || "—";
+
+  if (!hasClockTime(order)) {
+    const yyyy = date.getFullYear();
+    const mm = pad2(date.getMonth() + 1);
+    const dd = pad2(date.getDate());
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  return formatLocalParts(date, { withSeconds });
 }
 
 function hasClockTime(order) {

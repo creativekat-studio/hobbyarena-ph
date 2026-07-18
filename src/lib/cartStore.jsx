@@ -118,6 +118,7 @@ export function CartProvider({ children }) {
           name: product.name,
           line: product.line,
           price: product.price,
+          cost: product.cost ?? 0,
           tag: product.tag,
           accent: product.accent,
           image: product.image,

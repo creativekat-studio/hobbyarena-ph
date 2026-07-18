@@ -53,11 +53,13 @@ import { useClientTiers } from "../lib/clientTiersStore.jsx";
 import { useInfiniteScroll } from "../lib/useInfiniteScroll.js";
 import {
   computeFulfilledSpendForEmail,
+  computeTotalSpentForEmail,
   getNextTierProgress,
   resolveClientTier,
 } from "../lib/clientTier.js";
 import { sortOrdersByOrderNo } from "../lib/orderIds.js";
 import { orderCustomerTotal } from "../lib/orderRevenue.js";
+import { formatOrderTimestamp, resolveOrderPlacedAt } from "../lib/orderTimestamps.js";
 import {
   getOrderLineItems,
   lineItemTrailLabel,
@@ -354,7 +356,7 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
             <Grid size={{ xs: 6, sm: 3 }}>
               <Box sx={{ p: 1.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}>
                 <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>Last order</Typography>
-                <Typography sx={{ fontWeight: 800, fontSize: "1.05rem", mt: 0.5 }}>{customer.lastOrderDate || "—"}</Typography>
+                <Typography sx={{ fontWeight: 800, fontSize: "0.9rem", mt: 0.5, fontFamily: MONO_FONT }}>{customer.lastOrderDate || "—"}</Typography>
               </Box>
             </Grid>
           </Grid>
@@ -395,7 +397,7 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
                     />
                     {(customer.fulfilledSpend || 0) <= 0 ? (
                       <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>
-                        Pending, mixed, and ready-for-pickup orders don’t count yet — only Fulfilled.
+                        Only Fulfilled line items count — ready-for-pickup and deposits don’t.
                       </Typography>
                     ) : null}
                   </>
@@ -499,8 +501,8 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
                           <TableCell sx={{ fontFamily: MONO_FONT, fontWeight: 700, whiteSpace: "nowrap", color: "primary.main" }}>
                             {order.id}
                           </TableCell>
-                          <TableCell sx={{ color: "text.secondary", display: { xs: "none", sm: "table-cell" }, whiteSpace: "nowrap" }}>
-                            {order.date || "—"}
+                          <TableCell sx={{ color: "text.secondary", display: { xs: "none", sm: "table-cell" }, whiteSpace: "nowrap", fontFamily: MONO_FONT, fontSize: "0.75rem" }}>
+                            {formatOrderTimestamp(order)}
                           </TableCell>
                           <TableCell>
                             <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexWrap: "wrap", rowGap: 0.5 }}>
@@ -583,17 +585,12 @@ export default function CustomersPage() {
     orders.forEach((order) => {
       const key = String(order.email || "").trim().toLowerCase();
       if (!key) return;
-      const current = ordersByEmail.get(key) || { count: 0, totalSpent: 0, lastOrderDate: null, list: [] };
-      // DP + balance (= allocated × price), not DP + original full amount / checkout deposit alone.
-      const netSpent = orderCustomerTotal(order);
-      const orderDate = order.date || null;
+      const current = ordersByEmail.get(key) || { count: 0, lastOrder: null, list: [] };
+      const placedAt = resolveOrderPlacedAt(order)?.getTime() || 0;
+      const currentPlacedAt = resolveOrderPlacedAt(current.lastOrder)?.getTime() || 0;
       ordersByEmail.set(key, {
         count: current.count + 1,
-        totalSpent: current.totalSpent + netSpent,
-        lastOrderDate:
-          !current.lastOrderDate || (orderDate && orderDate > current.lastOrderDate)
-            ? orderDate
-            : current.lastOrderDate,
+        lastOrder: placedAt >= currentPlacedAt ? order : current.lastOrder,
         list: [...current.list, order],
       });
     });
@@ -601,19 +598,27 @@ export default function CustomersPage() {
     return customers.map((customer) => {
       const stats = ordersByEmail.get(String(customer.email || "").trim().toLowerCase()) || {
         count: 0,
-        totalSpent: 0,
-        lastOrderDate: null,
+        lastOrder: null,
         list: [],
       };
-      const status = customerStatus(stats.count, stats.lastOrderDate);
+      const lastOrderDate = stats.lastOrder
+        ? formatOrderTimestamp(stats.lastOrder)
+        : null;
+      const status = customerStatus(
+        stats.count,
+        resolveOrderPlacedAt(stats.lastOrder)?.toISOString() || null,
+      );
+      // Total spent = recognized revenue (alloc × price, or DP before alloc).
+      const totalSpent = computeTotalSpentForEmail(orders, customer.email);
+      // Fulfilled = Fulfilled line finals only (loyalty base).
       const fulfilledSpend = computeFulfilledSpendForEmail(orders, customer.email);
       const tier = resolveClientTier(fulfilledSpend, tiers);
       const tierProgress = getNextTierProgress(fulfilledSpend, tiers);
       return {
         ...customer,
         orders: stats.count,
-        totalSpent: stats.totalSpent,
-        lastOrderDate: stats.lastOrderDate,
+        totalSpent,
+        lastOrderDate,
         orderList: sortOrdersByOrderNo(stats.list),
         status,
         tier,
@@ -726,50 +731,32 @@ export default function CustomersPage() {
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Avg. spend" value={PESO.format(stats.avgSpend)} accent={accents[3]} /></Grid>
         </Grid>
 
-        <Box sx={{ ...panelSx, p: { xs: 1.5, md: 2.5 } }}>
-          <Stack spacing={1.25}>
-            <FormControl size="small" sx={{ display: { xs: "flex", sm: "none" }, width: "100%" }}>
-              <InputLabel id="customers-filter">Filter</InputLabel>
-              <Select
-                labelId="customers-filter"
-                label="Filter"
-                value={filter}
-                onChange={(event) => setFilter(event.target.value)}
-              >
-                {FILTERS.map((item) => (
-                  <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              spacing={1.25}
-              alignItems={{ xs: "stretch", sm: "center" }}
+        <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
+          <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "center" }}>
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={filter}
+              onChange={(_, next) => { if (next) setFilter(next); }}
+              sx={{ flexWrap: "wrap" }}
             >
-              <ToggleButtonGroup
-                exclusive
-                size="small"
-                value={filter}
-                onChange={(_, next) => { if (next) setFilter(next); }}
-                sx={{ display: { xs: "none", sm: "inline-flex" }, flexWrap: "wrap" }}
-              >
-                {FILTERS.map((item) => (
-                  <ToggleButton key={item.id} value={item.id} sx={FILTER_TOGGLE_SX}>
-                    {item.label}
-                  </ToggleButton>
-                ))}
-              </ToggleButtonGroup>
+              {FILTERS.map((item) => (
+                <ToggleButton key={item.id} value={item.id} sx={FILTER_TOGGLE_SX}>
+                  {item.label}
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
 
-              <TextField
-                size="small"
-                placeholder="Search name or email…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                sx={{ flex: 1, minWidth: 0, width: { xs: "100%", sm: "auto" } }}
-                InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
-              />
-            </Stack>
+            <Box sx={{ flex: 1 }} />
+
+            <TextField
+              size="small"
+              placeholder="Search name or email…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              sx={{ minWidth: { xs: "100%", sm: 220 } }}
+              InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
+            />
           </Stack>
         </Box>
       </Stack>

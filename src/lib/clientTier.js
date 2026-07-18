@@ -1,4 +1,4 @@
-import { migrateOrderStatus } from "../data/orderWorkflow.js";
+import { getOrderLineItems, migrateOrderStatus } from "../data/orderWorkflow.js";
 import { lineItemGrossRevenue, orderCustomerTotal } from "./orderRevenue.js";
 
 /** Line helper — gross for Fulfilled lines only. */
@@ -8,15 +8,36 @@ export function fulfilledLineItemSpend(item) {
 }
 
 /**
- * Fulfilled KPI = sum of Final for orders with status Fulfilled only
- * (matches Status filter = Fulfilled in order history).
+ * Fulfilled KPI for a customer.
+ * Prefer line-level Fulfilled finals (so mixed orders still count fulfilled lines).
+ * Fallback: whole order when status is Fulfilled and there are no line items.
  */
 export function computeFulfilledSpendForEmail(orders, email) {
   const key = String(email || "").trim().toLowerCase();
   if (!key) return 0;
   return orders
     .filter((o) => String(o.email || "").trim().toLowerCase() === key)
-    .filter((o) => migrateOrderStatus(o.status) === "Fulfilled")
+    .reduce((sum, order) => {
+      const items = getOrderLineItems(order);
+      if (items.length) {
+        return sum + items.reduce((lineSum, item) => lineSum + fulfilledLineItemSpend(item), 0);
+      }
+      if (migrateOrderStatus(order.status) === "Fulfilled") {
+        return sum + Math.max(0, orderCustomerTotal(order));
+      }
+      return sum;
+    }, 0);
+}
+
+/**
+ * Total spent KPI — recognized revenue across the customer's orders
+ * (allocated × price after allocation; deposit only before allocation).
+ */
+export function computeTotalSpentForEmail(orders, email) {
+  const key = String(email || "").trim().toLowerCase();
+  if (!key) return 0;
+  return orders
+    .filter((o) => String(o.email || "").trim().toLowerCase() === key)
     .reduce((sum, order) => sum + Math.max(0, orderCustomerTotal(order)), 0);
 }
 

@@ -45,6 +45,7 @@ export function compactOrderForFirestore(order) {
         name: item.name,
         quantity: item.quantity ?? 1,
         price: item.price ?? 0,
+        cost: item.cost ?? 0,
         lineTotal: item.lineTotal ?? 0,
         tag: item.tag ?? null,
         line: item.line ?? null,
@@ -55,6 +56,9 @@ export function compactOrderForFirestore(order) {
         depositPaid: item.depositPaid ?? 0,
         balanceDue: item.balanceDue ?? 0,
         refundAmount: item.refundAmount ?? 0,
+        creditAmount: item.creditAmount ?? 0,
+        ...(item.depositReceived != null ? { depositReceived: item.depositReceived } : {}),
+        ...(item.balanceReceived != null ? { balanceReceived: item.balanceReceived } : {}),
       }))
     : [];
 
@@ -118,6 +122,7 @@ export function compactOrderForFirestore(order) {
     fullSubtotal: slim.fullSubtotal ?? slim.total ?? 0,
     balanceDue: slim.balanceDue ?? 0,
     refundAmount: slim.refundAmount ?? 0,
+    creditAmount: slim.creditAmount ?? 0,
     depositPercent: slim.depositPercent ?? 30,
     allocatedQty: slim.allocatedQty ?? 0,
     payment: slim.payment,

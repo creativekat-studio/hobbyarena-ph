@@ -23,21 +23,10 @@ import { resolveProofAttachmentUrl } from "../lib/orderProofStorage.js";
 import { compressProofFile } from "../lib/imageCompression.js";
 import { UPLOAD_PROOF_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLimits.js";
 import { useCms } from "../lib/cmsContent.jsx";
+import { formatDateTime } from "../lib/orderTimestamps.js";
+import { lineOpenCredit } from "../lib/orderCredit.js";
 import ProofImage from "./ProofImage.jsx";
 import QrCodeTile from "./QrCodeTile.jsx";
-
-function formatProofTime(iso) {
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  } catch {
-    return "";
-  }
-}
 
 function ProofPreviewModal({ open, attachment, onClose, surfaceBorderColor }) {
   if (!attachment?.url) return null;
@@ -120,6 +109,7 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
   if (!needsProof && uploadedProofs.length === 0) return null;
 
   const balanceDue = itemOutstandingBalance(item);
+  const openCredit = lineOpenCredit(item);
 
   function uploadButtonLabel() {
     if (proofFile) return "Change file";
@@ -199,6 +189,9 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
           </Stack>
           <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", mt: 0.35, lineHeight: 1.45 }}>
             Transfer <strong>{PESO.format(balanceDue)}</strong> to one of our accounts, then upload your receipt below to complete your pre-order.
+            {openCredit > 0
+              ? ` Your order credit of ${PESO.format(openCredit)} is already applied to this amount.`
+              : ""}
           </Typography>
 
           <Button
@@ -316,7 +309,7 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
                     {entry.label}
                   </Typography>
                   <Typography sx={{ fontSize: "0.65rem", color: "text.secondary", fontFamily: MONO_FONT }}>
-                    {formatProofTime(entry.at)}
+                    {formatDateTime(entry.at, { fallback: "" })}
                   </Typography>
                 </Box>
                 <Button

@@ -27,6 +27,8 @@ import {
   orderStatusLabel,
 } from "../data/orderWorkflow.js";
 import { orderCustomerTotal } from "../lib/orderRevenue.js";
+import { orderOpenCredit } from "../lib/orderCredit.js";
+import { formatOrderTimestamp } from "../lib/orderTimestamps.js";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { useOrders, getOrdersForEmail } from "../lib/ordersStore.jsx";
 import { setAuthSurface } from "../auth/authSurface.js";
@@ -71,15 +73,6 @@ function BalanceDueBadge({ amount, urgent, sx }) {
       {PESO.format(amount)} balance remaining
     </Typography>
   );
-}
-
-function formatLongDate(value) {
-  if (!value) return "—";
-  try {
-    return new Date(value).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
-  } catch {
-    return value;
-  }
 }
 
 function formatDeliverTo(order) {
@@ -284,7 +277,7 @@ export default function OrderStatusPage() {
               <Box>
                 <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: "1.15rem" }}>{order.id}</Typography>
                 <Typography sx={{ color: "text.secondary", fontSize: "0.82rem", mt: 0.25 }}>
-                  {lineItems.length || 1} {(lineItems.length || 1) === 1 ? "product" : "products"} · Placed {formatLongDate(order.date)}
+                  {lineItems.length || 1} {(lineItems.length || 1) === 1 ? "product" : "products"} · Placed {formatOrderTimestamp(order)}
                 </Typography>
                 {order.type ? (
                   <Chip label={order.type} size="small" variant="outlined" color={order.type === "Pre-order" ? "secondary" : "default"} sx={{ mt: 1, fontFamily: MONO_FONT, fontSize: "0.65rem" }} />
@@ -316,7 +309,7 @@ export default function OrderStatusPage() {
               />
             </SummaryRow>
             <SummaryRow label="Placed on">
-              <Typography sx={{ fontSize: "0.88rem" }}>{formatLongDate(order.date)}</Typography>
+              <Typography sx={{ fontSize: "0.88rem", fontFamily: MONO_FONT }}>{formatOrderTimestamp(order)}</Typography>
             </SummaryRow>
             <SummaryRow label={order.fulfillment === "pickup" ? "Collection" : "Deliver to"}>
               <Stack direction="row" spacing={0.75} alignItems="flex-start">
@@ -327,6 +320,13 @@ export default function OrderStatusPage() {
             <SummaryRow label="Final price">
               <Typography sx={{ fontSize: "0.9rem", fontWeight: 800 }}>{PESO.format(orderCustomerTotal(order))}</Typography>
             </SummaryRow>
+            {orderOpenCredit(order) > 0 ? (
+              <SummaryRow label="Order credit">
+                <Typography sx={{ fontSize: "0.88rem", fontWeight: 700, color: "warning.main" }}>
+                  {PESO.format(orderOpenCredit(order))}
+                </Typography>
+              </SummaryRow>
+            ) : null}
           </Box>
 
           {/* Line items with status trackers */}

@@ -10,6 +10,7 @@ import {
   orderStatusLabel,
 } from "../data/orderWorkflow.js";
 import { orderCustomerTotal } from "../lib/orderRevenue.js";
+import { formatOrderTimestamp } from "../lib/orderTimestamps.js";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "./ProductCard.jsx";
 import { CardIcon } from "./icons.jsx";
@@ -81,7 +82,7 @@ export function CustomerOrderCard({ order, surfaceBorderColor }) {
         <Box sx={{ minWidth: 0 }}>
           <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: "0.95rem" }}>{order.id}</Typography>
           <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", mt: 0.25 }}>
-            {(lineItems.length || 1)} {(lineItems.length || 1) === 1 ? "product" : "products"} · {order.date}
+            {(lineItems.length || 1)} {(lineItems.length || 1) === 1 ? "product" : "products"} · {formatOrderTimestamp(order)}
           </Typography>
         </Box>
         <Chip

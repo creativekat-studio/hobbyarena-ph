@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   Box,
+  Button,
   Checkbox,
   Divider,
   InputAdornment,
@@ -17,6 +18,7 @@ import AdminSectionTitle from "./AdminSectionTitle.jsx";
 import { SearchIcon } from "./icons.jsx";
 import { useInventory } from "../lib/inventoryStore.jsx";
 import { OFF_WHITE } from "../lib/colors.js";
+import ProductStockDetailsDialog from "./ProductStockDetailsDialog.jsx";
 
 const MIXED_KIND_TOGGLE_SX = {
   fontFamily: MONO_FONT,
@@ -111,6 +113,7 @@ function TotalsSection({
   balancePaid = 0,
   balanceSettled = false,
   refundedAmount = 0,
+  creditAmount = 0,
   hasPreorder,
   showShipping = true,
   shippingLabel = "At buyer\u2019s expense",
@@ -125,6 +128,7 @@ function TotalsSection({
   const paidAmount = balancePaid > 0
     ? balancePaid
     : (balanceSettled && balanceDue > 0 ? balanceDue : 0);
+  const openCredit = Math.max(0, Number(creditAmount) || 0);
 
   return (
     <Stack spacing={0.75} sx={{ minWidth: 0 }}>
@@ -147,6 +151,14 @@ function TotalsSection({
         <Typography color="text.secondary">{resolvedSubtotalLabel}</Typography>
         <Typography sx={{ flexShrink: 0 }}>{PESO.format(subtotal)}</Typography>
       </Stack>
+      {openCredit > 0 ? (
+        <Stack direction="row" justifyContent="space-between" spacing={2}>
+          <Typography sx={{ color: "warning.main", fontWeight: 600 }}>Order credit</Typography>
+          <Typography sx={{ color: "warning.main", fontWeight: 700, flexShrink: 0 }}>
+            {PESO.format(openCredit)}
+          </Typography>
+        </Stack>
+      ) : null}
       {awaitingAmount > 0 ? (
         <Stack direction="row" justifyContent="space-between" spacing={2}>
           <Typography sx={{ color: "error.main", fontWeight: 600 }}>Balance due</Typography>
@@ -240,12 +252,74 @@ function MixedKindToggle({ value, onChange }) {
   );
 }
 
+/** Side-by-side Pre-order / In-stock totals for mixed orders when All is selected. */
+function SplitTotalsSection({
+  groups = [],
+  shippingFee = 0,
+  showShipping = true,
+  shippingLabel = "At buyer\u2019s expense",
+  footerNote = null,
+}) {
+  return (
+    <Stack spacing={1.25} sx={{ minWidth: 0 }}>
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+          gap: 1.25,
+          alignItems: "stretch",
+        }}
+      >
+        {groups.map((group) => {
+          const key = group.id || group.title;
+          return (
+            <Box
+              key={key}
+              sx={{
+                p: 1.25,
+                borderRadius: 1,
+                border: "1px solid",
+                borderColor: "divider",
+                minWidth: 0,
+                height: "100%",
+              }}
+            >
+              <TotalsSection
+                {...group}
+                title={group.title}
+                shippingFee={0}
+                showShipping={false}
+                emphasizeTotal={false}
+                footerNote={null}
+              />
+            </Box>
+          );
+        })}
+      </Box>
+      {showShipping ? (
+        <Stack direction="row" justifyContent="space-between" spacing={2}>
+          <Typography color="text.secondary">Shipping</Typography>
+          <Typography sx={{ textAlign: "right", maxWidth: "55%", flexShrink: 0 }}>
+            {shippingFee > 0 ? PESO.format(shippingFee) : shippingLabel}
+          </Typography>
+        </Stack>
+      ) : null}
+      {footerNote ? (
+        <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", lineHeight: 1.4 }}>
+          {footerNote}
+        </Typography>
+      ) : null}
+    </Stack>
+  );
+}
+
 function SummaryItemRow({
   item,
   compact,
   renderItemExtra,
   selectedItemIds,
   onToggleItemId,
+  onViewStock,
 }) {
   return (
     <Stack direction="row" spacing={1} alignItems="flex-start">
@@ -285,6 +359,27 @@ function SummaryItemRow({
               </Typography>
             </Stack>
           ) : null}
+          {onViewStock ? (
+            <Button
+              size="small"
+              variant="text"
+              onClick={() => onViewStock(item)}
+              sx={{
+                mt: 0.25,
+                px: 0,
+                minWidth: 0,
+                fontFamily: MONO_FONT,
+                fontSize: "0.65rem",
+                fontWeight: 700,
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+                color: "text.secondary",
+                "&:hover": { color: "primary.main", bgcolor: "transparent" },
+              }}
+            >
+              View stock
+            </Button>
+          ) : null}
         </Box>
         {!renderItemExtra ? (
           <Typography sx={{ fontWeight: 700, flexShrink: 0, fontSize: compact ? "0.85rem" : undefined, color: "primary.main" }}>
@@ -302,6 +397,7 @@ function ItemsStack({
   renderItemExtra,
   selectedItemIds,
   onToggleItemId,
+  onViewStock,
 }) {
   return (
     <Stack spacing={compact ? 1 : 1.25} divider={<Divider flexItem />}>
@@ -313,6 +409,7 @@ function ItemsStack({
           renderItemExtra={renderItemExtra}
           selectedItemIds={selectedItemIds}
           onToggleItemId={onToggleItemId}
+          onViewStock={onViewStock}
         />
       ))}
     </Stack>
@@ -328,6 +425,7 @@ export function OrderSummaryPanel({
   balancePaid = 0,
   balanceSettled = false,
   refundedAmount = 0,
+  creditAmount = 0,
   hasPreorder = false,
   panelSx,
   compact = false,
@@ -347,6 +445,8 @@ export function OrderSummaryPanel({
   onToggleItemId,
   headerActions = null,
   headerNotice = null,
+  /** Admin: show “View stock” on each line and open inventory details modal. */
+  showStockDetails = false,
 }) {
   const billToLines = billTo
     ? [billTo.name, billTo.email, billTo.phone, billTo.address, billTo.notes].filter(Boolean)
@@ -356,6 +456,7 @@ export function OrderSummaryPanel({
   const useMixedKind = Array.isArray(totalsGroups) && totalsGroups.length > 1;
   const [mixedKind, setMixedKind] = useState("all");
   const [itemQuery, setItemQuery] = useState("");
+  const [stockDetailsItem, setStockDetailsItem] = useState(null);
   const activeMixedKind = MIXED_KIND_OPTIONS.some((option) => option.id === mixedKind)
     ? mixedKind
     : "all";
@@ -377,11 +478,20 @@ export function OrderSummaryPanel({
     renderItemExtra,
     selectedItemIds,
     onToggleItemId,
+    onViewStock: showStockDetails ? setStockDetailsItem : undefined,
   };
 
   const itemsList = <ItemsStack items={visibleItems} {...itemRowProps} />;
 
-  const totalsNode = useMixedKind && activeTotalsGroup ? (
+  const totalsNode = useMixedKind && showAllKinds ? (
+    <SplitTotalsSection
+      groups={totalsGroups}
+      shippingFee={shippingFee}
+      showShipping={showShipping}
+      shippingLabel={shippingLabel}
+      footerNote={footerNote}
+    />
+  ) : useMixedKind && activeTotalsGroup ? (
     <TotalsSection
       {...activeTotalsGroup}
       title={null}
@@ -400,12 +510,13 @@ export function OrderSummaryPanel({
       balancePaid={balancePaid}
       balanceSettled={balanceSettled}
       refundedAmount={refundedAmount}
+      creditAmount={creditAmount}
       hasPreorder={hasPreorder}
       showShipping={showShipping}
       shippingLabel={shippingLabel}
       subtotalLabel={subtotalLabel}
       totalLabel={totalLabel}
-      footerNote={showAllKinds ? null : footerNote}
+      footerNote={footerNote}
     />
   );
 
@@ -420,7 +531,16 @@ export function OrderSummaryPanel({
     </Typography>
   );
 
-  const footer = sideBySideFooter ? (
+  // All + mixed: Deliver to above, then full-width Pre-order | In-stock columns.
+  // Single kind (or non-mixed): Deliver to | totals side by side.
+  const footer = useMixedKind && showAllKinds ? (
+    <Box sx={{ flexShrink: 0, pt: 2, borderTop: "1px solid", borderColor: "divider" }}>
+      <Stack spacing={2}>
+        {showBillTo ? <BillToSection billTo={billTo} compact={compact} inline /> : null}
+        {totalsNode}
+      </Stack>
+    </Box>
+  ) : sideBySideFooter ? (
     <Box
       sx={{
         flexShrink: 0,
@@ -443,6 +563,7 @@ export function OrderSummaryPanel({
   );
 
   return (
+    <>
     <Box
       sx={{
         ...panelSx,
@@ -526,6 +647,15 @@ export function OrderSummaryPanel({
         {footer}
       </Box>
     </Box>
+    {showStockDetails ? (
+      <ProductStockDetailsDialog
+        open={Boolean(stockDetailsItem)}
+        productId={stockDetailsItem?.id}
+        productName={stockDetailsItem?.name}
+        onClose={() => setStockDetailsItem(null)}
+      />
+    ) : null}
+    </>
   );
 }
 

@@ -40,6 +40,10 @@ function rowToProduct(row) {
     name: row.name,
     line: row.line,
     price: row.price,
+    // Keep real inventory cost for COGS / net income (do not drop this field).
+    ...(row.cost != null && row.cost !== ""
+      ? { cost: Math.max(0, Number(row.cost) || 0) }
+      : {}),
     stock: row.stock,
     rating: typeof row.rating === "number" ? row.rating : 4.5,
     reviews: typeof row.reviews === "number" ? row.reviews : 0,

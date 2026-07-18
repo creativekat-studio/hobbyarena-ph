@@ -13,6 +13,7 @@ import { alpha, useTheme } from "@mui/material/styles";
 import { MONO_FONT } from "../theme.js";
 import { adminTrailAttachmentsForLineItem } from "../data/orderWorkflow.js";
 import { resolveProofAttachmentUrl } from "../lib/orderProofStorage.js";
+import { formatDateTime } from "../lib/orderTimestamps.js";
 import { EyeIcon } from "./icons.jsx";
 import ProofImage from "./ProofImage.jsx";
 
@@ -31,19 +32,6 @@ function FileGlyph({ type, sx }) {
       )}
     </Box>
   );
-}
-
-function formatAttachmentTime(iso) {
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  } catch {
-    return "";
-  }
 }
 
 function AttachmentPreviewModal({ open, attachment, onClose, surfaceBorderColor }) {
@@ -156,7 +144,7 @@ export default function CustomerAdminAttachments({ order, item, surfaceBorderCol
                 {row.label || "Attachment"}
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25, textTransform: "none" }}>
-                {formatAttachmentTime(row.at)}
+                {formatDateTime(row.at, { fallback: "" })}
                 {row.title ? ` · ${row.title}` : ""}
               </Typography>
             </Box>

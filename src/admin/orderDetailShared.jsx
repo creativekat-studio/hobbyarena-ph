@@ -80,6 +80,13 @@ import {
   lineItemGrossRevenue,
   orderCustomerTotal,
 } from "../lib/orderRevenue.js";
+import { formatDateTime } from "../lib/orderTimestamps.js";
+import {
+  expectedAmountReceived,
+  lineOpenCredit,
+  orderOpenCredit,
+  shouldCaptureAmountReceived,
+} from "../lib/orderCredit.js";
 import ProofImage from "../components/ProofImage.jsx";
 
 /** Pre-order balance portion (allocated final − DP, or expected 70% before allocation). */
@@ -456,20 +463,14 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
   const isEmailEntry = isEmailTrailEntry(entry);
   const emailLineItems = isEmailEntry ? resolveEmailTrailLineItems(entry, lineItems, trail) : [];
   const emailStatusLine = isEmailEntry ? emailTrailStatusLine(entry, emailLineItems) : "";
-  const at = new Date(entry.at);
-  const timeLabel = at.toLocaleString(undefined, {
-    month: "numeric",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  const timeLabel = formatDateTime(entry.at);
   const showAttachment = trailEntryShowsAttachment(entry);
   const proofPurged = Boolean(entry.attachment?.purged);
   const canView = showAttachment && !proofPurged && Boolean(resolveProofAttachmentUrl(order, entry));
 
   return (
     <Stack direction="row" spacing={1.25} sx={{ position: "relative", pb: isLast ? 0 : 1.25 }}>
-      <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start", flexShrink: 0, width: 118, pt: 0.35 }}>
+      <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start", flexShrink: 0, width: 158, pt: 0.35 }}>
         <Stack direction="row" spacing={0.75} alignItems="center" sx={{ width: "100%", minWidth: 0 }}>
           <Box
             sx={{
@@ -481,7 +482,7 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
               boxShadow: (theme) => `0 0 0 3px ${alpha(theme.palette.primary.main, 0.16)}`,
             }}
           />
-          <Typography sx={{ fontSize: "0.65rem", color: "text.secondary", fontFamily: MONO_FONT, lineHeight: 1.25, whiteSpace: "nowrap" }}>
+          <Typography sx={{ fontSize: "0.62rem", color: "text.secondary", fontFamily: MONO_FONT, lineHeight: 1.25, whiteSpace: "nowrap" }}>
             {timeLabel}
           </Typography>
         </Stack>
@@ -673,11 +674,20 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
   );
   const [draftQty, setDraftQty] = useState(String(lineItem.allocatedQty ?? 0));
   const [draftRefund, setDraftRefund] = useState(String(lineItem.refundAmount ?? ""));
+  const [draftReceived, setDraftReceived] = useState("");
   const [draftAttachment, setDraftAttachment] = useState(null);
   const [saveError, setSaveError] = useState("");
   const [confirmTransition, setConfirmTransition] = useState(null);
 
   const statusOptions = getOrderStatusOptionsForPayment(draftPayment, kind);
+  const showReceivedField = shouldCaptureAmountReceived(draftPayment)
+    && draftPayment !== lineItem.payment;
+  const expectedReceived = expectedAmountReceived(draftPayment, {
+    depositDue: lineItemDepositPaid(lineItem, depositPercent),
+    balanceDueNet: Math.max(0, Number(lineItem.balanceDue) || 0),
+    lineTotal: lineItemAmount(lineItem),
+    kind: isPreorder ? "Pre-order" : "In-stock",
+  });
 
   useEffect(() => {
     // Don't reset drafts while the backward/skip confirm dialog is open —
@@ -687,9 +697,18 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
     setDraftStatus(resolveOrderStatusForPayment(lineItem.payment, lineItem.status, kind));
     setDraftQty(String(lineItem.allocatedQty ?? 0));
     setDraftRefund(lineItem.refundAmount != null ? String(lineItem.refundAmount) : "");
+    setDraftReceived("");
     setDraftAttachment(null);
     setSaveError("");
   }, [lineItem.id, lineItem.payment, lineItem.status, lineItem.allocatedQty, kind, confirmTransition]);
+
+  useEffect(() => {
+    if (showReceivedField && draftReceived === "") {
+      setDraftReceived(String(expectedReceived));
+    }
+    if (!showReceivedField) setDraftReceived("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showReceivedField, draftPayment, expectedReceived]);
 
   async function handleAttachmentChange(event) {
     const file = event.target.files?.[0];
@@ -740,10 +759,15 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showRefundField, draftStatus]);
 
+  const parsedReceived = draftReceived === "" ? undefined : Math.max(0, Number(draftReceived) || 0);
   const paymentStatusDirty = draftPayment !== lineItem.payment || draftStatus !== lineItem.status;
   const allocationDirty = showAllocationField && parsedQty !== (lineItem.allocatedQty ?? 0);
   const refundDirty = showRefundField && parsedRefund !== undefined && parsedRefund !== (lineItem.refundAmount ?? previewRefundedAmount);
-  const dirty = paymentStatusDirty || allocationDirty || refundDirty;
+  const receivedDirty = showReceivedField && parsedReceived !== undefined && parsedReceived !== expectedReceived;
+  const dirty = paymentStatusDirty || allocationDirty || refundDirty || receivedDirty;
+  const previewOverpay = showReceivedField && parsedReceived != null
+    ? Math.max(0, parsedReceived - expectedReceived)
+    : 0;
 
   const allocationHint = validateAllocationForStatus(
     isPreorder ? { ...lineItem, allocatedQty: effectiveAllocated } : lineItem,
@@ -790,6 +814,9 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
     const draftRefundForSave = showRefundField && (refundDirty || paymentStatusDirty)
       ? (parsedRefund ?? previewRefundedAmount)
       : undefined;
+    const draftReceivedForSave = showReceivedField
+      ? (parsedReceived ?? expectedReceived)
+      : undefined;
 
     const itemForValidation = isPreorder
       ? {
@@ -824,6 +851,7 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
           draftAttachment,
           draftAllocatedForSave,
           draftRefundForSave,
+          draftReceivedForSave,
         });
         return;
       }
@@ -835,6 +863,7 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
       draftAttachment,
       draftAllocatedForSave,
       draftRefundForSave,
+      draftReceivedForSave,
       paymentStatusDirty,
       allocationDirty,
     });
@@ -847,6 +876,7 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
       draftAttachment: nextAttachment,
       draftAllocatedForSave,
       draftRefundForSave,
+      draftReceivedForSave,
       paymentStatusDirty: savePaymentStatus,
       allocationDirty: saveAllocation,
     } = pending;
@@ -855,7 +885,26 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
       const attachment = nextAttachment
         ? buildTrailAttachment(nextAttachment.dataUrl, nextAttachment.name || "Attachment", "admin")
         : undefined;
-      onSave(orderId, nextPayment, nextStatus, lineItem.id, "", attachment, draftAllocatedForSave, draftRefundForSave);
+      const overpay = draftReceivedForSave != null
+        ? Math.max(0, Number(draftReceivedForSave) - expectedReceived)
+        : 0;
+      const receiveNote = draftReceivedForSave != null
+        ? [
+          `Amount received ₱${Number(draftReceivedForSave).toLocaleString("en-PH")}.`,
+          overpay > 0 ? `Overpayment credit ₱${overpay.toLocaleString("en-PH")} kept on this order.` : "",
+        ].filter(Boolean).join(" ")
+        : "";
+      onSave(
+        orderId,
+        nextPayment,
+        nextStatus,
+        lineItem.id,
+        receiveNote,
+        attachment,
+        draftAllocatedForSave,
+        draftRefundForSave,
+        draftReceivedForSave,
+      );
       setDraftAttachment(null);
     } else if (saveAllocation && setAllocation) {
       setAllocation(orderId, parsedQty, lineItem.id);
@@ -893,6 +942,7 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
       draftAttachment: pending.draftAttachment,
       draftAllocatedForSave: pending.draftAllocatedForSave,
       draftRefundForSave: pending.draftRefundForSave,
+      draftReceivedForSave: pending.draftReceivedForSave,
       paymentStatusDirty: true,
       allocationDirty: false,
     });
@@ -1011,6 +1061,38 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
             ) : null}
           </Grid>
         ) : null}
+        {showReceivedField ? (
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", mb: 1 }}>
+              Amount received
+            </Typography>
+            <TextField
+              size="small"
+              type="number"
+              fullWidth
+              label={`Due ${PESO.format(expectedReceived)}`}
+              value={draftReceived}
+              onChange={(e) => {
+                setDraftReceived(e.target.value);
+                setSaveError("");
+              }}
+              inputProps={{ min: 0 }}
+            />
+            {previewOverpay > 0 ? (
+              <Typography variant="caption" color="warning.main" sx={{ display: "block", mt: 0.75, lineHeight: 1.45 }}>
+                Overpayment {PESO.format(previewOverpay)} becomes credit on this order (reduces balance / adds to refund).
+              </Typography>
+            ) : lineOpenCredit(lineItem) > 0 && draftPayment === "Fully Paid" ? (
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75, lineHeight: 1.45 }}>
+                Existing credit {PESO.format(lineOpenCredit(lineItem))} already lowers the amount due.
+              </Typography>
+            ) : (
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75, lineHeight: 1.45 }}>
+                Record what the customer actually sent. Extra becomes order credit.
+              </Typography>
+            )}
+          </Grid>
+        ) : null}
         {showRefundField ? (
           <Grid size={{ xs: 12, sm: secondRowSize }}>
             <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", mb: 1 }}>
@@ -1028,6 +1110,11 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
               }}
               inputProps={{ min: 0 }}
             />
+            {lineOpenCredit(lineItem) > 0 ? (
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
+                Includes open credit {PESO.format(lineOpenCredit(lineItem))} when left on auto.
+              </Typography>
+            ) : null}
           </Grid>
         ) : null}
         {showRefundedOnly ? (
@@ -1877,17 +1964,7 @@ function findPreviousSentEmailEntry(order, emailType) {
 }
 
 function formatTrailTimestamp(iso) {
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  } catch {
-    return "";
-  }
+  return formatDateTime(iso, { fallback: "" });
 }
 
 export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOrderStatusEmail }) {
@@ -1943,6 +2020,7 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
   let depositCollected = 0;
   let preorderAllocatedUnits = 0;
   let preorderRefundPath = false;
+  const openCredit = orderOpenCredit(order);
 
   lineItems.forEach((item) => {
     if (resolveOrderKindForItem(item) !== "Pre-order") return;
@@ -1958,8 +2036,9 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
     if (payment === "Unpaid" || payment === "Rejected") return;
     // Deposit line must stay true DP (e.g. 30%), never the full allocated total.
     depositCollected += lineItemDepositPaid(item, depositPercent);
-    if (portion <= 0) return;
-    if (lineBalanceIsAwaiting(item)) balanceAwaiting += portion;
+    if (portion <= 0 && itemOutstandingBalance(item) <= 0) return;
+    // Balance due is net of order-scoped credit.
+    if (lineBalanceIsAwaiting(item)) balanceAwaiting += itemOutstandingBalance(item);
     else balancePaidAmount += portion;
   });
 
@@ -1995,6 +2074,9 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
     0,
   );
 
+  const preorderCredit = preorderLines.reduce((sum, item) => sum + lineOpenCredit(item), 0);
+  const instockCredit = instockLines.reduce((sum, item) => sum + lineOpenCredit(item), 0);
+
   const totalsGroups = showSplitTotals
     ? [
       {
@@ -2007,6 +2089,7 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
         balancePaid: balancePaidAmount,
         balanceSettled: balanceSettled,
         refundedAmount: preorderRefunded,
+        creditAmount: preorderCredit,
         total: preorderGross,
         totalLabel: "Total",
       },
@@ -2019,6 +2102,7 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
         balanceDue: 0,
         balancePaid: 0,
         refundedAmount: instockRefunded,
+        creditAmount: instockCredit,
         total: instockPaid,
         totalLabel: "Total",
       },
@@ -2110,6 +2194,7 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
       balancePaid={balancePaidAmount}
       balanceSettled={balanceSettled}
       refundedAmount={refundedAmount}
+      creditAmount={openCredit}
       hasPreorder={hasPreorderLine}
       panelSx={panelSx}
       subtotalLabel={subtotalLabel}
@@ -2117,6 +2202,7 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
       footerNote={footerNote}
       totalsGroups={totalsGroups}
       adminSectionTitle
+      showStockDetails
       selectedItemIds={sendOrderStatusEmail ? selectedItemIds : undefined}
       onToggleItemId={sendOrderStatusEmail ? toggleEmailItem : undefined}
       billTo={{

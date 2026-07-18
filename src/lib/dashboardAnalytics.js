@@ -11,6 +11,7 @@ import {
   orderQtyLabel,
   orderRevenue,
 } from "./orderRevenue.js";
+import { formatOrderTimestamp } from "./orderTimestamps.js";
 
 const PERIOD_DAYS = {
   "1D": 1,
@@ -351,8 +352,16 @@ function channelSplit(orders) {
  * @param {"paid"|"fulfilled"} basis
  *   paid — DP / allocated × price across all recognized payments
  *   fulfilled — same math, but only line items with status Fulfilled
+ * @param {Record<string, number>|Map<string, number>|null} [costByProductId]
+ *   Catalog costs for COGS when order lines have no cost snapshot.
  */
-export function computeDashboardAnalytics(orders, period = "1M", now = new Date(), basis = "paid") {
+export function computeDashboardAnalytics(
+  orders,
+  period = "1M",
+  now = new Date(),
+  basis = "paid",
+  costByProductId = null,
+) {
   const mode = basis === "fulfilled" ? "fulfilled" : "paid";
   const { start, end, prevStart, prevEnd, periodKey, periodLabel } = resolvePeriodWindow(period, now);
   const customWindow = periodKey === "custom" ? { start, end } : null;
@@ -367,7 +376,7 @@ export function computeDashboardAnalytics(orders, period = "1M", now = new Date(
     : previousAll;
 
   const revenueFn = (order) => orderRevenue(order, mode);
-  const netFn = (order) => orderNetRevenue(order, mode);
+  const netFn = (order) => orderNetRevenue(order, mode, costByProductId);
 
   const currentRevenue = currentAll.reduce((sum, o) => sum + revenueFn(o), 0);
   const previousRevenue = previousAll.reduce((sum, o) => sum + revenueFn(o), 0);
@@ -396,7 +405,7 @@ export function computeDashboardAnalytics(orders, period = "1M", now = new Date(
       // Allocated × price after allocation; due-now/deposit before
       total: orderListDisplayTotal(o),
       status: o.status,
-      date: o.date,
+      date: formatOrderTimestamp(o),
       type: o.type,
       items: orderItemsSummaryLabel(o),
       qtyLabel: orderQtyLabel(o),

@@ -47,7 +47,9 @@ import {
 import { isArchivedOrder, useOrders } from "../lib/ordersStore.jsx";
 import { compareOrdersByOrderNo } from "../lib/orderIds.js";
 import { exportOrdersToExcel } from "../lib/ordersExcelExport.js";
+import { buildCostByProductId } from "../lib/orderRevenue.js";
 import { formatOrderTimestamp, resolveOrderPlacedAt } from "../lib/orderTimestamps.js";
+import { useInventory } from "../lib/inventoryStore.jsx";
 import { sortRowsBy, toggleSortState } from "../lib/tableSort.js";
 import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
 import { InfiniteScrollSentinel } from "../components/InfiniteScrollSentinel.jsx";
@@ -452,6 +454,11 @@ export default function OrdersPage() {
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
   const { orders, ordersError, ordersReady, archiveOrders, restoreOrders } = useOrders();
+  const { items: inventoryItems } = useInventory();
+  const costByProductId = useMemo(
+    () => buildCostByProductId(inventoryItems),
+    [inventoryItems],
+  );
   const [queueFilter, setQueueFilter] = useState("all");
   const [kindFilter, setKindFilter] = useState("all");
   const [query, setQuery] = useState("");
@@ -477,7 +484,7 @@ export default function OrdersPage() {
   }
 
   function handleExportExcel() {
-    exportOrdersToExcel(rows);
+    exportOrdersToExcel(rows, { costByProductId });
   }
 
   function toggleSelect(id) {
@@ -649,28 +656,14 @@ export default function OrdersPage() {
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={TruckIcon} label="Awaiting pickup" value={stats.pickup} accent={theme.palette.success.main} /></Grid>
         </Grid>
 
-        <Box sx={{ ...panelSx, p: { xs: 1.5, md: 2.5 } }}>
-          <Stack spacing={1.25}>
-            <FormControl size="small" sx={{ display: { xs: "flex", md: "none" }, width: "100%" }}>
-              <InputLabel id="orders-queue-filter">Queue</InputLabel>
-              <Select
-                labelId="orders-queue-filter"
-                label="Queue"
-                value={queueFilter}
-                onChange={(event) => setQueueFilter(event.target.value)}
-              >
-                {QUEUE_FILTERS.map((item) => (
-                  <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
+        <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
+          <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "center" }}>
             <ToggleButtonGroup
               exclusive
               size="small"
               value={queueFilter}
               onChange={(_, next) => { if (next) setQueueFilter(next); }}
-              sx={{ display: { xs: "none", md: "inline-flex" }, flexWrap: "wrap" }}
+              sx={{ flexWrap: "wrap" }}
             >
               {QUEUE_FILTERS.map((item) => (
                 <ToggleButton key={item.id} value={item.id} sx={FILTER_TOGGLE_SX}>
@@ -679,27 +672,25 @@ export default function OrdersPage() {
               ))}
             </ToggleButtonGroup>
 
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              spacing={1}
-              alignItems={{ xs: "stretch", sm: "center" }}
-            >
-              <FormControl size="small" sx={{ minWidth: { sm: 140 }, width: { xs: "100%", sm: "auto" } }}>
-                <InputLabel id="orders-kind-filter">Kind</InputLabel>
-                <Select
-                  labelId="orders-kind-filter"
-                  label="Kind"
-                  value={kindFilter}
-                  onChange={(event) => setKindFilter(event.target.value)}
-                >
-                  {KIND_FILTERS.map((item) => (
-                    <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+            <FormControl size="small" sx={{ minWidth: { xs: "100%", md: 140 } }}>
+              <InputLabel id="orders-kind-filter">Kind</InputLabel>
+              <Select
+                labelId="orders-kind-filter"
+                label="Kind"
+                value={kindFilter}
+                onChange={(event) => setKindFilter(event.target.value)}
+              >
+                {KIND_FILTERS.map((item) => (
+                  <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
+            <Box sx={{ flex: 1 }} />
+
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: "wrap", gap: 1 }}>
               {selectedCount > 0 ? (
-                <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: "wrap", rowGap: 1 }}>
+                <>
                   <Chip
                     label={`${selectedCount} selected`}
                     onDelete={() => setSelectedIds(new Set())}
@@ -725,14 +716,14 @@ export default function OrdersPage() {
                       <MenuItem onClick={requestBulkArchive} sx={{ color: "error.main" }}>Archive…</MenuItem>
                     )}
                   </Menu>
-                </Stack>
+                </>
               ) : (
                 <Chip
                   label={allLoadedSelected ? "Deselect loaded" : "Select loaded"}
                   onClick={toggleSelectAllLoaded}
                   disabled={!visibleItems.length}
                   variant="outlined"
-                  sx={{ fontWeight: 700, alignSelf: { xs: "flex-start", sm: "center" } }}
+                  sx={{ fontWeight: 700 }}
                 />
               )}
 
@@ -741,7 +732,7 @@ export default function OrdersPage() {
                 placeholder="Search order, customer, item…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                sx={{ flex: 1, minWidth: 0, width: { xs: "100%", sm: "auto" } }}
+                sx={{ minWidth: { xs: "100%", sm: 220 } }}
                 InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
               />
             </Stack>
