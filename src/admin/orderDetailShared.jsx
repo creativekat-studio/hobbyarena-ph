@@ -27,7 +27,7 @@ import {
   resolveOrderStatusEmailTypeForCurrentState,
 } from "../lib/orderEmailTriggers.js";
 import { MONO_FONT } from "../theme.js";
-import { TrashIcon, ZoomInIcon } from "../components/icons.jsx";
+import { ExpandCornersIcon, TrashIcon } from "../components/icons.jsx";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
 import {
@@ -54,6 +54,8 @@ import {
   resolveOrderStatusForPayment,
   isPreorderOrder,
   lineItemTrailLabel,
+  itemNeedsBalanceProof,
+  itemOutstandingBalance,
   migrateOrderStatus,
   migratePaymentStatus,
   optionsIncludingCurrent,
@@ -71,7 +73,49 @@ import {
 import { hydrateProofAttachment, resolveProofAttachmentUrl, prepareTrailForDisplay } from "../lib/orderProofStorage.js";
 import { compressProofFile } from "../lib/imageCompression.js";
 import { UPLOAD_PROOF_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLimits.js";
+import {
+  lineItemAmount,
+  lineItemDepositPaid,
+  lineItemFinalPrice,
+  lineItemGrossRevenue,
+  orderCustomerTotal,
+} from "../lib/orderRevenue.js";
 import ProofImage from "../components/ProofImage.jsx";
+
+/** Pre-order balance portion (allocated final − DP, or expected 70% before allocation). */
+function linePreorderBalancePortion(item, depositPercent) {
+  if (resolveOrderKindForItem(item) !== "Pre-order") return 0;
+  const payment = migratePaymentStatus(item.payment);
+  const status = migrateOrderStatus(item.status);
+  if (
+    payment === "Refunded"
+    || payment === "For Full Refund"
+    || status === "Refunded"
+    || status === "For Full Refund"
+  ) {
+    return 0;
+  }
+  const deposit = lineItemDepositPaid(item, depositPercent);
+  const allocated = Math.max(0, Number(item.allocatedQty) || 0);
+  if (allocated > 0) return Math.max(0, lineItemFinalPrice(item) - deposit);
+  return Math.max(0, lineItemAmount(item) - deposit);
+}
+
+function lineBalanceIsAwaiting(item) {
+  if (resolveOrderKindForItem(item) !== "Pre-order") return false;
+  if (itemOutstandingBalance(item) > 0 || itemNeedsBalanceProof(item)) return true;
+  const payment = migratePaymentStatus(item.payment);
+  return payment === "DP Paid"
+    || payment === "Awaiting Balance Payment"
+    || payment === "Pending Verification";
+}
+
+function lineIsFullySettled(item) {
+  const payment = migratePaymentStatus(item.payment);
+  return payment === "Fully Paid"
+    || payment === "Refunded"
+    || payment === "Partially Refunded";
+}
 
 export { PAYMENT_COLOR, STATUS_COLOR, PAYMENT_OPTIONS, STATUS_OPTIONS };
 
@@ -253,24 +297,78 @@ function parseEmailLineItemsFromNote(note) {
   return rows;
 }
 
-function resolveEmailTrailLineItems(entry, orderLineItems) {
-  const stored = entry.emailLineItems ?? [];
-  if (stored.length) return stored;
+/** Latest partial allocation recorded on an older trail email for this line. */
+function priorPartialAllocation(trail, entry, lineItemId, qty) {
+  const entryAt = entry?.at ? new Date(entry.at).getTime() : NaN;
+  let latest = null;
 
-  const fromNote = parseEmailLineItemsFromNote(entry.note);
-  if (fromNote.length) return fromNote;
+  for (const other of trail || []) {
+    if (other?.id && entry?.id && other.id === entry.id) continue;
+    const otherAt = other?.at ? new Date(other.at).getTime() : NaN;
+    if (Number.isFinite(entryAt) && Number.isFinite(otherAt) && otherAt >= entryAt) continue;
 
-  if (orderLineItems.length === 1) {
-    const item = orderLineItems[0];
-    return [{
-      lineItemId: item.id,
-      lineItemName: item.name,
-      quantity: item.quantity ?? 1,
-      allocatedQty: Number(item.allocatedQty) || 0,
-    }];
+    for (const row of other?.emailLineItems || []) {
+      if (lineItemId && row.lineItemId && row.lineItemId !== lineItemId) continue;
+      const rowAlloc = Math.max(0, Number(row.allocatedQty) || 0);
+      const rowQty = Math.max(1, Number(row.quantity) || qty);
+      if (rowAlloc > 0 && rowAlloc < rowQty) {
+        if (!latest || otherAt > latest.at) {
+          latest = { allocated: rowAlloc, at: otherAt };
+        }
+      }
+    }
   }
 
-  return [];
+  return latest?.allocated ?? null;
+}
+
+function resolveEmailTrailLineItems(entry, orderLineItems, trail = []) {
+  const stored = entry.emailLineItems ?? [];
+  const rows = stored.length
+    ? stored
+    : (() => {
+      const fromNote = parseEmailLineItemsFromNote(entry.note);
+      if (fromNote.length) return fromNote;
+      if (orderLineItems.length === 1) {
+        const item = orderLineItems[0];
+        return [{
+          lineItemId: item.id,
+          lineItemName: item.name,
+          quantity: item.quantity ?? 1,
+          allocatedQty: Number(item.allocatedQty) || 0,
+          payment: item.payment,
+          status: item.status,
+        }];
+      }
+      return [];
+    })();
+
+  return rows.map((row) => {
+    const qty = Math.max(1, Number(row.quantity) || 1);
+    let allocated = Math.max(0, Number(row.allocatedQty) || 0);
+    const status = migrateOrderStatus(row.status || entry.status);
+
+    // Fulfilled email wrongly snapshotted as 10 of 10 after a wipe — prefer earlier 7 of 10.
+    if (
+      (status === "Fulfilled" || status === "Ready for Pickup")
+      && (allocated <= 0 || allocated >= qty)
+    ) {
+      const prior = priorPartialAllocation(trail, entry, row.lineItemId, qty);
+      if (prior != null) allocated = prior;
+    } else if (allocated <= 0) {
+      const live = orderLineItems.find((item) => item.id === row.lineItemId);
+      const liveAlloc = Math.max(0, Number(live?.allocatedQty) || 0);
+      if (liveAlloc > 0 && liveAlloc < qty) allocated = liveAlloc;
+    }
+
+    return {
+      ...row,
+      quantity: qty,
+      allocatedQty: allocated,
+      status: row.status || entry.status,
+      payment: row.payment || entry.payment,
+    };
+  });
 }
 
 function emailTrailHeadline(entry) {
@@ -298,10 +396,31 @@ function emailTrailLineItemText(row) {
   if (!baseName) return "";
 
   const legacyQtyMatch = String(row.lineItemName || "").match(/ ×(\d+)$/);
-  const qty = row.quantity ?? (legacyQtyMatch ? Number(legacyQtyMatch[1]) : 1);
-  const allocated = row.allocatedQty ?? 0;
+  const qty = Math.max(1, Number(row.quantity) || (legacyQtyMatch ? Number(legacyQtyMatch[1]) : 1));
+  const allocated = Math.max(0, Number(row.allocatedQty) || 0);
+  const status = migrateOrderStatus(row.status);
+  const showAllocatedOfOrdered = [
+    "Fulfilled",
+    "Ready for Pickup",
+    ALLOCATION_FULFILLED_PAY_BALANCE,
+    "Partially Fulfilled & Pay Balance",
+    "Partially Fulfilled & For Refund",
+  ].includes(status);
 
-  return `- ${baseName} ×${qty} / ${allocated}`;
+  // Before allocation: just ordered qty — never a confusing bare "/ 0".
+  if (allocated <= 0) {
+    if (status === "For Full Refund" || status === "Refunded") {
+      return `- ${baseName} · 0 of ${qty}`;
+    }
+    return `- ${baseName} ×${qty}`;
+  }
+
+  // Fulfilled / ready / partial — always show allocated of ordered (e.g. 8 of 10, 10 of 10).
+  if (showAllocatedOfOrdered || allocated < qty) {
+    return `- ${baseName} · ${allocated} of ${qty}`;
+  }
+
+  return `- ${baseName} ×${qty}`;
 }
 
 function orderTrailSuffix(selectedItemId, activeLineItem, lineItems) {
@@ -332,10 +451,10 @@ function trailMetaLine(entry) {
   return [entry.payment, migrateOrderStatus(entry.status)].filter(Boolean).join(" · ");
 }
 
-function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment, onUploadProof, order, lineItemLabel, lineItems = [], uploading }) {
+function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment, onUploadProof, order, lineItemLabel, lineItems = [], trail = [], uploading }) {
   const meta = trailMetaLine(entry);
   const isEmailEntry = isEmailTrailEntry(entry);
-  const emailLineItems = isEmailEntry ? resolveEmailTrailLineItems(entry, lineItems) : [];
+  const emailLineItems = isEmailEntry ? resolveEmailTrailLineItems(entry, lineItems, trail) : [];
   const emailStatusLine = isEmailEntry ? emailTrailStatusLine(entry, emailLineItems) : "";
   const at = new Date(entry.at);
   const timeLabel = at.toLocaleString(undefined, {
@@ -608,7 +727,7 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
     : refundedAmount;
   const effectiveAllocated = allocationEditable
     ? parsedQty
-    : (draftStatus === ALLOCATION_FULFILLED_PAY_BALANCE || draftStatus === "Fulfilled")
+    : draftStatus === ALLOCATION_FULFILLED_PAY_BALANCE && !(lineItem.allocatedQty > 0)
       ? maxQty
       : (lineItem.allocatedQty ?? 0);
   const parsedRefund = draftRefund === "" ? undefined : Math.max(0, Number(draftRefund) || 0);
@@ -656,11 +775,17 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
       return;
     }
 
-    const draftAllocatedForSave = draftStatus === ALLOCATION_FULFILLED_PAY_BALANCE
-      ? maxQty
-      : savingPartialAllocation || (allocationEditable && paymentStatusDirty)
-        ? (savingFullRefund ? 0 : parsedQty)
-        : undefined;
+    const draftAllocatedForSave = savingPartialAllocation || (allocationEditable && paymentStatusDirty)
+      ? (savingFullRefund ? 0 : parsedQty)
+      : draftStatus === ALLOCATION_FULFILLED_PAY_BALANCE && !(lineItem.allocatedQty > 0)
+        ? maxQty
+        // Pin current partial/full allocation when moving to Fulfilled / Ready — never drop it.
+        : (
+          (draftStatus === "Fulfilled" || draftStatus === "Ready for Pickup")
+          && (lineItem.allocatedQty > 0)
+        )
+          ? lineItem.allocatedQty
+          : undefined;
 
     const draftRefundForSave = showRefundField && (refundDirty || paymentStatusDirty)
       ? (parsedRefund ?? previewRefundedAmount)
@@ -669,8 +794,7 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
     const itemForValidation = isPreorder
       ? {
           ...lineItem,
-          allocatedQty: draftAllocatedForSave
-            ?? ((draftStatus === "Fulfilled" || draftStatus === ALLOCATION_FULFILLED_PAY_BALANCE) ? maxQty : effectiveAllocated),
+          allocatedQty: draftAllocatedForSave ?? effectiveAllocated,
         }
       : lineItem;
 
@@ -799,18 +923,24 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
   function handleStatusChange(nextStatus) {
     setDraftStatus(nextStatus);
     setSaveError("");
-    let nextQty = Number(draftQty) || lineItem.allocatedQty || 0;
-    if (nextStatus === "Fulfilled" && isPreorder) {
-      nextQty = maxQty;
-      setDraftQty(String(maxQty));
-    } else if (nextStatus === ALLOCATION_FULFILLED_PAY_BALANCE && isPreorder) {
-      nextQty = maxQty;
-      setDraftQty(String(maxQty));
-    } else if (nextStatus === "For Full Refund") {
+    const existingAlloc = lineItem.allocatedQty ?? 0;
+    let nextQty = Number(draftQty) || existingAlloc || 0;
+    if (nextStatus === "For Full Refund") {
       nextQty = 0;
       setDraftQty("0");
+    } else if (
+      (nextStatus === ALLOCATION_FULFILLED_PAY_BALANCE || nextStatus === "Fulfilled")
+      && isPreorder
+      && existingAlloc <= 0
+    ) {
+      // Only default to full qty when nothing has been allocated yet.
+      nextQty = maxQty;
+      setDraftQty(String(maxQty));
     } else if (!statusNeedsAllocation(nextStatus)) {
-      nextQty = lineItem.allocatedQty ?? 0;
+      nextQty = existingAlloc;
+      setDraftQty(String(nextQty));
+    } else if (existingAlloc > 0) {
+      nextQty = existingAlloc;
       setDraftQty(String(nextQty));
     }
     if (statusNeedsRefundAmount(nextStatus)) {
@@ -1517,6 +1647,7 @@ export function OrderTrailPanel({
         <TrailTimelineItem
           key={entry.id}
           entry={entry}
+          trail={trail}
           order={order}
           isLast={index === trail.length - 1}
           surfaceBorderColor={surfaceBorderColor}
@@ -1576,7 +1707,7 @@ export function OrderTrailPanel({
               aria-label="Expand order trail"
               sx={{ flexShrink: 0, mt: -0.25 }}
             >
-              <ZoomInIcon sx={{ fontSize: 20 }} />
+              <ExpandCornersIcon sx={{ fontSize: 20 }} />
             </IconButton>
           </Tooltip>
         </Stack>
@@ -1674,11 +1805,14 @@ export function OrderTrailPanel({
             ...panelSx,
             bgcolor: "background.paper",
             backgroundImage: "none",
+            height: "min(820px, 90dvh)",
             maxHeight: "90dvh",
+            display: "flex",
+            flexDirection: "column",
           },
         }}
       >
-        <DialogTitle sx={{ fontWeight: 800, pr: 1.5 }}>
+        <DialogTitle sx={{ fontWeight: 800, pr: 1.5, flexShrink: 0 }}>
           <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
             <AdminSectionTitle sx={{ mb: 0, fontSize: "0.95rem" }} suffix={trailSuffix}>
               Order trail
@@ -1692,10 +1826,19 @@ export function OrderTrailPanel({
             </IconButton>
           </Stack>
         </DialogTitle>
-        <DialogContent dividers sx={{ py: 2.5 }}>
+        <DialogContent
+          dividers
+          sx={{
+            py: 2.5,
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            overscrollBehavior: "contain",
+          }}
+        >
           {trailItems}
         </DialogContent>
-        <DialogActions sx={{ px: 3, py: 1.5 }}>
+        <DialogActions sx={{ px: 3, py: 1.5, flexShrink: 0 }}>
           <Button onClick={() => setTrailExpanded(false)} variant="contained" color="primary">
             Close
           </Button>
@@ -1748,7 +1891,6 @@ function formatTrailTimestamp(iso) {
 }
 
 export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOrderStatusEmail }) {
-  const hasPreorder = isPreorderOrder(order);
   const lineItems = getOrderLineItems(order);
   const depositPercent = order.depositPercent ?? 30;
   const [selectedItemIds, setSelectedItemIds] = useState(() => defaultEmailItemSelection(lineItems));
@@ -1768,18 +1910,18 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
   const summaryItems = lineItems.map((item) => {
     const isPreorder = resolveOrderKindForItem(item) === "Pre-order";
     const fullLine = item.lineTotal ?? (item.price ?? 0) * (item.quantity ?? 1);
-    const amount = isPreorder
-      ? (item.depositPaid ?? Math.round(fullLine * depositPercent / 100))
-      : fullLine;
+    const allocatedQty = Math.max(0, Number(item.allocatedQty) || 0);
 
     return {
       id: item.id,
       name: item.name,
       quantity: item.quantity ?? 1,
+      allocatedQty,
       tag: item.tag ?? (isPreorder ? "Pre-order" : "In-stock"),
       depositPercent,
       price: item.price ?? (item.quantity ? fullLine / item.quantity : fullLine),
-      amount,
+      // Final = DP + balance (= allocated × price), not checkout deposit alone.
+      amount: lineItemGrossRevenue(item, depositPercent),
       image: item.image || null,
       payment: item.payment,
       status: item.status,
@@ -1787,10 +1929,110 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
     };
   });
 
-  const subtotal = hasPreorder ? (order.total ?? 0) : (order.fullSubtotal ?? order.total ?? 0);
-  const total = order.total ?? subtotal;
-  const balanceDue = order.balanceDue ?? 0;
+  const hasInstock = lineItems.some((item) => resolveOrderKindForItem(item) !== "Pre-order");
+  const hasPreorderLine = lineItems.some((item) => resolveOrderKindForItem(item) === "Pre-order");
+  const isMixedOrder = hasPreorderLine && hasInstock;
+
+  // Gross / final (= allocated × price once allocated; DP-only before).
+  const paidSoFar = lineItems.length
+    ? lineItems.reduce((sum, item) => sum + lineItemGrossRevenue(item, depositPercent), 0)
+    : (order.total ?? 0);
+
+  let balanceAwaiting = 0;
+  let balancePaidAmount = 0;
+  let depositCollected = 0;
+  let preorderAllocatedUnits = 0;
+  let preorderRefundPath = false;
+
+  lineItems.forEach((item) => {
+    if (resolveOrderKindForItem(item) !== "Pre-order") return;
+    const portion = linePreorderBalancePortion(item, depositPercent);
+    const payment = migratePaymentStatus(item.payment);
+    const status = migrateOrderStatus(item.status);
+    const allocated = Math.max(0, Number(item.allocatedQty) || 0);
+    preorderAllocatedUnits += allocated;
+    if (payment === "Refunded" || payment === "For Full Refund" || status === "Refunded" || status === "For Full Refund") {
+      preorderRefundPath = true;
+      return;
+    }
+    if (payment === "Unpaid" || payment === "Rejected") return;
+    // Deposit line must stay true DP (e.g. 30%), never the full allocated total.
+    depositCollected += lineItemDepositPaid(item, depositPercent);
+    if (portion <= 0) return;
+    if (lineBalanceIsAwaiting(item)) balanceAwaiting += portion;
+    else balancePaidAmount += portion;
+  });
+
   const refundedAmount = refundedAmountForOrder(order);
+  // Full refund / 0 keep on pre-order lines → ₱0; else final / collected gross.
+  const total = (hasPreorderLine && preorderAllocatedUnits <= 0 && (preorderRefundPath || refundedAmount > 0) && !hasInstock)
+    ? 0
+    : (hasPreorderLine || isMixedOrder)
+      ? paidSoFar
+      : orderCustomerTotal(order);
+
+  const preorderLines = lineItems.filter((item) => resolveOrderKindForItem(item) === "Pre-order");
+  const instockLines = lineItems.filter((item) => resolveOrderKindForItem(item) !== "Pre-order");
+  const preorderGross = preorderLines.reduce((sum, item) => sum + lineItemGrossRevenue(item, depositPercent), 0);
+  const instockPaid = instockLines.reduce((sum, item) => sum + lineItemGrossRevenue(item, depositPercent), 0);
+  // "Deposit paid" / mixed "Paid so far" = DP (+ in-stock), not final price.
+  const subtotal = isMixedOrder
+    ? depositCollected + instockPaid
+    : hasPreorderLine
+      ? depositCollected
+      : (order.fullSubtotal ?? order.total ?? 0);
+  const balanceSettled = balancePaidAmount > 0 && balanceAwaiting <= 0;
+  const allLinesSettled = lineItems.length > 0 && lineItems.every(lineIsFullySettled);
+  // Mixed + still awaiting / not all paid → split Pre-order vs In-stock. Both fully paid → merge.
+  const showSplitTotals = isMixedOrder && !allLinesSettled;
+
+  const preorderRefunded = preorderLines.reduce(
+    (sum, item) => sum + (refundedAmountForLineItem(item, depositPercent) || 0),
+    0,
+  );
+  const instockRefunded = instockLines.reduce(
+    (sum, item) => sum + (refundedAmountForLineItem(item, depositPercent) || 0),
+    0,
+  );
+
+  const totalsGroups = showSplitTotals
+    ? [
+      {
+        id: "preorder",
+        title: "Pre-order",
+        hasPreorder: true,
+        subtotalLabel: "Deposit paid",
+        subtotal: depositCollected,
+        balanceDue: balanceAwaiting,
+        balancePaid: balancePaidAmount,
+        balanceSettled: balanceSettled,
+        refundedAmount: preorderRefunded,
+        total: preorderGross,
+        totalLabel: "Total",
+      },
+      {
+        id: "instock",
+        title: "In-stock",
+        hasPreorder: false,
+        subtotalLabel: "Paid",
+        subtotal: instockPaid,
+        balanceDue: 0,
+        balancePaid: 0,
+        refundedAmount: instockRefunded,
+        total: instockPaid,
+        totalLabel: "Total",
+      },
+    ]
+    : null;
+
+  const subtotalLabel = isMixedOrder
+    ? "Paid so far"
+    : hasPreorderLine
+      ? "Deposit paid"
+      : "Subtotal";
+  const footerNote = showSplitTotals
+    ? "Merges when every line is fully paid."
+    : null;
 
   const selectedItems = lineItems.filter((item) => selectedItemIds.has(item.id));
   const selectedItemsShareStatus = useMemo(() => {
@@ -1864,12 +2106,16 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
       items={summaryItems}
       subtotal={subtotal}
       total={total}
-      balanceDue={balanceDue}
+      balanceDue={balanceAwaiting}
+      balancePaid={balancePaidAmount}
+      balanceSettled={balanceSettled}
       refundedAmount={refundedAmount}
-      hasPreorder={hasPreorder}
+      hasPreorder={hasPreorderLine}
       panelSx={panelSx}
-      subtotalLabel={hasPreorder ? "Deposit paid" : "Subtotal"}
-      totalLabel={hasPreorder ? "Paid at checkout" : "Total"}
+      subtotalLabel={subtotalLabel}
+      totalLabel="Total"
+      footerNote={footerNote}
+      totalsGroups={totalsGroups}
       adminSectionTitle
       selectedItemIds={sendOrderStatusEmail ? selectedItemIds : undefined}
       onToggleItemId={sendOrderStatusEmail ? toggleEmailItem : undefined}
@@ -1881,7 +2127,13 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
         notes: order.notes,
       }}
       renderItemExtra={(item) => (
-        <OrderSummaryItemMeta parts={[item.payment, item.status].filter(Boolean)} />
+        <OrderSummaryItemMeta
+          parts={[
+            item.payment,
+            item.status,
+            item.allocatedQty > 0 ? `${item.allocatedQty} of ${item.quantity} allocated` : null,
+          ].filter(Boolean)}
+        />
       )}
       headerActions={sendOrderStatusEmail ? (
         <Button

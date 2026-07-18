@@ -338,17 +338,29 @@ export function wrapSimpleEmail({ preheader = "", bodyHtml, footerNote = "" }) {
   `.trim();
 }
 
-export function invoiceTable(lineItems, { highlightId = null } = {}) {
+/**
+ * @param {object[]} lineItems
+ * @param {{ highlightId?: string|null, useAllocation?: boolean }} [options]
+ *   useAllocation — when allocated qty is set, Qty shows "7 of 10" and Total = unit × allocated
+ */
+export function invoiceTable(lineItems, { highlightId = null, useAllocation = false } = {}) {
   const c = EMAIL_BRAND.colors;
   const rows = lineItems
     .map((item) => {
-      const qty = Number(item.quantity) || 1;
-      const unitPrice = Number(item.price) || (item.lineTotal > 0 ? Number(item.lineTotal) / qty : 0);
-      const lineTotal = item.lineTotal > 0
-        ? Number(item.lineTotal)
-        : unitPrice > 0
-          ? unitPrice * qty
-          : 0;
+      const orderedQty = Math.max(1, Number(item.quantity) || 1);
+      const allocated = Math.max(0, Number(item.allocatedQty) || 0);
+      const billQty = useAllocation && allocated > 0 ? Math.min(allocated, orderedQty) : orderedQty;
+      const qtyLabel = useAllocation && allocated > 0
+        ? `${billQty} of ${orderedQty}`
+        : String(orderedQty);
+      const unitPrice = Number(item.price) || (item.lineTotal > 0 ? Number(item.lineTotal) / orderedQty : 0);
+      const lineTotal = useAllocation && allocated > 0
+        ? unitPrice * billQty
+        : item.lineTotal > 0
+          ? Number(item.lineTotal)
+          : unitPrice > 0
+            ? unitPrice * orderedQty
+            : 0;
       const unitLabel = unitPrice > 0
         ? `₱${unitPrice.toLocaleString("en-PH")}`
         : "—";
@@ -371,8 +383,8 @@ export function invoiceTable(lineItems, { highlightId = null } = {}) {
           <td align="right" style="padding:12px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;color:${c.muted};vertical-align:top;width:88px;white-space:nowrap;${rowBg}">
             ${unitLabel}
           </td>
-          <td align="center" style="padding:12px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;color:${c.muted};vertical-align:top;width:40px;${rowBg}">
-            ${qty}
+          <td align="center" style="padding:12px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;color:${c.muted};vertical-align:top;width:${useAllocation ? "64px" : "40px"};white-space:nowrap;${rowBg}">
+            ${qtyLabel}
           </td>
           <td align="right" style="padding:12px 16px 12px 12px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;color:${c.text};vertical-align:top;width:96px;white-space:nowrap;${rowBg}">
             ${totalLabel}
@@ -387,7 +399,7 @@ export function invoiceTable(lineItems, { highlightId = null } = {}) {
       <tr>
         <td style="padding:0 12px 8px 16px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted}">Item</td>
         <td align="right" style="padding:0 8px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted};width:88px">Unit Price</td>
-        <td align="center" style="padding:0 8px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted};width:40px">Qty</td>
+        <td align="center" style="padding:0 8px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted};width:${useAllocation ? "64px" : "40px"}">Qty</td>
         <td align="right" style="padding:0 16px 8px 12px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted};width:96px">Total</td>
       </tr>
       ${rows}

@@ -9,6 +9,7 @@ import {
   orderOutstandingBalance,
   orderStatusLabel,
 } from "../data/orderWorkflow.js";
+import { orderCustomerTotal } from "../lib/orderRevenue.js";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "./ProductCard.jsx";
 import { CardIcon } from "./icons.jsx";
@@ -138,7 +139,7 @@ export function CustomerOrderCard({ order, surfaceBorderColor }) {
       <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
         <Box>
           <Typography sx={{ fontWeight: 800, color: "primary.main", fontSize: "1rem" }}>
-            {PESO.format(order.total)}
+            {PESO.format(orderCustomerTotal(order))}
           </Typography>
           {outstanding > 0 ? (
             needsPay ? (

@@ -220,14 +220,14 @@ function LineLogoUpload({ line, onChange, surfaceBorderColor }) {
           <Typography sx={{ fontSize: "0.58rem", color: "text.secondary", fontFamily: MONO_FONT }}>LOGO</Typography>
         )}
       </Box>
-      <Stack spacing={0.5} sx={{ minWidth: 0 }}>
-        <Stack direction="row" spacing={0.75} alignItems="center">
+      <Stack spacing={0.35} sx={{ minWidth: 0 }}>
+        <Stack direction="row" spacing={0.5} alignItems="center">
           <Button
             size="small"
             variant="outlined"
             disabled={uploading}
             onClick={() => inputRef.current?.click()}
-            sx={{ fontSize: "0.68rem", minWidth: 88, px: 1.5, py: 0.4, lineHeight: 1.4 }}
+            sx={{ fontSize: "0.68rem", minWidth: 0, px: 1.25, py: 0.35, lineHeight: 1.4 }}
           >
             {line.logo ? "Replace" : "Upload"}
           </Button>
@@ -260,6 +260,7 @@ function LineLogoUpload({ line, onChange, surfaceBorderColor }) {
                 color: "text.secondary",
                 cursor: "help",
                 lineHeight: 0,
+                flexShrink: 0,
                 "&:hover": { color: "primary.main" },
               }}
             >
@@ -267,18 +268,6 @@ function LineLogoUpload({ line, onChange, surfaceBorderColor }) {
             </Box>
           </Tooltip>
         </Stack>
-        {line.logo ? (
-          <IconButton
-            size="small"
-            color="error"
-            disabled={uploading}
-            aria-label="Remove logo"
-            onClick={() => onChange("")}
-            sx={{ alignSelf: "flex-start" }}
-          >
-            <TrashIcon sx={{ fontSize: 16 }} />
-          </IconButton>
-        ) : null}
         {error ? (
           <Typography variant="caption" color="error.main" sx={{ lineHeight: 1.4, textTransform: "none" }}>
             {error}
@@ -360,9 +349,9 @@ function ProductLinesTab({ panelSx, surfaceBorderColor, lines, addLine, updateLi
         <Table size="small">
           <TableHead>
             <TableRow>
-              <AdminTableHeaderCell sx={{ width: 140 }}>Logo</AdminTableHeaderCell>
-              <AdminTableHeaderCell sx={{ width: "24%" }}>Shop label</AdminTableHeaderCell>
-              <AdminTableHeaderCell>Inventory match</AdminTableHeaderCell>
+              <AdminTableHeaderCell sx={{ width: 168 }}>Logo</AdminTableHeaderCell>
+              <AdminTableHeaderCell sx={{ width: "28%" }}>Shop label</AdminTableHeaderCell>
+              <AdminTableHeaderCell sx={{ width: "22%", maxWidth: 180 }}>Inventory match</AdminTableHeaderCell>
               <AdminTableHeaderCell sx={{ width: 88 }} align="center">Active</AdminTableHeaderCell>
               <AdminTableHeaderCell sx={{ width: 88 }} align="right" />
             </TableRow>
@@ -386,7 +375,7 @@ function ProductLinesTab({ panelSx, surfaceBorderColor, lines, addLine, updateLi
                     placeholder="Pokémon TCG"
                   />
                 </TableCell>
-                <TableCell>
+                <TableCell sx={{ maxWidth: 180 }}>
                   <TextField
                     size="small"
                     fullWidth
@@ -395,6 +384,7 @@ function ProductLinesTab({ panelSx, surfaceBorderColor, lines, addLine, updateLi
                     placeholder="Pokémon TCG"
                     helperText={line.id ? `ID: ${line.id}` : undefined}
                     FormHelperTextProps={{ sx: { mx: 0, fontFamily: MONO_FONT, fontSize: "0.68rem" } }}
+                    inputProps={{ style: { textOverflow: "ellipsis" } }}
                   />
                 </TableCell>
                 <TableCell align="center">

@@ -1,14 +1,16 @@
 import { sortOrdersByOrderNo } from "./orderIds.js";
 import {
-  getDepositPercent,
-  getOrderLineItems,
-  migrateOrderStatus,
-  migratePaymentStatus,
-  refundedAmountForLineItem,
-} from "../data/orderWorkflow.js";
-
-/** Line statuses counted in the “Fulfilled (less refunds)” sales-by-line view. */
-const FULFILLED_LINE_STATUSES = new Set(["Fulfilled", "Ready for Pickup"]);
+  lineItemAllocatedQty,
+  lineItemGrossRevenue,
+  lineItemQty,
+  lineItemsForBasis,
+  orderContributesToBasis,
+  orderItemsSummaryLabel,
+  orderListDisplayTotal,
+  orderNetRevenue,
+  orderQtyLabel,
+  orderRevenue,
+} from "./orderRevenue.js";
 
 const PERIOD_DAYS = {
   "1D": 1,
@@ -86,77 +88,6 @@ function parseOrderDate(order) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function lineItemAmount(item) {
-  const qty = Math.max(1, Number(item.quantity) || 1);
-  return Number(item.lineTotal ?? (item.price ?? 0) * qty) || 0;
-}
-
-/**
- * Cash collected on a line item.
- * Mixed / multi-item orders must be summed per line — order.payment "Mixed"
- * previously made whole-order paid revenue ₱0 while fulfilled still counted.
- */
-function lineItemPaidRevenue(item) {
-  const payment = migratePaymentStatus(item.payment);
-  const lineTotal = lineItemAmount(item);
-  if (payment === "Fully Paid" || payment === "Partially Refunded") return lineTotal;
-  if (payment === "DP Paid" || payment === "Awaiting Balance Payment") {
-    const depositPaid = Number(item.depositPaid) || 0;
-    return depositPaid > 0 ? depositPaid : lineTotal;
-  }
-  return 0;
-}
-
-function orderRevenue(order) {
-  const items = getOrderLineItems(order);
-  if (items.length) {
-    return items.reduce((sum, item) => sum + lineItemPaidRevenue(item), 0);
-  }
-  const payment = migratePaymentStatus(order.payment);
-  if (payment === "Fully Paid" || payment === "Partially Refunded") {
-    return order.fullSubtotal ?? order.total ?? 0;
-  }
-  if (payment === "DP Paid" || payment === "Awaiting Balance Payment") return order.total ?? 0;
-  return 0;
-}
-
-/** Completed lines only: paid cash on Fulfilled / Ready for Pickup, minus refunds. */
-function lineItemFulfilledNet(item, depositPercent) {
-  if (!FULFILLED_LINE_STATUSES.has(migrateOrderStatus(item.status))) return 0;
-  const paid = lineItemPaidRevenue(item);
-  if (paid <= 0) return 0;
-  const refunded = refundedAmountForLineItem(item, depositPercent) || 0;
-  return Math.max(0, paid - refunded);
-}
-
-function orderFulfilledNetRevenue(order) {
-  const depositPercent = getDepositPercent(order);
-  const items = getOrderLineItems(order);
-  const list = items.length ? items : orderLineItemsForAnalytics(order);
-  return list.reduce((sum, item) => sum + lineItemFulfilledNet(item, depositPercent), 0);
-}
-
-function orderCogs(order) {
-  if (orderRevenue(order) <= 0) return 0;
-  const items = order.lineItems?.length
-    ? order.lineItems
-    : [{ name: order.items || "Unknown", quantity: order.qty || 1, price: order.total, lineTotal: order.fullSubtotal ?? order.total }];
-
-  return items.reduce((sum, item) => {
-    const unitCost = item.cost != null && item.cost !== ""
-      ? Math.max(0, Number(item.cost) || 0)
-      : Math.round((item.price ?? 0) * 0.72);
-    return sum + unitCost * (item.quantity ?? 1);
-  }, 0);
-}
-
-function orderNetRevenue(order) {
-  const revenue = orderRevenue(order);
-  const cogs = orderCogs(order);
-  const refunds = Number(order.refundAmount) || 0;
-  return Math.max(0, revenue - cogs - refunds);
-}
-
 function filterOrdersByRange(orders, start, end) {
   return orders.filter((order) => {
     const date = parseOrderDate(order);
@@ -174,32 +105,22 @@ function uniqueCustomers(orderList) {
   return new Set(orderList.map((o) => (o.email || o.customer || "").toLowerCase()).filter(Boolean)).size;
 }
 
-function orderLineItemsForAnalytics(order) {
-  if (order.lineItems?.length) return order.lineItems;
-  return [{
-    name: order.items || "Unknown",
-    quantity: order.qty || 1,
-    price: order.total,
-    lineTotal: order.fullSubtotal ?? order.total,
-    line: "Other",
-    status: order.status,
-    payment: order.payment,
-    refundAmount: order.refundAmount,
-  }];
-}
-
-/** Paid revenue share — cash collected per line (handles Mixed orders). */
-function aggregateLineItemsPaid(orders) {
+function aggregateLineItems(orders, basis = "paid") {
   const byProduct = new Map();
   const byLine = new Map();
+  let total = 0;
 
   for (const order of orders) {
-    for (const item of orderLineItemsForAnalytics(order)) {
-      const revenue = lineItemPaidRevenue(item);
+    for (const item of lineItemsForBasis(order, basis)) {
+      const revenue = lineItemGrossRevenue(item);
       if (revenue <= 0) continue;
+      total += revenue;
       const key = item.id || item.name;
+      const units = lineItemAllocatedQty(item) > 0
+        ? Math.min(lineItemAllocatedQty(item), lineItemQty(item))
+        : lineItemQty(item);
       const existing = byProduct.get(key) || { name: item.name, units: 0, revenue: 0 };
-      existing.units += item.quantity ?? 1;
+      existing.units += units;
       existing.revenue += revenue;
       byProduct.set(key, existing);
 
@@ -208,30 +129,7 @@ function aggregateLineItemsPaid(orders) {
     }
   }
 
-  return { byProduct, byLine };
-}
-
-/**
- * Fulfilled / Ready for Pickup paid amounts, minus refunds.
- * Always ≤ paid for the same lines (completed subset of cash in).
- */
-function aggregateLineItemsFulfilledNet(orders) {
-  const byLine = new Map();
-  let total = 0;
-
-  for (const order of orders) {
-    const depositPercent = getDepositPercent(order);
-    const items = getOrderLineItems(order);
-    for (const item of items.length ? items : orderLineItemsForAnalytics(order)) {
-      const net = lineItemFulfilledNet(item, depositPercent);
-      if (net <= 0) continue;
-      const line = item.line || "Other";
-      byLine.set(line, (byLine.get(line) || 0) + net);
-      total += net;
-    }
-  }
-
-  return { byLine, total };
+  return { byProduct, byLine, total };
 }
 
 function toSalesByLineSlices(byLine, emptyLabel) {
@@ -449,26 +347,42 @@ function channelSplit(orders) {
   ].filter((entry) => entry.value > 0);
 }
 
-export function computeDashboardAnalytics(orders, period = "1M", now = new Date()) {
+/**
+ * @param {"paid"|"fulfilled"} basis
+ *   paid — DP / allocated × price across all recognized payments
+ *   fulfilled — same math, but only line items with status Fulfilled
+ */
+export function computeDashboardAnalytics(orders, period = "1M", now = new Date(), basis = "paid") {
+  const mode = basis === "fulfilled" ? "fulfilled" : "paid";
   const { start, end, prevStart, prevEnd, periodKey, periodLabel } = resolvePeriodWindow(period, now);
   const customWindow = periodKey === "custom" ? { start, end } : null;
 
-  const current = filterOrdersByRange(orders, start, end);
-  const previous = filterOrdersByRange(orders, prevStart, prevEnd);
+  const currentAll = filterOrdersByRange(orders, start, end);
+  const previousAll = filterOrdersByRange(orders, prevStart, prevEnd);
+  const current = mode === "fulfilled"
+    ? currentAll.filter((order) => orderContributesToBasis(order, "fulfilled"))
+    : currentAll;
+  const previous = mode === "fulfilled"
+    ? previousAll.filter((order) => orderContributesToBasis(order, "fulfilled"))
+    : previousAll;
 
-  const currentRevenue = current.reduce((sum, o) => sum + orderRevenue(o), 0);
-  const previousRevenue = previous.reduce((sum, o) => sum + orderRevenue(o), 0);
-  const currentNetRevenue = current.reduce((sum, o) => sum + orderNetRevenue(o), 0);
-  const previousNetRevenue = previous.reduce((sum, o) => sum + orderNetRevenue(o), 0);
+  const revenueFn = (order) => orderRevenue(order, mode);
+  const netFn = (order) => orderNetRevenue(order, mode);
+
+  const currentRevenue = currentAll.reduce((sum, o) => sum + revenueFn(o), 0);
+  const previousRevenue = previousAll.reduce((sum, o) => sum + revenueFn(o), 0);
+  const currentNetRevenue = currentAll.reduce((sum, o) => sum + netFn(o), 0);
+  const previousNetRevenue = previousAll.reduce((sum, o) => sum + netFn(o), 0);
   const currentCustomers = uniqueCustomers(current);
   const previousCustomers = uniqueCustomers(previous);
   const avgOrder = current.length ? Math.round(currentRevenue / current.length) : 0;
   const prevAvgOrder = previous.length ? Math.round(previousRevenue / previous.length) : 0;
 
-  const { byProduct, byLine } = aggregateLineItemsPaid(current);
-  const salesByLine = toSalesByLineSlices(byLine, "No paid orders");
-  const fulfilledNet = aggregateLineItemsFulfilledNet(current);
-  const salesByLineFulfilled = toSalesByLineSlices(fulfilledNet.byLine, "No fulfilled orders");
+  const { byProduct, byLine, total: periodGross } = aggregateLineItems(currentAll, mode);
+  const salesByLine = toSalesByLineSlices(
+    byLine,
+    mode === "fulfilled" ? "No fulfilled orders" : "No paid orders",
+  );
 
   const topProducts = [...byProduct.values()]
     .sort((a, b) => b.revenue - a.revenue)
@@ -479,12 +393,13 @@ export function computeDashboardAnalytics(orders, period = "1M", now = new Date(
     .map((o) => ({
       id: o.id,
       customer: o.customer,
-      total: o.total,
+      // Allocated × price after allocation; due-now/deposit before
+      total: orderListDisplayTotal(o),
       status: o.status,
       date: o.date,
       type: o.type,
-      items: o.items,
-      qty: o.qty,
+      items: orderItemsSummaryLabel(o),
+      qtyLabel: orderQtyLabel(o),
     }));
 
   return {
@@ -500,15 +415,14 @@ export function computeDashboardAnalytics(orders, period = "1M", now = new Date(
       avgOrder,
       avgOrderDelta: pctDelta(avgOrder, prevAvgOrder),
     },
-    revenueTrend: buildTrendBuckets(orders, periodKey, customWindow, now, orderRevenue),
-    revenueTrendFulfilled: buildTrendBuckets(orders, periodKey, customWindow, now, orderFulfilledNetRevenue),
+    revenueTrend: buildTrendBuckets(orders, periodKey, customWindow, now, revenueFn),
     salesByLine,
-    salesByLineFulfilled,
-    fulfilledRevenue: fulfilledNet.total,
+    periodGross,
     channelSplit: channelSplit(current),
     topProducts,
     recentOrders,
     periodLabel,
     periodKey,
+    basis: mode,
   };
 }

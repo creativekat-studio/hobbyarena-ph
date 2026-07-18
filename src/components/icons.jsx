@@ -324,6 +324,30 @@ export function ZoomInIcon(props) {
   );
 }
 
+/** Two opposite corner carets — expand to full view. */
+export function ExpandCornersIcon(props) {
+  return (
+    <SvgIcon viewBox="0 0 24 24" {...props}>
+      <path
+        d="M5 5h5v1.75H6.75V10H5V5Zm9 0h5v5h-1.75V6.75H14V5ZM5 14h1.75v3.25H10V19H5v-5Zm13.25 0H19v5h-5v-1.75h3.25V14Z"
+        fill="currentColor"
+      />
+    </SvgIcon>
+  );
+}
+
+/** Two opposite corner carets — collapse from full view. */
+export function CollapseCornersIcon(props) {
+  return (
+    <SvgIcon viewBox="0 0 24 24" {...props}>
+      <path
+        d="M10 5v5H5V8.25h3.25V5H10Zm4 0h1.75v3.25H19V10h-5V5ZM5 14h5v5H8.25v-3.25H5V14Zm9 0h5v1.75h-3.25V19H14v-5Z"
+        fill="currentColor"
+      />
+    </SvgIcon>
+  );
+}
+
 export function EyeOffIcon(props) {
   return (
     <SvgIcon viewBox="0 0 24 24" {...props}>

@@ -9,6 +9,7 @@ import {
   DialogTitle,
   FormControl,
   Grid,
+  IconButton,
   InputAdornment,
   InputLabel,
   LinearProgress,
@@ -26,17 +27,26 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
-import { useNavigate, useOutletContext } from "react-router-dom";
+import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import { MONO_FONT, getStatAccents } from "../theme.js";
 import { avatarStyles } from "../lib/surfaces.js";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
-import { CardIcon, SearchIcon, SparkleIcon, UserIcon } from "../components/icons.jsx";
+import {
+  CardIcon,
+  CollapseCornersIcon,
+  ExpandCornersIcon,
+  SearchIcon,
+  SparkleIcon,
+  UserIcon,
+} from "../components/icons.jsx";
 import { InfiniteScrollTableSentinel } from "../components/InfiniteScrollSentinel.jsx";
 import { AdminTableHeaderCell, AdminTableSortHeader } from "./adminTableHeader.jsx";
+import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
 import { useCustomers } from "../lib/customersStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { useClientTiers } from "../lib/clientTiersStore.jsx";
@@ -47,7 +57,16 @@ import {
   resolveClientTier,
 } from "../lib/clientTier.js";
 import { sortOrdersByOrderNo } from "../lib/orderIds.js";
-import { migrateOrderStatus, orderStatusLabel, refundedAmountForOrder, STATUS_COLOR } from "../data/orderWorkflow.js";
+import { orderCustomerTotal } from "../lib/orderRevenue.js";
+import {
+  getOrderLineItems,
+  lineItemTrailLabel,
+  migrateOrderStatus,
+  migratePaymentStatus,
+  orderStatusLabel,
+  PAYMENT_COLOR,
+  STATUS_COLOR,
+} from "../data/orderWorkflow.js";
 
 const FILTERS = [
   { id: "all", label: "All" },
@@ -98,7 +117,6 @@ function customerStatus(orderCount, lastOrderDate) {
   return days > 90 ? "Dormant" : "Active";
 }
 
-/** Soft filled tags — not outlined, so they don’t read as buttons beside View. */
 function customerStatusChipSx(status, theme) {
   const dark = theme.palette.mode === "dark";
   const tones = {
@@ -117,11 +135,8 @@ function customerStatusChipSx(status, theme) {
   };
   const tone = tones[status] || tones.Dormant;
   return {
-    height: 22,
-    fontSize: "0.62rem",
-    fontFamily: MONO_FONT,
+    ...ADMIN_STATUS_CHIP_SX,
     fontWeight: 800,
-    letterSpacing: 0.4,
     border: "none",
     ...tone,
   };
@@ -132,10 +147,54 @@ function CustomerStatusChip({ status }) {
   return (
     <Chip
       label={status}
-      size="small"
       variant="filled"
       sx={customerStatusChipSx(status, theme)}
     />
+  );
+}
+
+function mixedBreakdownTitle(order, kind) {
+  const items = getOrderLineItems(order);
+  if (!items.length) return kind === "payment" ? "Mixed payment" : "Mixed status";
+
+  return (
+    <Box sx={{ py: 0.25, maxWidth: 280 }}>
+      <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, mb: 0.5 }}>
+        {kind === "payment" ? "Payment by item" : "Status by item"}
+      </Typography>
+      <Stack spacing={0.35}>
+        {items.map((item) => {
+          const payment = migratePaymentStatus(item.payment);
+          const status = migrateOrderStatus(item.status);
+          const value = kind === "payment" ? (payment || "—") : orderStatusLabel(status);
+          return (
+            <Typography key={item.id || item.name} sx={{ fontSize: "0.68rem", lineHeight: 1.35 }}>
+              {lineItemTrailLabel(item)} — {value}
+            </Typography>
+          );
+        })}
+      </Stack>
+    </Box>
+  );
+}
+
+function OrderMetaChip({ label, color, mixedTitle }) {
+  const chip = (
+    <Chip
+      label={label || "—"}
+      color={color || "default"}
+      variant="outlined"
+      sx={{
+        ...ADMIN_STATUS_CHIP_SX,
+        ...(mixedTitle ? { cursor: "help" } : {}),
+      }}
+    />
+  );
+  if (!mixedTitle) return chip;
+  return (
+    <Tooltip arrow title={mixedTitle}>
+      <span>{chip}</span>
+    </Tooltip>
   );
 }
 
@@ -162,6 +221,7 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
   const navigate = useNavigate();
   const [tab, setTab] = useState("history");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [tableExpanded, setTableExpanded] = useState(false);
 
   const orderList = customer?.orderList;
   const statusOptions = useMemo(() => {
@@ -183,6 +243,7 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
     if (!open) return;
     setStatusFilter("all");
     setTab("history");
+    setTableExpanded(false);
   }, [open, customer?.email, customer?.uid, customer?.id]);
 
   if (!customer) return null;
@@ -190,12 +251,34 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
   const tierColor = customer.tier?.badgeColor || theme.palette.primary.main;
   const progressPct = Math.round((customer.tierProgress?.progress || 0) * 100);
   const addressLine = formatAddress(customer.address);
+  const customerKey = String(customer.email || customer.uid || customer.id || "").trim().toLowerCase();
+
+  function openOrderFromHistory(orderId) {
+    onClose();
+    navigate(`/admin/orders/${encodeURIComponent(orderId)}`, {
+      state: {
+        backTo: {
+          path: "/admin/customers",
+          label: customer.name || customer.email || "customer",
+          reopenCustomerKey: customerKey,
+        },
+      },
+    });
+  }
+
+  function handleRequestClose() {
+    if (tableExpanded) {
+      setTableExpanded(false);
+      return;
+    }
+    onClose();
+  }
 
   return (
     <Dialog
       key={customer.email || customer.uid || customer.id}
       open={open}
-      onClose={onClose}
+      onClose={handleRequestClose}
       fullWidth
       maxWidth="xl"
       PaperProps={{
@@ -223,11 +306,9 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
           <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap justifyContent="flex-end">
             <Chip
               label={customer.tier?.name || "Member"}
-              size="small"
               sx={{
-                fontFamily: MONO_FONT,
+                ...ADMIN_STATUS_CHIP_SX,
                 fontWeight: 800,
-                fontSize: "0.62rem",
                 color: tierColor,
                 borderColor: tierColor,
                 bgcolor: alpha(tierColor, 0.12),
@@ -241,13 +322,15 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
 
       <Box sx={{ px: 3, pb: 2, flexShrink: 0, borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
         <Stack spacing={2}>
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Phone" value={customer.phone} /></Grid>
-            <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Sign-in" value={customer.signInMethod} /></Grid>
-            <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Joined" value={customer.joined} /></Grid>
-            <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Marketing" value={customer.marketingOptIn ? "Opted in" : "Not opted in"} /></Grid>
-            <Grid size={{ xs: 12 }}><DetailField label="Address" value={addressLine} /></Grid>
-          </Grid>
+          {!tableExpanded ? (
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Phone" value={customer.phone} /></Grid>
+              <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Sign-in" value={customer.signInMethod} /></Grid>
+              <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Joined" value={customer.joined} /></Grid>
+              <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Marketing" value={customer.marketingOptIn ? "Opted in" : "Not opted in"} /></Grid>
+              <Grid size={{ xs: 12 }}><DetailField label="Address" value={addressLine} /></Grid>
+            </Grid>
+          ) : null}
 
           <Grid container spacing={1.5}>
             <Grid size={{ xs: 6, sm: 3 }}>
@@ -276,50 +359,52 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
             </Grid>
           </Grid>
 
-          <Box sx={{ p: 1.75, borderRadius: 1, border: "1px solid", borderColor: alpha(tierColor, 0.45), bgcolor: alpha(tierColor, 0.08) }}>
-            <Stack spacing={1}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
-                <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 800, letterSpacing: 1, color: tierColor, textTransform: "uppercase" }}>
-                  Member tier
-                </Typography>
-                <Typography sx={{ fontWeight: 700, fontSize: "0.85rem" }}>{customer.tier?.name || "Member"}</Typography>
-              </Stack>
-              {customer.tierProgress?.atTop ? (
-                <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>Top tier reached.</Typography>
-              ) : customer.tierProgress?.nextTier ? (
-                <>
-                  <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>
-                    {PESO.format(customer.tierProgress.remaining)} more fulfilled spend to reach {customer.tierProgress.nextTier.name}.
+          {!tableExpanded ? (
+            <Box sx={{ p: 1.75, borderRadius: 1, border: "1px solid", borderColor: alpha(tierColor, 0.45), bgcolor: alpha(tierColor, 0.08) }}>
+              <Stack spacing={1}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
+                  <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 800, letterSpacing: 1, color: tierColor, textTransform: "uppercase" }}>
+                    Member tier
                   </Typography>
-                  <Stack direction="row" justifyContent="space-between" alignItems="baseline">
-                    <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 800, color: tierColor }}>
-                      {progressPct}%
+                  <Typography sx={{ fontWeight: 700, fontSize: "0.85rem" }}>{customer.tier?.name || "Member"}</Typography>
+                </Stack>
+                {customer.tierProgress?.atTop ? (
+                  <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>Top tier reached.</Typography>
+                ) : customer.tierProgress?.nextTier ? (
+                  <>
+                    <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>
+                      {PESO.format(customer.tierProgress.remaining)} more fulfilled spend to reach {customer.tierProgress.nextTier.name}.
                     </Typography>
-                    <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", color: "text.secondary" }}>
-                      {PESO.format(customer.fulfilledSpend || 0)} / {PESO.format(customer.tierProgress.nextTier.minSpend ?? 0)}
-                    </Typography>
-                  </Stack>
-                  <LinearProgress
-                    variant="determinate"
-                    value={progressPct}
-                    sx={{
-                      height: 8,
-                      borderRadius: 1,
-                      bgcolor: alpha(tierColor, 0.18),
-                      "& .MuiLinearProgress-bar": { bgcolor: tierColor, borderRadius: 1 },
-                    }}
-                  />
-                  {(customer.fulfilledSpend || 0) <= 0 ? (
-                    <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>
-                      Pending orders don’t count yet — only fulfilled / ready-for-pickup (and allocated) spend.
-                    </Typography>
-                  ) : null}
-                </>
-              ) : (
-                <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>No tier ladder configured.</Typography>
-              )}
-            </Stack>
-          </Box>
+                    <Stack direction="row" justifyContent="space-between" alignItems="baseline">
+                      <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 800, color: tierColor }}>
+                        {progressPct}%
+                      </Typography>
+                      <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", color: "text.secondary" }}>
+                        {PESO.format(customer.fulfilledSpend || 0)} / {PESO.format(customer.tierProgress.nextTier.minSpend ?? 0)}
+                      </Typography>
+                    </Stack>
+                    <LinearProgress
+                      variant="determinate"
+                      value={progressPct}
+                      sx={{
+                        height: 8,
+                        borderRadius: 1,
+                        bgcolor: alpha(tierColor, 0.18),
+                        "& .MuiLinearProgress-bar": { bgcolor: tierColor, borderRadius: 1 },
+                      }}
+                    />
+                    {(customer.fulfilledSpend || 0) <= 0 ? (
+                      <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>
+                        Pending, mixed, and ready-for-pickup orders don’t count yet — only Fulfilled.
+                      </Typography>
+                    ) : null}
+                  </>
+                ) : (
+                  <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>No tier ladder configured.</Typography>
+                )}
+              </Stack>
+            </Box>
+          ) : null}
         </Stack>
       </Box>
 
@@ -349,22 +434,34 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
             <Tab value="history" label={`Order history (${filteredOrders.length}${statusFilter !== "all" ? ` / ${(orderList || []).length}` : ""})`} />
           </Tabs>
           {(orderList || []).length > 0 ? (
-            <FormControl size="small" sx={{ minWidth: { xs: "100%", sm: 220 }, my: 1 }}>
-              <InputLabel id="customer-order-status-filter">Status</InputLabel>
-              <Select
-                labelId="customer-order-status-filter"
-                label="Status"
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
-              >
-                <MenuItem value="all">All statuses</MenuItem>
-                {statusOptions.map((status) => (
-                  <MenuItem key={status} value={status}>
-                    {orderStatusLabel(status)}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ my: 1 }}>
+              <FormControl size="small" sx={{ minWidth: { xs: "100%", sm: 220 }, flex: { xs: 1, sm: "none" } }}>
+                <InputLabel id="customer-order-status-filter">Status</InputLabel>
+                <Select
+                  labelId="customer-order-status-filter"
+                  label="Status"
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value)}
+                >
+                  <MenuItem value="all">All statuses</MenuItem>
+                  {statusOptions.map((status) => (
+                    <MenuItem key={status} value={status}>
+                      {orderStatusLabel(status)}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Tooltip title={tableExpanded ? "Collapse table" : "Expand table"}>
+                <IconButton
+                  size="small"
+                  aria-label={tableExpanded ? "Collapse order table" : "Expand order table"}
+                  onClick={() => setTableExpanded((prev) => !prev)}
+                  sx={{ color: "text.secondary", border: "1px solid", borderColor: surfaceBorderColor, borderRadius: 1 }}
+                >
+                  {tableExpanded ? <CollapseCornersIcon sx={{ fontSize: 18 }} /> : <ExpandCornersIcon sx={{ fontSize: 18 }} />}
+                </IconButton>
+              </Tooltip>
+            </Stack>
           ) : null}
         </Stack>
       </Box>
@@ -389,13 +486,13 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
                       <AdminTableHeaderCell>Order</AdminTableHeaderCell>
                       <AdminTableHeaderCell sx={{ display: { xs: "none", sm: "table-cell" } }}>Date</AdminTableHeaderCell>
                       <AdminTableHeaderCell>Status</AdminTableHeaderCell>
-                      <AdminTableHeaderCell sx={{ display: { xs: "none", md: "table-cell" } }}>Items</AdminTableHeaderCell>
-                      <AdminTableHeaderCell align="right">Total</AdminTableHeaderCell>
+                      <AdminTableHeaderCell align="right">Final</AdminTableHeaderCell>
                       <AdminTableHeaderCell align="right" />
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {filteredOrders.map((order) => {
+                      const payment = migratePaymentStatus(order.payment);
                       const status = migrateOrderStatus(order.status);
                       return (
                         <TableRow key={order.id} hover>
@@ -406,33 +503,30 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
                             {order.date || "—"}
                           </TableCell>
                           <TableCell>
-                            <Chip
-                              label={orderStatusLabel(status)}
-                              size="small"
-                              color={STATUS_COLOR[status] || "default"}
-                              variant="outlined"
-                              sx={{ fontSize: "0.65rem", height: 24, maxWidth: 220 }}
-                            />
-                          </TableCell>
-                          <TableCell sx={{ display: { xs: "none", md: "table-cell" }, maxWidth: 420 }}>
-                            <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {order.items || "Order"}
-                            </Typography>
+                            <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexWrap: "wrap", rowGap: 0.5 }}>
+                              <OrderMetaChip
+                                label={payment}
+                                color={PAYMENT_COLOR[payment] || "default"}
+                                mixedTitle={payment === "Mixed" ? mixedBreakdownTitle(order, "payment") : null}
+                              />
+                              <OrderMetaChip
+                                label={orderStatusLabel(status)}
+                                color={STATUS_COLOR[status] || "default"}
+                                mixedTitle={status === "Mixed" ? mixedBreakdownTitle(order, "status") : null}
+                              />
+                            </Stack>
                           </TableCell>
                           <TableCell align="right" sx={{ fontWeight: 800, color: "primary.main", whiteSpace: "nowrap" }}>
-                            {PESO.format(order.total || 0)}
+                            {PESO.format(orderCustomerTotal(order))}
                           </TableCell>
                           <TableCell align="right">
                             <Button
                               size="small"
                               variant="outlined"
-                              onClick={() => {
-                                onClose();
-                                navigate(`/admin/orders/${encodeURIComponent(order.id)}`);
-                              }}
+                              onClick={() => openOrderFromHistory(order.id)}
                               sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
                             >
-                              Open
+                              View
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -455,7 +549,7 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
       </DialogContent>
 
       <DialogActions sx={{ px: 3, py: 2, flexShrink: 0 }}>
-        <Button onClick={onClose} color="inherit">Close</Button>
+        <Button onClick={handleRequestClose} color="inherit">Close</Button>
       </DialogActions>
     </Dialog>
   );
@@ -464,6 +558,8 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
 export default function CustomersPage() {
   const theme = useTheme();
   const accents = getStatAccents(theme);
+  const location = useLocation();
+  const navigate = useNavigate();
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
   const { customers } = useCustomers();
@@ -488,9 +584,8 @@ export default function CustomersPage() {
       const key = String(order.email || "").trim().toLowerCase();
       if (!key) return;
       const current = ordersByEmail.get(key) || { count: 0, totalSpent: 0, lastOrderDate: null, list: [] };
-      const orderTotal = Number(order.total) || 0;
-      // Total spent = order totals minus refunds (refunded amounts never count).
-      const netSpent = Math.max(0, orderTotal - (refundedAmountForOrder(order) || 0));
+      // DP + balance (= allocated × price), not DP + original full amount / checkout deposit alone.
+      const netSpent = orderCustomerTotal(order);
       const orderDate = order.date || null;
       ordersByEmail.set(key, {
         count: current.count + 1,
@@ -528,6 +623,19 @@ export default function CustomersPage() {
       };
     });
   }, [customers, orders, tiers]);
+
+  // Re-open customer dialog when returning from an order opened via Order history.
+  useEffect(() => {
+    const key = String(location.state?.reopenCustomerKey || "").trim().toLowerCase();
+    if (!key || !enrichedCustomers.length) return;
+    const match = enrichedCustomers.find((customer) => {
+      const email = String(customer.email || "").trim().toLowerCase();
+      const uid = String(customer.uid || customer.id || "").trim().toLowerCase();
+      return email === key || uid === key;
+    });
+    if (match) setSelectedCustomer(match);
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.state, location.pathname, enrichedCustomers, navigate]);
 
   const rows = useMemo(() => {
     const filtered = enrichedCustomers.filter((c) => {
@@ -618,32 +726,50 @@ export default function CustomersPage() {
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Avg. spend" value={PESO.format(stats.avgSpend)} accent={accents[3]} /></Grid>
         </Grid>
 
-        <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
-          <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "center" }}>
-            <ToggleButtonGroup
-              exclusive
-              size="small"
-              value={filter}
-              onChange={(_, next) => { if (next) setFilter(next); }}
-              sx={{ flexWrap: "wrap" }}
+        <Box sx={{ ...panelSx, p: { xs: 1.5, md: 2.5 } }}>
+          <Stack spacing={1.25}>
+            <FormControl size="small" sx={{ display: { xs: "flex", sm: "none" }, width: "100%" }}>
+              <InputLabel id="customers-filter">Filter</InputLabel>
+              <Select
+                labelId="customers-filter"
+                label="Filter"
+                value={filter}
+                onChange={(event) => setFilter(event.target.value)}
+              >
+                {FILTERS.map((item) => (
+                  <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={1.25}
+              alignItems={{ xs: "stretch", sm: "center" }}
             >
-              {FILTERS.map((item) => (
-                <ToggleButton key={item.id} value={item.id} sx={FILTER_TOGGLE_SX}>
-                  {item.label}
-                </ToggleButton>
-              ))}
-            </ToggleButtonGroup>
+              <ToggleButtonGroup
+                exclusive
+                size="small"
+                value={filter}
+                onChange={(_, next) => { if (next) setFilter(next); }}
+                sx={{ display: { xs: "none", sm: "inline-flex" }, flexWrap: "wrap" }}
+              >
+                {FILTERS.map((item) => (
+                  <ToggleButton key={item.id} value={item.id} sx={FILTER_TOGGLE_SX}>
+                    {item.label}
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
 
-            <Box sx={{ flex: 1 }} />
-
-            <TextField
-              size="small"
-              placeholder="Search name or email…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              sx={{ minWidth: { xs: "100%", sm: 260 } }}
-              InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
-            />
+              <TextField
+                size="small"
+                placeholder="Search name or email…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                sx={{ flex: 1, minWidth: 0, width: { xs: "100%", sm: "auto" } }}
+                InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
+              />
+            </Stack>
           </Stack>
         </Box>
       </Stack>
@@ -668,9 +794,9 @@ export default function CustomersPage() {
                   sx={{ display: { xs: "none", sm: "table-cell" } }}
                 />
                 <AdminTableHeaderCell sx={{ display: { xs: "none", md: "table-cell" } }}>Sign-in</AdminTableHeaderCell>
-                <AdminTableHeaderCell align="right">Orders</AdminTableHeaderCell>
-                <AdminTableHeaderCell align="right">Total spent</AdminTableHeaderCell>
-                <AdminTableHeaderCell align="center">Marketing</AdminTableHeaderCell>
+                <AdminTableHeaderCell align="right" sx={{ display: { xs: "none", sm: "table-cell" } }}>Orders</AdminTableHeaderCell>
+                <AdminTableHeaderCell align="right" sx={{ display: { xs: "none", md: "table-cell" } }}>Total spent</AdminTableHeaderCell>
+                <AdminTableHeaderCell align="center" sx={{ display: { xs: "none", lg: "table-cell" } }}>Marketing</AdminTableHeaderCell>
                 <AdminTableHeaderCell align="center">Status</AdminTableHeaderCell>
                 <AdminTableHeaderCell align="right" />
               </TableRow>
@@ -697,14 +823,10 @@ export default function CustomersPage() {
                   <TableCell>
                     <Chip
                       label={customer.tier?.name || "Member"}
-                      size="small"
                       variant="outlined"
                       sx={{
-                        height: 22,
-                        fontSize: "0.62rem",
-                        fontFamily: MONO_FONT,
+                        ...ADMIN_STATUS_CHIP_SX,
                         fontWeight: 800,
-                        letterSpacing: 0.4,
                         color: customer.tier?.badgeColor || "primary.main",
                         borderColor: customer.tier?.badgeColor || "primary.main",
                         bgcolor: customer.tier?.badgeColor
@@ -715,10 +837,15 @@ export default function CustomersPage() {
                   </TableCell>
                   <TableCell sx={{ color: "text.secondary", display: { xs: "none", sm: "table-cell" } }}>{customer.joined}</TableCell>
                   <TableCell sx={{ color: "text.secondary", display: { xs: "none", md: "table-cell" } }}>{customer.signInMethod}</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 700, fontFamily: MONO_FONT }}>{customer.orders}</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 700 }}>{PESO.format(customer.totalSpent)}</TableCell>
-                  <TableCell align="center">
-                    <Chip label={customer.marketingOptIn ? "Opted in" : "No"} size="small" color={customer.marketingOptIn ? "success" : "default"} variant="outlined" />
+                  <TableCell align="right" sx={{ fontWeight: 700, fontFamily: MONO_FONT, display: { xs: "none", sm: "table-cell" } }}>{customer.orders}</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700, display: { xs: "none", md: "table-cell" } }}>{PESO.format(customer.totalSpent)}</TableCell>
+                  <TableCell align="center" sx={{ display: { xs: "none", lg: "table-cell" } }}>
+                    <Chip
+                      label={customer.marketingOptIn ? "Opted in" : "No"}
+                      color={customer.marketingOptIn ? "success" : "default"}
+                      variant="outlined"
+                      sx={ADMIN_STATUS_CHIP_SX}
+                    />
                   </TableCell>
                   <TableCell align="center">
                     <CustomerStatusChip status={customer.status} />

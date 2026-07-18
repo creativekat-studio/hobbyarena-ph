@@ -26,6 +26,7 @@ import {
   orderOutstandingBalance,
   orderStatusLabel,
 } from "../data/orderWorkflow.js";
+import { orderCustomerTotal } from "../lib/orderRevenue.js";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { useOrders, getOrdersForEmail } from "../lib/ordersStore.jsx";
 import { setAuthSurface } from "../auth/authSurface.js";
@@ -290,8 +291,10 @@ export default function OrderStatusPage() {
                 ) : null}
               </Box>
               <Box sx={{ textAlign: { xs: "left", sm: "right" } }}>
-                <Typography sx={{ fontWeight: 800, color: "primary.main", fontSize: "1.35rem" }}>{PESO.format(order.total)}</Typography>
-                <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>Paid so far</Typography>
+                <Typography sx={{ fontWeight: 800, color: "primary.main", fontSize: "1.35rem" }}>
+                  {PESO.format(orderCustomerTotal(order))}
+                </Typography>
+                <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>Final price</Typography>
                 {orderOutstandingBalance(order) > 0 ? (
                   <BalanceDueBadge
                     amount={orderOutstandingBalance(order)}
@@ -321,8 +324,8 @@ export default function OrderStatusPage() {
                 <Typography sx={{ fontSize: "0.88rem" }}>{formatDeliverTo(order)}</Typography>
               </Stack>
             </SummaryRow>
-            <SummaryRow label="Total">
-              <Typography sx={{ fontSize: "0.9rem", fontWeight: 800 }}>{PESO.format(order.total)}</Typography>
+            <SummaryRow label="Final price">
+              <Typography sx={{ fontSize: "0.9rem", fontWeight: 800 }}>{PESO.format(orderCustomerTotal(order))}</Typography>
             </SummaryRow>
           </Box>
 

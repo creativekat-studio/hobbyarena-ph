@@ -28,6 +28,7 @@ import { MONO_FONT, getStatAccents } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import { ArchiveIcon, BoxIcon, CardIcon, RestoreIcon, SearchIcon, SparkleIcon, TruckIcon } from "../components/icons.jsx";
+import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
 import {
   ORDER_QUEUES,
   PAYMENT_COLOR,
@@ -41,6 +42,7 @@ import {
   migratePaymentStatus,
   migrateOrderStatus,
   orderStatusLabel,
+  resolveOrderKindForItem,
 } from "../data/orderWorkflow.js";
 import { isArchivedOrder, useOrders } from "../lib/ordersStore.jsx";
 import { compareOrdersByOrderNo } from "../lib/orderIds.js";
@@ -79,9 +81,24 @@ const FILTER_TOGGLE_SX = {
   fontWeight: 700,
 };
 
-const ORDER_SUMMARY_GRID = "36px 28px minmax(140px, 1.1fr) minmax(120px, 1fr) minmax(120px, 1.2fr) minmax(120px, 0.9fr) auto";
+const ORDER_SUMMARY_GRID = "36px 28px minmax(140px, 1.1fr) minmax(120px, 1fr) minmax(140px, 1.3fr) minmax(120px, 0.9fr) auto";
 const LINEITEM_GRID = "minmax(160px, 1.25fr) minmax(100px, 0.85fr) minmax(72px, 0.6fr) minmax(88px, 0.65fr) minmax(110px, 0.85fr) minmax(110px, 0.85fr)";
 const ORDER_TABLE_MIN_WIDTH = 760;
+
+
+function orderKindLabels(order) {
+  const lineItems = getOrderLineItems(order);
+  if (lineItems.length) {
+    const hasPreorder = lineItems.some((item) => resolveOrderKindForItem(item) === "Pre-order");
+    const hasInstock = lineItems.some((item) => resolveOrderKindForItem(item) !== "Pre-order");
+    if (hasPreorder && hasInstock) return ["Pre-order", "In-stock"];
+    if (hasPreorder) return ["Pre-order"];
+    return ["In-stock"];
+  }
+  if (order?.type === "Mixed") return ["Pre-order", "In-stock"];
+  if (order?.type === "Pre-order") return ["Pre-order"];
+  return ["In-stock"];
+}
 const LINEITEM_TABLE_MIN_WIDTH = 720;
 
 function orderSummaryGridSx(overrides = {}) {
@@ -213,7 +230,12 @@ function AdminOrderAccordionRow({
               <Stack direction="row" spacing={0.75} alignItems="center">
                 <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap" }}>{order.id}</Typography>
                 {archived ? (
-                  <Chip label="Archived" size="small" color="default" variant="outlined" sx={{ height: 18, fontSize: "0.6rem" }} />
+                  <Chip
+                    label="Archived"
+                    color="default"
+                    variant="outlined"
+                    sx={{ ...ADMIN_STATUS_CHIP_SX, height: 22, fontSize: "0.62rem", "& .MuiChip-label": { px: 0.75 } }}
+                  />
                 ) : null}
               </Stack>
               <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", whiteSpace: "nowrap", fontFamily: MONO_FONT }}>
@@ -223,11 +245,26 @@ function AdminOrderAccordionRow({
           </Stack>
         </Box>
 
-        <Box sx={{ minWidth: 0 }}>
+        <Box sx={{ minWidth: 0, maxWidth: "100%" }}>
           <Typography sx={{ fontWeight: 600, fontSize: "0.88rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {order.customer}
           </Typography>
-          <Chip label={order.type} size="small" variant="outlined" color={order.type === "Pre-order" ? "secondary" : "default"} sx={{ height: 20, fontSize: "0.62rem", mt: 0.25 }} />
+          <Stack
+            direction="row"
+            spacing={0.5}
+            alignItems="center"
+            sx={{ mt: 0.5, flexWrap: "wrap", rowGap: 0.5 }}
+          >
+            {orderKindLabels(order).map((kind) => (
+              <Chip
+                key={kind}
+                label={kind}
+                variant="outlined"
+                color={kind === "Pre-order" ? "secondary" : "default"}
+                sx={ADMIN_STATUS_CHIP_SX}
+              />
+            ))}
+          </Stack>
         </Box>
 
         <Box sx={{ minWidth: 0 }}>
@@ -236,12 +273,16 @@ function AdminOrderAccordionRow({
           ) : (
             <Typography sx={{ fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{order.items}</Typography>
           )}
-          <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", fontFamily: MONO_FONT }}>Qty {order.qty}</Typography>
         </Box>
 
         <Box sx={{ minWidth: 0 }}>
           {allDone ? (
-            <Chip label={orderStatusLabel(status)} size="small" color={STATUS_COLOR[status] || "default"} variant="outlined" sx={{ maxWidth: "100%" }} />
+            <Chip
+              label={orderStatusLabel(status)}
+              color={STATUS_COLOR[status] || "default"}
+              variant="outlined"
+              sx={ADMIN_STATUS_CHIP_SX}
+            />
           ) : (
             <Tooltip
               arrow
@@ -263,10 +304,9 @@ function AdminOrderAccordionRow({
               <Stack direction="row" spacing={0.5} alignItems="center" sx={{ cursor: "help", width: "fit-content" }}>
                 <Chip
                   label={`${doneCount}/${lineItems.length}`}
-                  size="small"
                   variant="outlined"
                   color={doneCount > 0 ? "warning" : "default"}
-                  sx={{ fontFamily: MONO_FONT, fontWeight: 700, maxWidth: "100%" }}
+                  sx={ADMIN_STATUS_CHIP_SX}
                 />
                 <Box
                   component="span"
@@ -274,13 +314,13 @@ function AdminOrderAccordionRow({
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    width: 16,
-                    height: 16,
+                    width: 18,
+                    height: 18,
                     borderRadius: "50%",
                     border: "1px solid",
                     borderColor: "text.disabled",
                     color: "text.secondary",
-                    fontSize: "0.62rem",
+                    fontSize: "0.68rem",
                     fontWeight: 700,
                     fontStyle: "italic",
                   }}
@@ -379,10 +419,20 @@ function AdminOrderAccordionRow({
                       {(item.balanceDue ?? 0) > 0 ? PESO.format(item.balanceDue) : "—"}
                     </Typography>
                     <Box>
-                      <Chip label={itemPayment} size="small" color={PAYMENT_COLOR[itemPayment] || "default"} variant="outlined" sx={{ fontSize: "0.65rem", height: 24, maxWidth: "100%" }} />
+                      <Chip
+                        label={itemPayment}
+                        color={PAYMENT_COLOR[itemPayment] || "default"}
+                        variant="outlined"
+                        sx={ADMIN_STATUS_CHIP_SX}
+                      />
                     </Box>
                     <Box>
-                      <Chip label={orderStatusLabel(itemStatus)} size="small" color={STATUS_COLOR[itemStatus] || "default"} sx={{ fontSize: "0.65rem", height: 24, maxWidth: "100%" }} />
+                      <Chip
+                        label={orderStatusLabel(itemStatus)}
+                        color={STATUS_COLOR[itemStatus] || "default"}
+                        variant="outlined"
+                        sx={ADMIN_STATUS_CHIP_SX}
+                      />
                     </Box>
                   </Box>
                 );
@@ -421,7 +471,9 @@ export default function OrdersPage() {
   }
 
   function openOrder(id) {
-    navigate(`/admin/orders/${encodeURIComponent(id)}`);
+    navigate(`/admin/orders/${encodeURIComponent(id)}`, {
+      state: { backTo: { path: "/admin/orders", label: "orders" } },
+    });
   }
 
   function handleExportExcel() {
@@ -597,14 +649,28 @@ export default function OrdersPage() {
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={TruckIcon} label="Awaiting pickup" value={stats.pickup} accent={theme.palette.success.main} /></Grid>
         </Grid>
 
-        <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
-          <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "center" }}>
+        <Box sx={{ ...panelSx, p: { xs: 1.5, md: 2.5 } }}>
+          <Stack spacing={1.25}>
+            <FormControl size="small" sx={{ display: { xs: "flex", md: "none" }, width: "100%" }}>
+              <InputLabel id="orders-queue-filter">Queue</InputLabel>
+              <Select
+                labelId="orders-queue-filter"
+                label="Queue"
+                value={queueFilter}
+                onChange={(event) => setQueueFilter(event.target.value)}
+              >
+                {QUEUE_FILTERS.map((item) => (
+                  <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
             <ToggleButtonGroup
               exclusive
               size="small"
               value={queueFilter}
               onChange={(_, next) => { if (next) setQueueFilter(next); }}
-              sx={{ flexWrap: "wrap" }}
+              sx={{ display: { xs: "none", md: "inline-flex" }, flexWrap: "wrap" }}
             >
               {QUEUE_FILTERS.map((item) => (
                 <ToggleButton key={item.id} value={item.id} sx={FILTER_TOGGLE_SX}>
@@ -613,25 +679,27 @@ export default function OrdersPage() {
               ))}
             </ToggleButtonGroup>
 
-            <FormControl size="small" sx={{ minWidth: { xs: "100%", md: 150 } }}>
-              <InputLabel id="orders-kind-filter">Kind</InputLabel>
-              <Select
-                labelId="orders-kind-filter"
-                label="Kind"
-                value={kindFilter}
-                onChange={(event) => setKindFilter(event.target.value)}
-              >
-                {KIND_FILTERS.map((item) => (
-                  <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={1}
+              alignItems={{ xs: "stretch", sm: "center" }}
+            >
+              <FormControl size="small" sx={{ minWidth: { sm: 140 }, width: { xs: "100%", sm: "auto" } }}>
+                <InputLabel id="orders-kind-filter">Kind</InputLabel>
+                <Select
+                  labelId="orders-kind-filter"
+                  label="Kind"
+                  value={kindFilter}
+                  onChange={(event) => setKindFilter(event.target.value)}
+                >
+                  {KIND_FILTERS.map((item) => (
+                    <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
 
-            <Box sx={{ flex: 1 }} />
-
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: "wrap", gap: 1 }}>
               {selectedCount > 0 ? (
-                <>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: "wrap", rowGap: 1 }}>
                   <Chip
                     label={`${selectedCount} selected`}
                     onDelete={() => setSelectedIds(new Set())}
@@ -657,14 +725,14 @@ export default function OrdersPage() {
                       <MenuItem onClick={requestBulkArchive} sx={{ color: "error.main" }}>Archive…</MenuItem>
                     )}
                   </Menu>
-                </>
+                </Stack>
               ) : (
                 <Chip
                   label={allLoadedSelected ? "Deselect loaded" : "Select loaded"}
                   onClick={toggleSelectAllLoaded}
                   disabled={!visibleItems.length}
                   variant="outlined"
-                  sx={{ fontWeight: 700 }}
+                  sx={{ fontWeight: 700, alignSelf: { xs: "flex-start", sm: "center" } }}
                 />
               )}
 
@@ -673,7 +741,7 @@ export default function OrdersPage() {
                 placeholder="Search order, customer, item…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                sx={{ minWidth: { xs: "100%", sm: 260 } }}
+                sx={{ flex: 1, minWidth: 0, width: { xs: "100%", sm: "auto" } }}
                 InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
               />
             </Stack>
@@ -750,7 +818,9 @@ export default function OrdersPage() {
         open={addOpen}
         onClose={() => setAddOpen(false)}
         surfaceBorderColor={surfaceBorderColor}
-        onCreated={(id) => navigate(`/admin/orders/${encodeURIComponent(id)}`)}
+        onCreated={(id) => navigate(`/admin/orders/${encodeURIComponent(id)}`, {
+          state: { backTo: { path: "/admin/orders", label: "orders" } },
+        })}
       />
 
       <TypeConfirmDialog

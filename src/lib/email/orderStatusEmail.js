@@ -158,8 +158,41 @@ function getUpdatedItem(order) {
   return null;
 }
 
+function allocationOfOrdered(item) {
+  const qty = Math.max(1, Number(item?.quantity) || 1);
+  const allocated = Math.max(0, Number(item?.allocatedQty) || 0);
+  if (allocated <= 0) return null;
+  return `${Math.min(allocated, qty)} of ${qty}`;
+}
+
+function itemBillQty(item) {
+  const qty = Math.max(1, Number(item?.quantity) || 1);
+  const allocated = Math.max(0, Number(item?.allocatedQty) || 0);
+  if (allocated > 0) return Math.min(allocated, qty);
+  return qty;
+}
+
+function itemUnitPrice(item) {
+  const qty = Math.max(1, Number(item?.quantity) || 1);
+  if (Number(item?.price) > 0) return Number(item.price);
+  if (Number(item?.lineTotal) > 0) return Number(item.lineTotal) / qty;
+  return 0;
+}
+
+/** Final for allocated units (= unit × allocated), else ordered line total. */
+function itemFinalTotal(item) {
+  const unit = itemUnitPrice(item);
+  const allocated = Math.max(0, Number(item?.allocatedQty) || 0);
+  if (allocated > 0 && unit > 0) return unit * itemBillQty(item);
+  if (Number(item?.lineTotal) > 0) return Number(item.lineTotal);
+  return unit * Math.max(1, Number(item?.quantity) || 1);
+}
+
 function itemLabel(item) {
-  const qty = item.quantity ?? 1;
+  const qty = Math.max(1, Number(item?.quantity) || 1);
+  const allocPhrase = allocationOfOrdered(item);
+  // Once allocated, always show "7 of 10" (partial or full).
+  if (allocPhrase) return `${item.name} · ${allocPhrase}`;
   return qty > 1 ? `${item.name} ×${qty}` : item.name;
 }
 
@@ -174,40 +207,18 @@ function orderStatusLabel(status) {
 /** Values available to admin-authored email bodies via {{token}} placeholders. */
 function buildPlaceholderMap(order) {
   const item = getUpdatedItem(order);
+  const allocated = String(item?.allocatedQty ?? order.allocatedQty ?? 0);
+  const qty = String(item?.quantity ?? order.qty ?? 1);
   return {
     customer: order.customer || "",
     item: item ? itemLabel(item) : (order.items || "your order"),
     order: order.id || "",
     balance: formatPeso(item?.balanceDue ?? order.balanceDue),
     refund: formatPeso(item?.refundAmount ?? order.refundAmount),
-    allocated: String(item?.allocatedQty ?? order.allocatedQty ?? 0),
-    qty: String(item?.quantity ?? order.qty ?? 1),
-  };
-}
-
-/** Emails about units the customer actually receives should show allocated qty. */
-const ALLOCATED_QTY_EMAIL_TYPES = new Set([
-  "ready_for_pickup",
-  "partial_refund_sent",
-  "order_fulfilled",
-]);
-
-/**
- * For pickup / fulfillment emails on partially-allocated pre-orders, present the
- * allocated quantity (units being released) instead of the full ordered quantity
- * so the customer isn't confused about how many they're receiving.
- */
-function reflectAllocatedQty(order, emailType) {
-  if (!ALLOCATED_QTY_EMAIL_TYPES.has(emailType)) return order;
-  const item = order.updatedLineItem;
-  if (!item) return order;
-  const allocated = Number(item.allocatedQty) || 0;
-  const ordered = Number(item.quantity) || 1;
-  if (allocated <= 0 || allocated >= ordered) return order;
-  return {
-    ...order,
-    qty: allocated,
-    updatedLineItem: { ...item, quantity: allocated },
+    allocated,
+    qty,
+    allocation: allocationOfOrdered(item) || `${allocated} of ${qty}`,
+    finalTotal: formatPeso(item ? itemFinalTotal(item) : 0),
   };
 }
 
@@ -285,6 +296,12 @@ function invoiceSummary(order) {
   const dp = depositPercentOf(order);
   const bal = balancePercentOf(order);
 
+  const tableItems = item?.id
+    ? lineItems.filter((line) => line.id === item.id)
+    : lineItems;
+  const hasAllocation = tableItems.some((line) => (Number(line.allocatedQty) || 0) > 0);
+  const finalTotal = tableItems.reduce((sum, line) => sum + itemFinalTotal(line), 0);
+
   if (item) {
     if (item.depositPaid > 0) {
       rows.push({ label: `Deposit paid (${dp}%)`, value: formatPeso(item.depositPaid) });
@@ -318,15 +335,15 @@ function invoiceSummary(order) {
     }
   }
 
-  const tableItems = item?.id
-    ? lineItems.filter((line) => line.id === item.id)
-    : lineItems;
+  if (hasAllocation && finalTotal > 0) {
+    rows.push({ label: "Total (allocated)", value: formatPeso(finalTotal), strong: true });
+  }
 
   const heading = lineItems.length > 1 ? sectionHeading("Items in this email") : "";
 
   return `
     ${heading}
-    ${invoiceTable(tableItems, { highlightId: item?.id })}
+    ${invoiceTable(tableItems, { highlightId: item?.id, useAllocation: hasAllocation })}
     ${rows.length ? `${totalsBlock(rows)}<div style="clear:both"></div>` : ""}
   `;
 }
@@ -430,10 +447,10 @@ const TEMPLATES = {
     lead: (order) => `Hello <strong>${escapeHtml(order.customer)}</strong>,`,
     body: (order) => {
       const item = getUpdatedItem(order);
-      const allocated = item?.allocatedQty ?? order.allocatedQty ?? 0;
-      const qty = item?.quantity ?? order.qty ?? 1;
       const balance = formatPeso(item?.balanceDue ?? order.balanceDue);
-      return `Your allocation is <strong>${allocated} / ${qty}</strong> units. Please pay the remaining balance of <strong>${balance}</strong> for your fulfilled units.`;
+      const alloc = allocationOfOrdered(item)
+        || `${item?.allocatedQty ?? order.allocatedQty ?? 0} of ${item?.quantity ?? order.qty ?? 1}`;
+      return `Your allocation is <strong>${escapeHtml(alloc)}</strong> units. Please pay the remaining balance of <strong>${balance}</strong> for your allocated units.`;
     },
     footer: () => "",
   },
@@ -449,10 +466,10 @@ const TEMPLATES = {
     lead: (order) => `Hello <strong>${escapeHtml(order.customer)}</strong>,`,
     body: (order) => {
       const item = getUpdatedItem(order);
-      const allocated = item?.allocatedQty ?? order.allocatedQty ?? 0;
-      const qty = item?.quantity ?? order.qty ?? 1;
       const refund = formatPeso(item?.refundAmount ?? order.refundAmount);
-      return `Only <strong>${allocated} / ${qty}</strong> units were allocated. A refund of <strong>${refund}</strong> is due on the unallocated units.`;
+      const alloc = allocationOfOrdered(item)
+        || `${item?.allocatedQty ?? order.allocatedQty ?? 0} of ${item?.quantity ?? order.qty ?? 1}`;
+      return `Only <strong>${escapeHtml(alloc)}</strong> units were allocated. A refund of <strong>${refund}</strong> is due on the unallocated units.`;
     },
     footer: () => getSupportContactHtml(),
   },
@@ -486,7 +503,9 @@ const TEMPLATES = {
     body: (order) => {
       const item = getUpdatedItem(order);
       const refund = formatPeso(item?.refundAmount ?? order.refundAmount);
-      return `We have sent your refund of <strong>${refund}</strong>. Your allocated units are <strong>ready for pickup</strong> — please schedule pickup with our team.`;
+      const alloc = allocationOfOrdered(item);
+      const allocNote = alloc ? ` Allocated quantity: <strong>${escapeHtml(alloc)}</strong>.` : "";
+      return `We have sent your refund of <strong>${refund}</strong>.${allocNote} Your allocated units are <strong>ready for pickup</strong> — please schedule pickup with our team.`;
     },
     footer: () => `Contact us via Hobby Arena PH or your account to arrange pickup.`,
   },
@@ -500,8 +519,13 @@ const TEMPLATES = {
     preheader: "Your order is ready. Schedule pickup with us.",
     title: "Ready for pickup",
     lead: (order) => `Hello <strong>${escapeHtml(order.customer)}</strong>,`,
-    body: () => {
-      return `This item is <strong>ready for pickup</strong>. Please schedule pickup with our team during processing hours (Mon–Fri, 8:00 AM – 8:00 PM).`;
+    body: (order) => {
+      const item = getUpdatedItem(order);
+      const alloc = allocationOfOrdered(item);
+      const allocNote = alloc
+        ? ` Allocated quantity: <strong>${escapeHtml(alloc)}</strong>.`
+        : "";
+      return `This item is <strong>ready for pickup</strong>.${allocNote} Please schedule pickup with our team during processing hours (Mon–Fri, 8:00 AM – 8:00 PM).`;
     },
     footer: "See you soon at Hobby Arena!",
   },
@@ -515,8 +539,13 @@ const TEMPLATES = {
     preheader: "Your order has been fulfilled. Thank you!",
     title: "Order fulfilled",
     lead: (order) => `Hello <strong>${escapeHtml(order.customer)}</strong>,`,
-    body: () => {
-      return `This item is <strong>fulfilled</strong>. Thank you for shopping with Hobby Arena — hope to see you again soon!`;
+    body: (order) => {
+      const item = getUpdatedItem(order);
+      const alloc = allocationOfOrdered(item);
+      const allocNote = alloc
+        ? ` Allocated quantity: <strong>${escapeHtml(alloc)}</strong>.`
+        : "";
+      return `This item is <strong>fulfilled</strong>.${allocNote} Thank you for shopping with Hobby Arena — hope to see you again soon!`;
     },
     footer: "We appreciate your support.",
   },
@@ -558,7 +587,7 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
   const template = TEMPLATES[emailType];
   if (!template) return null;
 
-  const order = reflectAllocatedQty(rawOrder, emailType);
+  const order = rawOrder;
   const item = getUpdatedItem(order);
   const bodyOverride = typeof options.bodyOverride === "string" && options.bodyOverride.trim()
     ? options.bodyOverride
@@ -568,6 +597,9 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     "balance_due_partial",
     "partial_refund_pending",
     "full_refund_pending",
+    "partial_refund_sent",
+    "ready_for_pickup",
+    "order_fulfilled",
   ].includes(emailType);
 
   const showMilestones = [

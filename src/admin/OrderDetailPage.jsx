@@ -9,7 +9,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { Link as RouterLink, useNavigate, useOutletContext, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import { ArchiveIcon, RestoreIcon } from "../components/icons.jsx";
@@ -28,9 +28,29 @@ function BackIcon(props) {
   );
 }
 
+function resolveBackNavigation(locationState) {
+  const backTo = locationState?.backTo;
+  if (backTo?.path === "/admin/customers" && backTo.label) {
+    return {
+      path: "/admin/customers",
+      label: `Back to ${backTo.label}`,
+      state: backTo.reopenCustomerKey
+        ? { reopenCustomerKey: backTo.reopenCustomerKey }
+        : undefined,
+    };
+  }
+  return {
+    path: "/admin/orders",
+    label: "Back to orders",
+    state: undefined,
+  };
+}
+
 export default function OrderDetailPage() {
   const { orderId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const backNav = resolveBackNavigation(location.state);
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
   const {
@@ -66,12 +86,11 @@ export default function OrderDetailPage() {
     return (
       <Stack spacing={ADMIN_PAGE_SPACING}>
         <Button
-          component={RouterLink}
-          to="/admin/orders"
           startIcon={<BackIcon />}
+          onClick={() => navigate(backNav.path, { state: backNav.state })}
           sx={{ alignSelf: "flex-start", fontFamily: MONO_FONT, fontSize: "0.82rem" }}
         >
-          Back to orders
+          {backNav.label}
         </Button>
         <Box sx={{ ...panelSx, p: 4, textAlign: "center" }}>
           <Typography sx={{ fontWeight: 800, mb: 1 }}>Order not found</Typography>
@@ -104,12 +123,11 @@ export default function OrderDetailPage() {
       </Snackbar>
 
       <Button
-        component={RouterLink}
-        to="/admin/orders"
         startIcon={<BackIcon />}
+        onClick={() => navigate(backNav.path, { state: backNav.state })}
         sx={{ alignSelf: "flex-start", fontFamily: MONO_FONT, fontSize: "0.82rem", color: "text.secondary" }}
       >
-        Back to orders
+        {backNav.label}
       </Button>
 
       <AdminPageHeader

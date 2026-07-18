@@ -1,43 +1,23 @@
-import { ALLOCATION_FULFILLED_PAY_BALANCE, migrateOrderStatus, getOrderLineItems } from "../data/orderWorkflow.js";
+import { migrateOrderStatus } from "../data/orderWorkflow.js";
+import { lineItemGrossRevenue, orderCustomerTotal } from "./orderRevenue.js";
 
-/** Line statuses that contribute (fully or via allocated qty) to loyalty spend. */
-const FULL_CREDIT_STATUSES = new Set(["Fulfilled", "Ready for Pickup"]);
-const ALLOCATED_CREDIT_STATUSES = new Set([
-  ALLOCATION_FULFILLED_PAY_BALANCE,
-  "Partially Fulfilled & Pay Balance",
-  "Partially Fulfilled & For Refund",
-]);
-
+/** Line helper — gross for Fulfilled lines only. */
 export function fulfilledLineItemSpend(item) {
-  const status = migrateOrderStatus(item.status);
-  const qty = Math.max(1, Number(item.quantity) || 1);
-  const lineTotal = Number(item.lineTotal ?? (item.price ?? 0) * qty) || 0;
-  const allocated = Math.max(0, Number(item.allocatedQty) || 0);
-
-  // Fulfilled / Ready for Pickup: full line amount (not reduced by refunds or allocation).
-  if (FULL_CREDIT_STATUSES.has(status)) {
-    return lineTotal;
-  }
-
-  // Partial fulfillments: credit only the fulfilled share of the full line total.
-  if (ALLOCATED_CREDIT_STATUSES.has(status) && allocated > 0) {
-    return (lineTotal * Math.min(allocated, qty)) / qty;
-  }
-
-  return 0;
+  if (migrateOrderStatus(item?.status) !== "Fulfilled") return 0;
+  return lineItemGrossRevenue(item);
 }
 
+/**
+ * Fulfilled KPI = sum of Final for orders with status Fulfilled only
+ * (matches Status filter = Fulfilled in order history).
+ */
 export function computeFulfilledSpendForEmail(orders, email) {
   const key = String(email || "").trim().toLowerCase();
   if (!key) return 0;
   return orders
     .filter((o) => String(o.email || "").trim().toLowerCase() === key)
-    .reduce((sum, order) => {
-      return sum + getOrderLineItems(order).reduce(
-        (lineSum, item) => lineSum + fulfilledLineItemSpend(item),
-        0,
-      );
-    }, 0);
+    .filter((o) => migrateOrderStatus(o.status) === "Fulfilled")
+    .reduce((sum, order) => sum + Math.max(0, orderCustomerTotal(order)), 0);
 }
 
 export function resolveClientTier(spend, tiers) {

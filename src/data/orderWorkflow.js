@@ -37,11 +37,16 @@ export const ORDER_STATUSES_BY_PAYMENT = {
     ALLOCATION_FULFILLED_PAY_BALANCE,
     "Partially Fulfilled & Pay Balance",
   ],
-  "Fully Paid": ["Ready for Pickup", "Fulfilled"],
+  "Fully Paid": [
+    "Ready for Pickup",
+    "Fulfilled",
+    // Scenario 2: partial allocation settled — keep status + allocated qty (not full order qty).
+    "Partially Fulfilled & Pay Balance",
+  ],
   Rejected: ["Refunded", "For Full Refund"],
   Unpaid: ["Unpaid"],
   "For Partial Refund": ["Partially Fulfilled & For Refund"],
-  "Partially Refunded": ["Ready for Pickup", "Fulfilled"],
+  "Partially Refunded": ["Ready for Pickup", "Fulfilled", "Partially Fulfilled & Pay Balance"],
   "For Full Refund": ["For Full Refund"],
   Refunded: ["Refunded"],
 };
@@ -413,11 +418,15 @@ export function activeInstockStep(order) {
   const status = migrateOrderStatus(order.status);
   const last = INSTOCK_FLOW_STEPS.length;
 
-  if (status === "Refunded" || payment === "Refunded") {
-    return last;
+  if (
+    status === "Refunded"
+    || payment === "Refunded"
+    || status === "For Full Refund"
+    || payment === "For Full Refund"
+  ) {
+    return 2;
   }
   if (status === "Fulfilled") return last;
-  if (status === "For Full Refund" || payment === "For Full Refund") return 3;
   if (status === "Ready for Pickup") return 4;
   if (status === "Awaiting Stock" && payment === "Fully Paid") return 3;
   if (payment === "Fully Paid") return 2;
@@ -437,16 +446,19 @@ export function activePreorderStep(order) {
   const payment = migratePaymentStatus(order.payment);
   const status = migrateOrderStatus(order.status);
   const last = PREORDER_FLOW_STEPS.length;
+  const allocated = Math.max(0, Number(order.allocatedQty) || 0);
 
-  if (status === "Refunded" || payment === "Refunded") {
-    return last;
+  // Full refund / no stock kept — stop after payment verified (not Fulfilled).
+  if (
+    status === "Refunded"
+    || payment === "Refunded"
+    || status === "For Full Refund"
+    || payment === "For Full Refund"
+  ) {
+    return allocated > 0 ? 4 : 2;
   }
 
   if (status === "Fulfilled") return last;
-
-  // "No Allocation, For Full Refund" is a refund decision taken at the
-  // stock-allocated / balance-collected stage — not a step-one regression.
-  if (status === "For Full Refund" || payment === "For Full Refund") return 4;
 
   if (status === "Ready for Pickup") return 5;
 
@@ -542,11 +554,51 @@ export function synthesizeLineItemsFromOrder(order) {
   }, { payment, status })];
 }
 
-export function getOrderLineItems(order) {
-  if (order.lineItems?.length) {
-    return order.lineItems.map((item) => normalizeLineItem(item, order));
+/**
+ * If Fulfilled/Ready shows full ordered qty but an earlier trail email recorded a
+ * partial allocation (and there was never an explicit full Allocation → N event),
+ * restore that partial — recovers the Ready→Fulfilled wipe bug.
+ */
+function recoverWipedPartialAllocation(item, trail) {
+  const status = migrateOrderStatus(item?.status);
+  if (status !== "Fulfilled" && status !== "Ready for Pickup") return item;
+
+  const qty = Math.max(1, Number(item.quantity) || 1);
+  const allocated = Math.max(0, Number(item.allocatedQty) || 0);
+  if (allocated > 0 && allocated < qty) return item;
+
+  let latestPartial = null;
+  let sawExplicitFullAllocation = false;
+
+  for (const entry of trail || []) {
+    const allocTitle = String(entry?.title || "").match(/Allocation →\s*(\d+)\s*\/\s*(\d+)/i);
+    if (allocTitle && Number(allocTitle[1]) >= Number(allocTitle[2])) {
+      sawExplicitFullAllocation = true;
+    }
+    for (const row of entry?.emailLineItems || []) {
+      if (item.id && row.lineItemId && row.lineItemId !== item.id) continue;
+      const rowAlloc = Math.max(0, Number(row.allocatedQty) || 0);
+      const rowQty = Math.max(1, Number(row.quantity) || qty);
+      if (rowAlloc > 0 && rowAlloc < rowQty) {
+        if (!latestPartial || new Date(entry.at) > new Date(latestPartial.at)) {
+          latestPartial = { allocated: rowAlloc, at: entry.at };
+        }
+      }
+    }
   }
-  return synthesizeLineItemsFromOrder(order);
+
+  if (!latestPartial || sawExplicitFullAllocation) return item;
+  if (allocated === 0 || allocated >= qty) {
+    return { ...item, allocatedQty: latestPartial.allocated };
+  }
+  return item;
+}
+
+export function getOrderLineItems(order) {
+  const items = order.lineItems?.length
+    ? order.lineItems.map((item) => normalizeLineItem(item, order))
+    : synthesizeLineItemsFromOrder(order);
+  return items.map((item) => recoverWipedPartialAllocation(item, order?.trail));
 }
 
 /** Line items that are finished / cancelled — safe to delete the linked product. */
@@ -724,7 +776,7 @@ export function itemNeedsBalanceProof(item) {
 // Payment/status values where nothing is owed anymore — used to suppress a
 // stale `balanceDue` number that was never zeroed after the order settled.
 const BALANCE_SETTLED_PAYMENTS = new Set(["Fully Paid", "Refunded", "Partially Refunded"]);
-const BALANCE_SETTLED_STATUSES = new Set(["Fulfilled", "Refunded"]);
+const BALANCE_SETTLED_STATUSES = new Set(["Fulfilled", "Ready for Pickup", "Refunded"]);
 
 /**
  * Display-only: the balance a customer still genuinely owes on a line item.
@@ -871,15 +923,17 @@ export function applyPaymentStatusToLineItem(item, payment, status, draftAllocat
 
   if (isPreorder) {
     if (normalized === ALLOCATION_FULFILLED_PAY_BALANCE) {
-      allocatedQty = qty;
-    } else if (normalized === "Fulfilled") {
-      // Keep the partial allocation for a partially-refunded fulfillment so the
-      // customer-facing quantity reflects the units actually delivered.
-      const partiallyRefunded =
-        migratePaymentStatus(payment) === "Partially Refunded"
-        || migratePaymentStatus(payment) === "For Partial Refund"
-        || (item.refundAmount ?? 0) > 0;
-      allocatedQty = partiallyRefunded && (item.allocatedQty ?? 0) > 0 ? item.allocatedQty : qty;
+      // Full allocation case — only bump to ordered qty when none recorded yet.
+      allocatedQty = draftAllocatedQty != null
+        ? Math.max(0, Math.min(qty, draftAllocatedQty))
+        : ((item.allocatedQty ?? 0) > 0 ? item.allocatedQty : qty);
+    } else if (normalized === "Fulfilled" || normalized === "Ready for Pickup") {
+      // Never invent a full allocation on fulfill — that wiped partials (7 of 10 → 10 of 10).
+      if (draftAllocatedQty != null) {
+        allocatedQty = Math.max(0, Math.min(qty, draftAllocatedQty));
+      } else {
+        allocatedQty = Math.max(0, Number(item.allocatedQty) || 0);
+      }
     } else if (statusNeedsAllocation(normalized)) {
       if (draftAllocatedQty != null) {
         allocatedQty = Math.max(0, Math.min(qty, draftAllocatedQty));
@@ -903,17 +957,24 @@ export function applyPaymentStatusToLineItem(item, payment, status, draftAllocat
       payment,
       status: normalized,
     };
+    const paymentNorm = migratePaymentStatus(payment);
+    // Settled — never keep a stale "balance before release" after pay / fulfill.
     if (
-      normalized === ALLOCATION_FULFILLED_PAY_BALANCE
-      || normalized === "Partially Fulfilled & Pay Balance"
+      paymentNorm === "Fully Paid"
+      || paymentNorm === "Refunded"
+      || paymentNorm === "Partially Refunded"
       || normalized === "Fulfilled"
-    ) {
-      balanceDue = balanceAfterAllocation(stub, allocatedQty, depositPercent);
-    } else if (
-      normalized === "Partially Fulfilled & For Refund"
+      || normalized === "Ready for Pickup"
+      || normalized === "Refunded"
+      || normalized === "Partially Fulfilled & For Refund"
       || normalized === "For Full Refund"
     ) {
       balanceDue = 0;
+    } else if (
+      normalized === ALLOCATION_FULFILLED_PAY_BALANCE
+      || normalized === "Partially Fulfilled & Pay Balance"
+    ) {
+      balanceDue = balanceAfterAllocation(stub, allocatedQty, depositPercent);
     }
   }
 

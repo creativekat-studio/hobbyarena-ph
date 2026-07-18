@@ -29,6 +29,8 @@ export const EMAIL_PLACEHOLDERS = [
   { token: "{{refund}}", description: "Refund amount" },
   { token: "{{allocated}}", description: "Allocated qty" },
   { token: "{{qty}}", description: "Ordered qty" },
+  { token: "{{allocation}}", description: "Allocated of ordered (e.g. 7 of 10)" },
+  { token: "{{finalTotal}}", description: "Total for allocated units only" },
 ];
 
 /** Tokens for email footer blocks. */
@@ -42,6 +44,8 @@ export const PREORDER_REMINDER_PLACEHOLDERS = [
   { token: "{{refund}}", description: "Refund amount" },
   { token: "{{allocated}}", description: "Allocated qty" },
   { token: "{{qty}}", description: "Ordered qty" },
+  { token: "{{allocation}}", description: "Allocated of ordered (e.g. 7 of 10)" },
+  { token: "{{finalTotal}}", description: "Total for allocated units only" },
 ];
 
 export const DEFAULT_FOOTER_ID = "ft-preorder-reminder";
@@ -96,9 +100,9 @@ export const DEFAULT_EMAIL_BODIES = {
   balance_due_full:
     "Great news — this item received 100% allocation. Please pay the remaining balance of {{balance}}.",
   balance_due_partial:
-    "Your allocation is {{allocated}} / {{qty}} units. Please pay the remaining balance of {{balance}} for your fulfilled units.",
+    "Your allocation is {{allocation}} units. Please pay the remaining balance of {{balance}} for your allocated units.",
   partial_refund_pending:
-    "Only {{allocated}} / {{qty}} units were allocated. A refund of {{refund}} is due on the unallocated units.",
+    "Only {{allocation}} units were allocated. A refund of {{refund}} is due on the unallocated units.",
   full_refund_pending:
     "We're sorry — no allocation was available for this item. Your deposit of {{refund}} will be fully refunded.",
   partial_refund_sent:
