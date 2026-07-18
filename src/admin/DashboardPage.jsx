@@ -493,9 +493,9 @@ function ChartCard({
   );
 }
 
-/** Paid = cash collected. Fulfilled = completed lines minus refunds. */
+/** Real Time = cash recognized now (incl. deposits). Fulfilled = completed lines only. */
 const REVENUE_BASIS_FILTERS = [
-  { id: "paid", label: "Paid" },
+  { id: "paid", label: "Real Time" },
   { id: "fulfilled", label: "Fulfilled" },
 ];
 
@@ -536,8 +536,8 @@ function SalesByLineCard({
   const chartHeight = 200;
   const subtitle = mode === "fulfilled"
     ? "Fulfilled lines only"
-    : "Sales before product cost";
-  const centerLabel = mode === "fulfilled" ? "fulfilled gross" : "gross in period";
+    : "Real-time sales before product cost";
+  const centerLabel = mode === "fulfilled" ? "fulfilled gross" : "real-time gross";
 
   return (
     <DashboardPanel
@@ -672,7 +672,7 @@ export default function DashboardPage() {
     : "Allocated × price after allocation; deposit only before allocation.";
   const kpiNetInfo = revenueBasis === "fulfilled"
     ? "(Price − cost) × fulfilled units."
-    : "(Price − cost) × allocated units. Deposit-only pre-orders count as ₱0 until allocated.";
+    : "(Price − cost) × allocated units. Deposit-only: (price − cost) × qty × deposit%.";
 
   function selectPeriod(next) {
     setPeriod(next);
@@ -891,7 +891,7 @@ export default function DashboardPage() {
             panelSx={panelSx}
             surfaceBorderColor={surfaceBorderColor}
             title="Top products"
-            subtitle={revenueBasis === "fulfilled" ? "By fulfilled gross in this period" : "By gross revenue in this period"}
+            subtitle={revenueBasis === "fulfilled" ? "By fulfilled gross in this period" : "By real-time gross in this period"}
             sx={{ height: "100%" }}
           >
             {topProducts.length ? (
@@ -927,7 +927,7 @@ export default function DashboardPage() {
               </Stack>
             ) : (
               <CardEmptyState
-                message="No paid line items in this period."
+                message="No real-time line items in this period."
                 hint="Top products appear once orders are marked paid or deposit received."
                 minHeight={240}
               />

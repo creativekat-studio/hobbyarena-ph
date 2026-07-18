@@ -202,24 +202,30 @@ function isPreorderLine(item) {
 }
 
 /**
- * Net margin for a line: (price − cost) × kept units.
- * Deposit-only pre-orders (no allocation yet) contribute ₱0 net — cash held, not earned.
+ * Net margin for a line.
+ * Real-time (`paid`): after allocation → (price − cost) × allocated;
+ *   deposit-only → (price − cost) × qty × deposit%  e.g. ((3950−3600)×10)×0.3 = 1050.
+ * Fulfilled: (price − cost) × fulfilled/allocated units only; deposit-only → ₱0.
  */
-export function lineItemNetRevenue(item, depositPercent = 30, costByProductId = null) {
+export function lineItemNetRevenue(item, depositPercent = 30, costByProductId = null, basis = "paid") {
   const gross = lineItemGrossRevenue(item, depositPercent);
   if (gross <= 0) return 0;
 
   const allocated = lineItemAllocatedQty(item);
   const payment = migratePaymentStatus(item?.payment);
   const status = migrateOrderStatus(item?.status);
-
-  if (
-    isPreorderLine(item)
+  const depositOnly = isPreorderLine(item)
     && allocated <= 0
     && DEPOSIT_STAGE_PAYMENTS.has(payment)
-    && !COMPLETED_STATUSES.has(status)
-  ) {
-    return 0;
+    && !COMPLETED_STATUSES.has(status);
+
+  if (depositOnly) {
+    if (basis === "fulfilled") return 0;
+    const price = lineItemUnitPrice(item);
+    const cost = lineItemUnitCost(item, costByProductId);
+    const qty = lineItemQty(item);
+    const pct = (Number(item?.depositPercent) || depositPercent) / 100;
+    return Math.max(0, (price - cost) * qty * pct);
   }
 
   return Math.max(0, gross - lineItemCogs(item, costByProductId));
@@ -302,8 +308,7 @@ export function orderRefunds(order, basis = "paid") {
 }
 
 /**
- * Net = (price − cost) × kept units.
- * Pre-order deposits before allocation do not count as net income.
+ * Net by basis — see lineItemNetRevenue.
  * Do not subtract refunds again — gross is already DP + balance (final price).
  */
 export function orderNetRevenue(order, basis = "paid", costByProductId = null) {
@@ -311,7 +316,7 @@ export function orderNetRevenue(order, basis = "paid", costByProductId = null) {
   const items = lineItemsForBasis(order, basis);
   if (items.length) {
     return items.reduce(
-      (sum, item) => sum + lineItemNetRevenue(item, depositPercent, costByProductId),
+      (sum, item) => sum + lineItemNetRevenue(item, depositPercent, costByProductId, basis),
       0,
     );
   }
@@ -325,7 +330,14 @@ export function orderNetRevenue(order, basis = "paid", costByProductId = null) {
     && allocated <= 0
     && DEPOSIT_STAGE_PAYMENTS.has(payment)
   ) {
-    return 0;
+    if (basis === "fulfilled") return 0;
+    const price = Number(order?.lineItems?.[0]?.price) || 0;
+    const cost = lineItemUnitCost(
+      { id: order?.lineItems?.[0]?.id, price, cost: order?.lineItems?.[0]?.cost },
+      costByProductId,
+    );
+    const qty = Math.max(1, Number(order?.qty) || 1);
+    return Math.max(0, (price - cost) * qty * (depositPercent / 100));
   }
   return Math.max(0, gross - orderCogs(order, basis, costByProductId));
 }

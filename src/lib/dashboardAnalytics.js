@@ -390,7 +390,7 @@ export function computeDashboardAnalytics(
   const { byProduct, byLine, total: periodGross } = aggregateLineItems(currentAll, mode);
   const salesByLine = toSalesByLineSlices(
     byLine,
-    mode === "fulfilled" ? "No fulfilled orders" : "No paid orders",
+    mode === "fulfilled" ? "No fulfilled orders" : "No real-time orders",
   );
 
   const topProducts = [...byProduct.values()]
