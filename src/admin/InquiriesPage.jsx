@@ -19,6 +19,7 @@ import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHead
 import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
 import { MailIcon, SearchIcon, SparkleIcon } from "../components/icons.jsx";
 import { INQUIRY_STATUS, useInquiries } from "../lib/inquiriesStore.jsx";
+import { ADMIN_LIST_PAGE_SX, ADMIN_LIST_PANEL_SX } from "./adminTableHeader.jsx";
 
 const FILTERS = [
   { id: "all", label: "All" },
@@ -181,8 +182,15 @@ function InquiryPreview({ inquiry, surfaceBorderColor, onStatus, onDelete }) {
   const theme = useTheme();
 
   return (
-    <Stack sx={{ height: "100%", minHeight: { xs: 320, md: 0 } }}>
-      <Stack direction="row" spacing={2} alignItems="flex-start" sx={{ p: { xs: 2.5, md: 3 }, pb: 2 }}>
+    <Stack
+      sx={{
+        height: { xs: "auto", md: "100%" },
+        minHeight: { xs: "auto", md: 0 },
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <Stack direction="row" spacing={2} alignItems="flex-start" sx={{ p: { xs: 2.5, md: 3 }, pb: 2, flexShrink: 0 }}>
         <Avatar
           sx={{
             width: 48,
@@ -212,7 +220,15 @@ function InquiryPreview({ inquiry, surfaceBorderColor, onStatus, onDelete }) {
 
       <Divider sx={{ borderColor: surfaceBorderColor }} />
 
-      <Box sx={{ flex: 1, overflow: "auto", p: { xs: 2.5, md: 3 } }}>
+      <Box
+        sx={{
+          flex: { xs: "0 0 auto", md: "1 1 0%" },
+          minHeight: { xs: "auto", md: 0 },
+          overflow: { xs: "visible", md: "auto" },
+          p: { xs: 2.5, md: 3 },
+          WebkitOverflowScrolling: "touch",
+        }}
+      >
         <Box
           sx={{
             maxWidth: 640,
@@ -231,7 +247,7 @@ function InquiryPreview({ inquiry, surfaceBorderColor, onStatus, onDelete }) {
 
       <Divider sx={{ borderColor: surfaceBorderColor }} />
 
-      <Stack direction="row" spacing={1.5} sx={{ p: { xs: 2, md: 2.5 }, flexWrap: "wrap", gap: 1 }}>
+      <Stack direction="row" spacing={1.5} sx={{ p: { xs: 2, md: 2.5 }, flexWrap: "wrap", gap: 1, flexShrink: 0 }}>
         <Button
           variant="contained"
           color="primary"
@@ -319,68 +335,62 @@ export default function InquiriesPage() {
 
   return (
     /*
-     * flex: 1 + minHeight: 0 makes this page fill the scrollable content pane in AdminLayout.
-     * The chrome (header + filters) is flexShrink: 0 so it never scrolls away.
-     * The inbox/preview split takes flex: 1 and scrolls internally.
+     * Desktop: fill AdminLayout pane; inbox/preview scroll internally.
+     * Mobile: natural page height so the whole Inquiries view scrolls.
      */
-    <Box sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, gap: (t) => t.spacing(ADMIN_PAGE_SPACING) }}>
-      {/* ── Sticky upper chrome: header + filter bar ── */}
+    <Box sx={{ ...ADMIN_LIST_PAGE_SX, gap: (t) => t.spacing(ADMIN_PAGE_SPACING) }}>
       <Stack spacing={ADMIN_PAGE_SPACING} sx={{ flexShrink: 0 }}>
-      <AdminPageHeader
-        eyebrow="Messages"
-        title={(
-          <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
-            <span>Inquiries</span>
-            {unreadCount > 0 ? <Chip label={`${unreadCount} new`} color="primary" size="small" sx={{ fontWeight: 800 }} /> : null}
+        <AdminPageHeader
+          eyebrow="Messages"
+          title={(
+            <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
+              <span>Inquiries</span>
+              {unreadCount > 0 ? <Chip label={`${unreadCount} new`} color="primary" size="small" sx={{ fontWeight: 800 }} /> : null}
+            </Stack>
+          )}
+          subtitle="Messages from the storefront contact form."
+        />
+
+        <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
+          <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "center" }}>
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={filter}
+              onChange={(_, next) => { if (next) setFilter(next); }}
+              sx={{ flexWrap: "wrap" }}
+            >
+              {FILTERS.map((item) => (
+                <ToggleButton key={item.id} value={item.id} sx={FILTER_TOGGLE_SX}>
+                  {item.label}
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+
+            <Box sx={{ flex: 1 }} />
+
+            <TextField
+              size="small"
+              placeholder="Search messages…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              sx={{ minWidth: { xs: "100%", sm: 260 } }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} />
+                  </InputAdornment>
+                ),
+              }}
+            />
           </Stack>
-        )}
-        subtitle="Messages from the storefront contact form."
-      />
-
-      <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
-        <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "center" }}>
-          <ToggleButtonGroup
-            exclusive
-            size="small"
-            value={filter}
-            onChange={(_, next) => { if (next) setFilter(next); }}
-            sx={{ flexWrap: "wrap" }}
-          >
-            {FILTERS.map((item) => (
-              <ToggleButton key={item.id} value={item.id} sx={FILTER_TOGGLE_SX}>
-                {item.label}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
-
-          <Box sx={{ flex: 1 }} />
-
-          <TextField
-            size="small"
-            placeholder="Search messages…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            sx={{ minWidth: { xs: "100%", sm: 260 } }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} />
-                </InputAdornment>
-              ),
-            }}
-          />
-        </Stack>
-      </Box>
+        </Box>
       </Stack>
 
-      {/* ── Scrolling results region: inbox + preview split ── */}
       <Box
         sx={{
+          ...ADMIN_LIST_PANEL_SX,
           ...panelSx,
-          flex: 1,
-          minHeight: { xs: 480, md: 0 },
-          overflow: "hidden",
-          display: "flex",
           flexDirection: { xs: "column", md: "row" },
         }}
       >
@@ -393,17 +403,26 @@ export default function InquiriesPage() {
             borderColor: surfaceBorderColor,
             display: "flex",
             flexDirection: "column",
-            maxHeight: { xs: 360, md: "100%" },
+            minHeight: { xs: "auto", md: 0 },
+            maxHeight: { xs: "none", md: "100%" },
+            flex: { xs: "0 0 auto", md: "0 0 340px" },
           }}
         >
-          <Box sx={{ px: 2, py: 1.5, borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
+          <Box sx={{ px: 2, py: 1.5, borderBottom: "1px solid", borderColor: surfaceBorderColor, flexShrink: 0 }}>
             <AdminSectionTitle sx={{ fontSize: "0.82rem" }}>Inbox</AdminSectionTitle>
             <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", fontFamily: MONO_FONT }}>
               {rows.length} conversation{rows.length === 1 ? "" : "s"}
             </Typography>
           </Box>
 
-          <Box sx={{ flex: 1, overflow: "auto" }}>
+          <Box
+            sx={{
+              flex: { xs: "0 0 auto", md: "1 1 0%" },
+              minHeight: { xs: "auto", md: 0 },
+              overflow: { xs: "visible", md: "auto" },
+              WebkitOverflowScrolling: "touch",
+            }}
+          >
             {rows.length ? (
               rows.map((inquiry) => (
                 <InquiryListItem
@@ -415,14 +434,23 @@ export default function InquiriesPage() {
                 />
               ))
             ) : (
-              <Stack alignItems="center" justifyContent="center" sx={{ p: 5, textAlign: "center", color: "text.secondary", height: "100%" }}>
+              <Stack alignItems="center" justifyContent="center" sx={{ p: 5, textAlign: "center", color: "text.secondary", height: { md: "100%" } }}>
                 <Typography>No messages match your filters.</Typography>
               </Stack>
             )}
           </Box>
         </Box>
 
-        <Box sx={{ flex: 1, minWidth: 0, bgcolor: alpha(theme.palette.text.primary, 0.015) }}>
+        <Box
+          sx={{
+            flex: { xs: "0 0 auto", md: "1 1 0%" },
+            minWidth: 0,
+            minHeight: { xs: "auto", md: 0 },
+            display: "flex",
+            flexDirection: "column",
+            bgcolor: alpha(theme.palette.text.primary, 0.015),
+          }}
+        >
           {selected ? (
             <InquiryPreview
               inquiry={selected}
@@ -431,7 +459,7 @@ export default function InquiriesPage() {
               onDelete={handleDelete}
             />
           ) : (
-            <Stack alignItems="center" justifyContent="center" sx={{ height: "100%", minHeight: 280, p: 6, textAlign: "center", color: "text.secondary" }}>
+            <Stack alignItems="center" justifyContent="center" sx={{ flex: 1, minHeight: { xs: 200, md: 280 }, p: 6, textAlign: "center", color: "text.secondary" }}>
               <SparkleIcon sx={{ fontSize: 40, color: "text.secondary", mb: 1 }} />
               <Typography>Select a conversation to read it.</Typography>
             </Stack>

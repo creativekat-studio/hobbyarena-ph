@@ -36,24 +36,25 @@ export function adminStickyHeaderRowSx(surfaceBackground, surfaceBorderColor) {
 export const ADMIN_LIST_PAGE_SX = {
   display: "flex",
   flexDirection: "column",
-  flex: { xs: "0 0 auto", md: 1 },
+  flex: { xs: "0 0 auto", md: "1 1 0%" },
   minHeight: { xs: "auto", md: 0 },
 };
 
 /** Grid/table panel around an internal scroller (desktop) or full-page flow (mobile). */
 export const ADMIN_LIST_PANEL_SX = {
-  flex: { xs: "0 0 auto", md: 1 },
+  flex: { xs: "0 0 auto", md: "1 1 0%" },
   minHeight: { xs: "auto", md: 0 },
   overflow: { xs: "visible", md: "hidden" },
   display: "flex",
   flexDirection: "column",
 };
 
-/** Inner scroll root — overflow/sticky only from md up. */
+/** Inner scroll root — overflow/sticky only from md up. Must be a direct flex child of the panel. */
 export const ADMIN_LIST_SCROLL_SX = {
-  flex: { xs: "0 0 auto", md: 1 },
+  flex: { xs: "0 0 auto", md: "1 1 0%" },
   minHeight: { xs: "auto", md: 0 },
   overflow: { xs: "visible", md: "auto" },
+  WebkitOverflowScrolling: "touch",
 };
 
 /** Non-sortable header cell for MUI Table. */

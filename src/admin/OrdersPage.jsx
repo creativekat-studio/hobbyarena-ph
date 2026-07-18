@@ -762,7 +762,6 @@ export default function OrdersPage() {
         ) : (
           /* Desktop: overflow auto + sticky header. Mobile: page scrolls; X-scroll on wide grid. */
           <Box ref={isMobile ? undefined : scrollRootRef} sx={ADMIN_LIST_SCROLL_SX}>
-            <Box sx={isMobile ? { overflowX: "auto", WebkitOverflowScrolling: "touch" } : undefined}>
             <Box sx={{ minWidth: ORDER_TABLE_MIN_WIDTH }}>
               <Box
                 sx={{
@@ -808,7 +807,6 @@ export default function OrdersPage() {
                 visibleCount={visibleCount}
                 totalCount={totalCount}
               />
-            </Box>
             </Box>
           </Box>
         )}

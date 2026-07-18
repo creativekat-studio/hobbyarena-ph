@@ -221,13 +221,9 @@ function InventoryTableView({
   const isMobile = useIsMobileMd();
 
   return (
-    <Box sx={isMobile ? { overflowX: "auto", WebkitOverflowScrolling: "touch" } : undefined}>
     <TableContainer
       ref={isMobile ? undefined : scrollRootRef}
-      sx={{
-        ...ADMIN_LIST_SCROLL_SX,
-        ...(isMobile ? { overflow: "visible" } : {}),
-      }}
+      sx={ADMIN_LIST_SCROLL_SX}
     >
       <Table stickyHeader={!isMobile}>
         <TableHead>
@@ -391,7 +387,6 @@ function InventoryTableView({
         </TableBody>
       </Table>
     </TableContainer>
-    </Box>
   );
 }
 

@@ -771,13 +771,9 @@ export default function CustomersPage() {
       </Stack>
 
       <Box sx={{ ...ADMIN_LIST_PANEL_SX, ...panelSx }}>
-        <Box sx={isMobile ? { overflowX: "auto", WebkitOverflowScrolling: "touch" } : undefined}>
         <TableContainer
           ref={isMobile ? undefined : scrollRootRef}
-          sx={{
-            ...ADMIN_LIST_SCROLL_SX,
-            ...(isMobile ? { overflow: "visible" } : {}),
-          }}
+          sx={ADMIN_LIST_SCROLL_SX}
         >
           <Table stickyHeader={!isMobile}>
             <TableHead>
@@ -886,7 +882,6 @@ export default function CustomersPage() {
             </TableBody>
           </Table>
         </TableContainer>
-        </Box>
       </Box>
 
       <CustomerDetailDialog
