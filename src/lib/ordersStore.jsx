@@ -1117,8 +1117,14 @@ export function OrdersProvider({ children }) {
           throw new Error("Please upload your QR code image.");
         }
         const qrDataUrl = await normalizeProofDataUrl(details.qrDataUrl);
-        if (!storeRefundProof(orderId, lineItemId, qrDataUrl)) {
-          throw new Error("Could not save your QR code. Try a smaller image.");
+        // Mirror balance proofs: localStorage is only required offline.
+        // With Firebase, the data URL rides on the attachment for Storage upload.
+        if (!firebaseEnabled) {
+          if (!storeRefundProof(orderId, lineItemId, qrDataUrl)) {
+            throw new Error("Could not save your QR code. Try a smaller image.");
+          }
+        } else {
+          storeRefundProof(orderId, lineItemId, qrDataUrl);
         }
         attachment = {
           ...buildStoredTrailAttachment({
