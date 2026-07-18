@@ -44,6 +44,8 @@ import {
   orderNeedsProofBackfill,
   orderHasLocalProofData,
   stageTrailProofBlob,
+  prepareOrderProofsForEmail,
+  isEmailInlineImageUrl,
 } from "./orderProofStorage.js";
 import { queueOrderAcknowledgement, queueOrderStatusEmail } from "./emailService.js";
 import { resolveOrderStatusEmailTypeForCurrentState, ORDER_STATUS_EMAIL_LABELS } from "./orderEmailTriggers.js";
@@ -458,11 +460,12 @@ export function OrdersProvider({ children }) {
       }));
 
       const latestAttachment = findLatestAdminTrailAttachment(order, primaryItem.id);
-      // Only pass http(s) URLs into emails — data: base64 blobs render as gibberish.
+      // Prefer https Storage URLs; allow data:image so HTML can render the image inline.
+      // Plain-text emails never dump base64 (handled in the template).
       const statusAttachment = latestAttachment
         ? {
           label: latestAttachment.label || "Attachment",
-          url: /^https?:\/\//i.test(latestAttachment.url || "") ? latestAttachment.url : "",
+          url: isEmailInlineImageUrl(latestAttachment.url) ? latestAttachment.url : "",
           type: latestAttachment.type || "image",
         }
         : null;
@@ -576,12 +579,14 @@ export function OrdersProvider({ children }) {
         throw new Error("No status email template matches the selected item's current payment/status.");
       }
 
-      // Upload any pending proof blobs so the email can link/embed a real https URL.
-      if (firebaseEnabled && orderNeedsProofBackfill(order) && orderHasLocalProofData(order)) {
+      // Upload pending attachments first so the email can embed an https image inline.
+      if (firebaseEnabled) {
         try {
-          const saved = await upsertOrder(order);
+          const pending = orderNeedsProofBackfill(order) || orderHasLocalProofData(order);
+          const saved = await prepareOrderProofsForEmail(order);
           order = saved;
           setOrders((current) => current.map((row) => (row.id === saved.id ? { ...row, ...saved } : row)));
+          if (pending) persistOrder(saved);
         } catch (error) {
           console.warn("[orders] Could not upload proofs before status email:", error);
         }

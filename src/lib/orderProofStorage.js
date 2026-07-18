@@ -51,12 +51,19 @@ export function getTrailEntryProof(orderId, trailEntryId) {
   }
 }
 
-function isDataUrl(value) {
+export function isDataUrl(value) {
   return typeof value === "string" && value.startsWith("data:");
 }
 
-function isHttpUrl(value) {
-  return typeof value === "string" && /^https?:\/\//.test(value);
+export function isHttpUrl(value) {
+  return typeof value === "string" && /^https?:\/\//i.test(value);
+}
+
+/** HTTPS or data:image — safe to put in an email <img> (never dump into plain text). */
+export function isEmailInlineImageUrl(value) {
+  if (typeof value !== "string") return false;
+  const url = value.trim();
+  return isHttpUrl(url) || /^data:image\//i.test(url);
 }
 
 function proofFileLabel(attachment, entry) {
@@ -320,6 +327,36 @@ export function hydrateProofAttachment(attachment, proofUrl) {
     label: attachment?.label || "Proof of payment",
     type: attachment?.type || (url.includes(".pdf") || url.startsWith("data:application/pdf") ? "pdf" : "image"),
   };
+}
+
+/**
+ * Rehydrate local proof blobs onto trail attachments, then upload to Storage
+ * so status emails can embed an https image instead of an account fallback link.
+ */
+export async function prepareOrderProofsForEmail(order) {
+  if (!order?.id || getDataSource() !== "firebase") return order;
+
+  let trail = Array.isArray(order.trail) ? order.trail : [];
+  let hydrated = false;
+  trail = trail.map((entry) => {
+    const att = entry?.attachment;
+    if (!att || isHttpUrl(att.storageUrl) || isDataUrl(att.url)) return entry;
+    const resolved = resolveProofAttachmentUrl(order, entry);
+    if (!isDataUrl(resolved)) return entry;
+    hydrated = true;
+    return { ...entry, attachment: { ...att, url: resolved } };
+  });
+
+  const prepared = hydrated ? { ...order, trail } : order;
+  const needsUpload = orderNeedsProofBackfill(prepared)
+    || (prepared.trail ?? []).some((entry) => (
+      entry?.attachment
+      && !isHttpUrl(entry.attachment.storageUrl)
+      && isDataUrl(entry.attachment.url)
+    ));
+  if (!needsUpload) return prepared;
+
+  return uploadOrderProofAttachments(prepared);
 }
 
 /**

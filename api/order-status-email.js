@@ -86,15 +86,18 @@ function readPayload(body) {
         }
         : null,
       statusAttachment: order.statusAttachment && typeof order.statusAttachment === "object"
-        ? {
-          label: order.statusAttachment.label ? String(order.statusAttachment.label) : "Attachment",
-          // Only forward http(s) URLs — never base64 data: blobs (they render as gibberish).
-          url: typeof order.statusAttachment.url === "string"
-            && /^https?:\/\//i.test(order.statusAttachment.url.trim())
-            ? String(order.statusAttachment.url).trim()
-            : "",
-          type: order.statusAttachment.type ? String(order.statusAttachment.type) : "image",
-        }
+        ? (() => {
+          const raw = typeof order.statusAttachment.url === "string"
+            ? order.statusAttachment.url.trim()
+            : "";
+          // Prefer https Storage URLs; allow data:image for inline HTML (never data: PDFs).
+          const url = /^https?:\/\//i.test(raw) || /^data:image\//i.test(raw) ? raw : "";
+          return {
+            label: order.statusAttachment.label ? String(order.statusAttachment.label) : "Attachment",
+            url,
+            type: order.statusAttachment.type ? String(order.statusAttachment.type) : "image",
+          };
+        })()
         : null,
     },
   };
