@@ -323,7 +323,11 @@ function itemFocusBlock(order) {
   `;
 }
 
-function invoiceSummary(order) {
+function showBalancePaidRow(emailType) {
+  return emailType === "ready_for_pickup" || emailType === "order_fulfilled";
+}
+
+function invoiceSummary(order, emailType) {
   const item = getUpdatedItem(order);
   const lineItems = normalizeLineItems(order);
   const rows = [];
@@ -345,6 +349,11 @@ function invoiceSummary(order) {
     }
     if (item.balanceDue > 0) {
       rows.push({ label: `Balance due now (${bal}%)`, value: formatPeso(item.balanceDue), strong: true });
+    } else if (showBalancePaidRow(emailType) && hasAllocation) {
+      const balancePaid = Math.max(0, finalTotal - (Number(item.depositPaid) || 0));
+      if (balancePaid > 0) {
+        rows.push({ label: `Balance paid (${bal}%)`, value: formatPeso(balancePaid) });
+      }
     }
     if (item.refundAmount > 0) {
       rows.push({ label: "Refund amount (this item)", value: formatPeso(item.refundAmount), strong: true });
@@ -362,6 +371,11 @@ function invoiceSummary(order) {
     }
     if (balanceTotal > 0) {
       rows.push({ label: `Balance due now (${bal}%)`, value: formatPeso(balanceTotal), strong: true });
+    } else if (showBalancePaidRow(emailType) && hasAllocation) {
+      const balancePaid = Math.max(0, finalTotal - depositTotal);
+      if (balancePaid > 0) {
+        rows.push({ label: `Balance paid (${bal}%)`, value: formatPeso(balancePaid) });
+      }
     }
     if (refundTotal > 0) {
       rows.push({ label: "Refund amount (selected items)", value: formatPeso(refundTotal), strong: true });
@@ -373,6 +387,12 @@ function invoiceSummary(order) {
     }
     if (order.balanceDue > 0) {
       rows.push({ label: `Balance Due (${bal}%)`, value: formatPeso(order.balanceDue), strong: true });
+    } else if (showBalancePaidRow(emailType) && hasAllocation) {
+      const depositPaid = Number(order.total) || 0;
+      const balancePaid = Math.max(0, finalTotal - depositPaid);
+      if (balancePaid > 0) {
+        rows.push({ label: `Balance paid (${bal}%)`, value: formatPeso(balancePaid) });
+      }
     }
     if (order.refundAmount > 0) {
       rows.push({ label: "Refund amount", value: formatPeso(order.refundAmount), strong: true });
@@ -666,7 +686,7 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     ${bodyLead(template.lead(order))}
     ${!showSummary ? itemFocusBlock(order) : ""}
     ${bodyOverride ? renderOverrideBody(order, bodyOverride) : bodyText(template.body(order))}
-    ${showSummary ? invoiceSummary(order) : ""}
+    ${showSummary ? invoiceSummary(order, emailType) : ""}
     ${showMilestones ? preorderMilestones(item, emailType) : ""}
     ${customerActionButtonsBlock(emailType)}
     ${order.statusAttachment ? statusAttachmentBlock(order.statusAttachment) : ""}
