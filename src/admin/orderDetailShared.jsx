@@ -117,13 +117,6 @@ function lineBalanceIsAwaiting(item) {
     || payment === "Pending Verification";
 }
 
-function lineIsFullySettled(item) {
-  const payment = migratePaymentStatus(item.payment);
-  return payment === "Fully Paid"
-    || payment === "Refunded"
-    || payment === "Partially Refunded";
-}
-
 export { PAYMENT_COLOR, STATUS_COLOR, PAYMENT_OPTIONS, STATUS_OPTIONS };
 
 function CloseIcon(props) {
@@ -2061,9 +2054,9 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
       ? depositCollected
       : (order.fullSubtotal ?? order.total ?? 0);
   const balanceSettled = balancePaidAmount > 0 && balanceAwaiting <= 0;
-  const allLinesSettled = lineItems.length > 0 && lineItems.every(lineIsFullySettled);
-  // Mixed + still awaiting / not all paid → split Pre-order vs In-stock. Both fully paid → merge.
-  const showSplitTotals = isMixedOrder && !allLinesSettled;
+  // Mixed orders always get All / Pre-order / In-stock + two-column totals on All
+  // (including when every line is fully paid).
+  const showSplitTotals = isMixedOrder;
 
   const preorderRefunded = preorderLines.reduce(
     (sum, item) => sum + (refundedAmountForLineItem(item, depositPercent) || 0),
@@ -2114,9 +2107,7 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
     : hasPreorderLine
       ? "Deposit paid"
       : "Subtotal";
-  const footerNote = showSplitTotals
-    ? "Merges when every line is fully paid."
-    : null;
+  const footerNote = null;
 
   const selectedItems = lineItems.filter((item) => selectedItemIds.has(item.id));
   const selectedItemsShareStatus = useMemo(() => {
