@@ -20,6 +20,7 @@ import { useNavigate } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { SearchIcon } from "./icons.jsx";
 import { useInventory } from "../lib/inventoryStore.jsx";
+import { sortStorefrontProducts } from "../lib/products.js";
 
 function CloseIcon(props) {
   return (
@@ -36,9 +37,11 @@ export default function SearchDialog({ open, onClose, surfaceBorderColor }) {
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return publishedCatalog.slice(0, 8);
-    return publishedCatalog.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.line?.toLowerCase().includes(q),
+    if (!q) return sortStorefrontProducts(publishedCatalog).slice(0, 8);
+    return sortStorefrontProducts(
+      publishedCatalog.filter(
+        (p) => p.name.toLowerCase().includes(q) || p.line?.toLowerCase().includes(q),
+      ),
     ).slice(0, 12);
   }, [publishedCatalog, query]);
 

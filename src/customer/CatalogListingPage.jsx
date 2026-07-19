@@ -25,6 +25,7 @@ import { BoxIcon, SparkleIcon } from "../components/icons.jsx";
 import { useInventory } from "../lib/inventoryStore.jsx";
 import { useCatalog, lineMatchFromOptions } from "../lib/catalogStore.jsx";
 import { getCountdownParts } from "../lib/preorder.js";
+import { sortStorefrontProducts } from "../lib/products.js";
 
 const PREORDER_TABS = [
   { value: "all", label: "All Pre-orders" },
@@ -101,7 +102,7 @@ export default function CatalogListingPage({ mode }) {
       );
     }
 
-    return list;
+    return sortStorefrontProducts(list);
   }, [publishedCatalog, mode, activeTab, activeLine, lineOptions, q]);
 
   const hasActiveFilters = activeLine !== "all";

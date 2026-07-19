@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { productImage } from "../data/mediaAssets.js";
 import { DEFAULT_DEPOSIT_PERCENT } from "./preorder.js";
+import { sortStorefrontProducts } from "./products.js";
 import { useFirebaseData } from "./firebase/config.js";
 import { useAdminFirestoreWrite } from "./firebase/adminWriteAccess.js";
 import { subscribeProducts, upsertProduct, upsertProducts } from "./firebase/repositories/products.js";
@@ -449,13 +450,11 @@ export function InventoryProvider({ children }) {
   const featuredCount = featuredCountSealed + featuredCountPreorder;
 
   const featuredCatalog = useMemo(
-    () => activeItems
-      .filter((row) => {
-        if (!row.published || !row.featured) return false;
-        if (isPreorderRow(row)) return true;
-        return row.stock > 0;
-      })
-      .map(rowToProduct),
+    () => sortStorefrontProducts(
+      activeItems
+        .filter((row) => row.published && row.featured)
+        .map(rowToProduct),
+    ),
     [activeItems],
   );
 

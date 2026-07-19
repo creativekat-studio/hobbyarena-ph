@@ -24,6 +24,7 @@ import {
 import { useShopFilterLayout } from "../lib/shopFilterLayout.jsx";
 import { BoxIcon, SparkleIcon } from "../components/icons.jsx";
 import { useInventory } from "../lib/inventoryStore.jsx";
+import { sortStorefrontProducts } from "../lib/products.js";
 
 const CATEGORIES = [
   { value: "all", label: "All Products" },
@@ -110,8 +111,10 @@ export default function ShopPage() {
   }, [priceBounds[0], priceBounds[1]]);
 
   const products = useMemo(() => {
-    return categoryProducts.filter(
-      (product) => product.price >= priceRange[0] && product.price <= priceRange[1],
+    return sortStorefrontProducts(
+      categoryProducts.filter(
+        (product) => product.price >= priceRange[0] && product.price <= priceRange[1],
+      ),
     );
   }, [categoryProducts, priceRange]);
 
