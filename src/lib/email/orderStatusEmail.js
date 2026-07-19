@@ -1,4 +1,11 @@
-import { formatPeso, getEmailLinks, getSupportContactHtml, resolveReminderFooter, shouldShowPreorderReminder } from "./emailUtils.js";
+import {
+  formatPeso,
+  getEmailLinks,
+  getSupportContactHtml,
+  isPreorderEmailContext,
+  resolveReminderFooter,
+  shouldShowPreorderReminder,
+} from "./emailUtils.js";
 import {
   EMAIL_BRAND,
   bodyLead,
@@ -327,6 +334,10 @@ function showBalancePaidRow(emailType) {
   return emailType === "ready_for_pickup" || emailType === "order_fulfilled";
 }
 
+function lineIsPreorder(item) {
+  return item?.tag === "Pre-order";
+}
+
 function invoiceSummary(order, emailType) {
   const item = getUpdatedItem(order);
   const lineItems = normalizeLineItems(order);
@@ -339,17 +350,28 @@ function invoiceSummary(order, emailType) {
     : lineItems;
   const hasAllocation = tableItems.some((line) => (Number(line.allocatedQty) || 0) > 0);
   const finalTotal = tableItems.reduce((sum, line) => sum + itemFinalTotal(line), 0);
+  // Deposit/balance % copy is for pre-orders only — sealed / in-stock pays in full.
+  const useDepositLabels = item
+    ? lineIsPreorder(item)
+    : tableItems.some(lineIsPreorder) || isPreorderEmailContext(order);
 
   if (item) {
     if (item.depositPaid > 0) {
-      rows.push({ label: `Deposit paid (${dp}%)`, value: formatPeso(item.depositPaid) });
+      rows.push({
+        label: useDepositLabels ? `Deposit paid (${dp}%)` : "Amount paid",
+        value: formatPeso(item.depositPaid),
+      });
     }
     if ((item.creditAmount || 0) > 0) {
       rows.push({ label: "Order credit", value: formatPeso(item.creditAmount) });
     }
     if (item.balanceDue > 0) {
-      rows.push({ label: `Balance due now (${bal}%)`, value: formatPeso(item.balanceDue), strong: true });
-    } else if (showBalancePaidRow(emailType) && hasAllocation) {
+      rows.push({
+        label: useDepositLabels ? `Balance due now (${bal}%)` : "Balance due now",
+        value: formatPeso(item.balanceDue),
+        strong: true,
+      });
+    } else if (useDepositLabels && showBalancePaidRow(emailType) && hasAllocation) {
       const balancePaid = Math.max(0, finalTotal - (Number(item.depositPaid) || 0));
       if (balancePaid > 0) {
         rows.push({ label: `Balance paid (${bal}%)`, value: formatPeso(balancePaid) });
@@ -364,14 +386,21 @@ function invoiceSummary(order, emailType) {
     const balanceTotal = lineItems.reduce((sum, line) => sum + line.balanceDue, 0);
     const refundTotal = lineItems.reduce((sum, line) => sum + line.refundAmount, 0);
     if (depositTotal > 0) {
-      rows.push({ label: `Deposit paid (${dp}%)`, value: formatPeso(depositTotal) });
+      rows.push({
+        label: useDepositLabels ? `Deposit paid (${dp}%)` : "Amount paid",
+        value: formatPeso(depositTotal),
+      });
     }
     if (creditTotal > 0) {
       rows.push({ label: "Order credit", value: formatPeso(creditTotal) });
     }
     if (balanceTotal > 0) {
-      rows.push({ label: `Balance due now (${bal}%)`, value: formatPeso(balanceTotal), strong: true });
-    } else if (showBalancePaidRow(emailType) && hasAllocation) {
+      rows.push({
+        label: useDepositLabels ? `Balance due now (${bal}%)` : "Balance due now",
+        value: formatPeso(balanceTotal),
+        strong: true,
+      });
+    } else if (useDepositLabels && showBalancePaidRow(emailType) && hasAllocation) {
       const balancePaid = Math.max(0, finalTotal - depositTotal);
       if (balancePaid > 0) {
         rows.push({ label: `Balance paid (${bal}%)`, value: formatPeso(balancePaid) });
@@ -381,13 +410,20 @@ function invoiceSummary(order, emailType) {
       rows.push({ label: "Refund amount (selected items)", value: formatPeso(refundTotal), strong: true });
     }
   } else {
-    rows.push({ label: `Paid now DP (${dp}%)`, value: formatPeso(order.total) });
+    rows.push({
+      label: useDepositLabels ? `Paid now DP (${dp}%)` : "Amount paid",
+      value: formatPeso(order.total),
+    });
     if ((order.creditAmount || 0) > 0) {
       rows.push({ label: "Order credit", value: formatPeso(order.creditAmount) });
     }
     if (order.balanceDue > 0) {
-      rows.push({ label: `Balance Due (${bal}%)`, value: formatPeso(order.balanceDue), strong: true });
-    } else if (showBalancePaidRow(emailType) && hasAllocation) {
+      rows.push({
+        label: useDepositLabels ? `Balance Due (${bal}%)` : "Balance due",
+        value: formatPeso(order.balanceDue),
+        strong: true,
+      });
+    } else if (useDepositLabels && showBalancePaidRow(emailType) && hasAllocation) {
       const depositPaid = Number(order.total) || 0;
       const balancePaid = Math.max(0, finalTotal - depositPaid);
       if (balancePaid > 0) {
@@ -399,7 +435,8 @@ function invoiceSummary(order, emailType) {
     }
   }
 
-  if (hasAllocation && finalTotal > 0) {
+  // Allocation totals are a pre-order concept; sealed emails already show Amount paid.
+  if (useDepositLabels && hasAllocation && finalTotal > 0) {
     rows.push({ label: "Total (allocated)", value: formatPeso(finalTotal), strong: true });
   }
 
