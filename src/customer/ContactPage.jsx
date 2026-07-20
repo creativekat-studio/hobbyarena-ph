@@ -72,16 +72,22 @@ function InquiryForm({ panelSx }) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     setError("");
     if (!form.name.trim() || !form.email.trim() || !form.message.trim()) {
       setError("Name, email, and message are required.");
       return;
     }
-    addInquiry(form);
-    setStatus("sent");
-    setForm({ name: "", email: "", subject: "", message: "" });
+    setStatus("sending");
+    try {
+      await addInquiry(form);
+      setStatus("sent");
+      setForm({ name: "", email: "", subject: "", message: "" });
+    } catch (err) {
+      setStatus("idle");
+      setError(err.message || "Could not send your message. Please try again.");
+    }
   }
 
   return (
@@ -99,12 +105,14 @@ function InquiryForm({ panelSx }) {
             {status === "sent" ? <Alert severity="success">Thanks! Your message was sent.</Alert> : null}
             {error ? <Alert severity="error">{error}</Alert> : null}
             <Grid container spacing={2}>
-              <Grid size={{ xs: 12, sm: 6 }}><TextField label="Name" fullWidth required value={form.name} onChange={(e) => update("name", e.target.value)} /></Grid>
-              <Grid size={{ xs: 12, sm: 6 }}><TextField label="Email" type="email" fullWidth required value={form.email} onChange={(e) => update("email", e.target.value)} /></Grid>
-              <Grid size={{ xs: 12 }}><TextField label="Subject (optional)" fullWidth value={form.subject} onChange={(e) => update("subject", e.target.value)} /></Grid>
-              <Grid size={{ xs: 12 }}><TextField label="Message" fullWidth required multiline minRows={4} value={form.message} onChange={(e) => update("message", e.target.value)} /></Grid>
+              <Grid size={{ xs: 12, sm: 6 }}><TextField label="Name" fullWidth required value={form.name} onChange={(e) => update("name", e.target.value)} disabled={status === "sending"} /></Grid>
+              <Grid size={{ xs: 12, sm: 6 }}><TextField label="Email" type="email" fullWidth required value={form.email} onChange={(e) => update("email", e.target.value)} disabled={status === "sending"} /></Grid>
+              <Grid size={{ xs: 12 }}><TextField label="Subject (optional)" fullWidth value={form.subject} onChange={(e) => update("subject", e.target.value)} disabled={status === "sending"} /></Grid>
+              <Grid size={{ xs: 12 }}><TextField label="Message" fullWidth required multiline minRows={4} value={form.message} onChange={(e) => update("message", e.target.value)} disabled={status === "sending"} /></Grid>
             </Grid>
-            <Button type="submit" variant="contained" size="large" sx={{ alignSelf: "flex-start", fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>Send message</Button>
+            <Button type="submit" variant="contained" size="large" disabled={status === "sending"} sx={{ alignSelf: "flex-start", fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
+              {status === "sending" ? "Sending…" : "Send message"}
+            </Button>
           </Stack>
         </Grid>
       </Grid>

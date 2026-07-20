@@ -732,16 +732,22 @@ function InquiryForm({ panelSx }) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     setError("");
     if (!form.name.trim() || !form.email.trim() || !form.message.trim()) {
       setError("Name, email, and message are required.");
       return;
     }
-    addInquiry(form);
-    setStatus("sent");
-    setForm({ name: "", email: "", subject: "", message: "" });
+    setStatus("sending");
+    try {
+      await addInquiry(form);
+      setStatus("sent");
+      setForm({ name: "", email: "", subject: "", message: "" });
+    } catch (err) {
+      setStatus("idle");
+      setError(err.message || "Could not send your message. Please try again.");
+    }
   }
 
   return (
@@ -759,14 +765,14 @@ function InquiryForm({ panelSx }) {
             {status === "sent" ? <Alert severity="success">Thanks! Your message was sent — we&apos;ll get back to you soon.</Alert> : null}
             {error ? <Alert severity="error">{error}</Alert> : null}
             <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-              <TextField label="Name" fullWidth value={form.name} onChange={(e) => update("name", e.target.value)} required />
-              <TextField label="Email" type="email" fullWidth value={form.email} onChange={(e) => update("email", e.target.value)} required />
+              <TextField label="Name" fullWidth value={form.name} onChange={(e) => update("name", e.target.value)} required disabled={status === "sending"} />
+              <TextField label="Email" type="email" fullWidth value={form.email} onChange={(e) => update("email", e.target.value)} required disabled={status === "sending"} />
             </Stack>
-            <TextField label="Subject" fullWidth value={form.subject} onChange={(e) => update("subject", e.target.value)} />
-            <TextField label="Message" fullWidth multiline minRows={4} value={form.message} onChange={(e) => update("message", e.target.value)} required />
+            <TextField label="Subject" fullWidth value={form.subject} onChange={(e) => update("subject", e.target.value)} disabled={status === "sending"} />
+            <TextField label="Message" fullWidth multiline minRows={4} value={form.message} onChange={(e) => update("message", e.target.value)} required disabled={status === "sending"} />
             <Box>
-              <Button type="submit" variant="contained" color="primary" size="large" sx={{ px: 4, py: 1.3, fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase" }}>
-                ▶ Send message
+              <Button type="submit" variant="contained" color="primary" size="large" disabled={status === "sending"} sx={{ px: 4, py: 1.3, fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase" }}>
+                {status === "sending" ? "Sending…" : "▶ Send message"}
               </Button>
             </Box>
           </Stack>

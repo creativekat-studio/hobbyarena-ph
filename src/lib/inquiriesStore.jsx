@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { queueInquiryEmails } from "./emailService.js";
+import { sendInquiryEmails } from "./emailService.js";
 import { useFirebaseData } from "./firebase/config.js";
 import { getFirebaseAuth } from "./firebase/app.js";
 import { isAdminAccount } from "./firebase/auth.js";
@@ -109,7 +109,7 @@ export function InquiriesProvider({ children }) {
   }, [firebaseEnabled]);
 
   const api = useMemo(() => {
-    const addInquiry = ({ name, email, subject, message }) => {
+    const addInquiry = async ({ name, email, subject, message }) => {
       const inquiry = {
         id: `q_${Date.now()}`,
         name: name.trim(),
@@ -120,10 +120,19 @@ export function InquiriesProvider({ children }) {
         date: new Date().toISOString(),
       };
 
+      // Email first so rate-limit / API failures surface before we claim success.
+      await sendInquiryEmails(inquiry);
+
       if (firebaseEnabled) {
-        createInquiryDocument(inquiry).catch((error) => {
+        try {
+          await createInquiryDocument(inquiry);
+        } catch (error) {
           console.error("[inquiries] Failed to save inquiry:", error);
-        });
+          throw new Error(
+            "Your message email was sent, but we couldn’t save it for the team. "
+            + "Please message Hobby Arena PH if you don’t get a reply.",
+          );
+        }
       } else {
         setInquiries((prev) => {
           const next = [inquiry, ...prev];
@@ -132,7 +141,6 @@ export function InquiriesProvider({ children }) {
         });
       }
 
-      queueInquiryEmails(inquiry);
       return inquiry;
     };
 
