@@ -5,11 +5,10 @@ import {
   Button,
   Chip,
   Divider,
+  IconButton,
   InputAdornment,
   Stack,
   TextField,
-  ToggleButton,
-  ToggleButtonGroup,
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
@@ -17,9 +16,16 @@ import { useLocation, useOutletContext } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
-import { MailIcon, SearchIcon, SparkleIcon } from "../components/icons.jsx";
+import { ChevronLeftIcon, MailIcon, SearchIcon, SparkleIcon } from "../components/icons.jsx";
 import { INQUIRY_STATUS, useInquiries } from "../lib/inquiriesStore.jsx";
-import { ADMIN_LIST_PAGE_SX, ADMIN_LIST_PANEL_SX } from "./adminTableHeader.jsx";
+import { isMobileMdViewport, useIsMobileMd } from "../lib/mobileUi.js";
+import {
+  AdminListFilterTabs,
+  ADMIN_LIST_FILTER_BAR_SX,
+  ADMIN_LIST_PAGE_SX,
+  ADMIN_LIST_PANEL_SX,
+  ADMIN_LIST_SEARCH_FIELD_SX,
+} from "./adminTableHeader.jsx";
 
 const FILTERS = [
   { id: "all", label: "All" },
@@ -27,15 +33,6 @@ const FILTERS = [
   { id: INQUIRY_STATUS.READ, label: "Read" },
   { id: INQUIRY_STATUS.HANDLED, label: "Handled" },
 ];
-
-const FILTER_TOGGLE_SX = {
-  px: 1.5,
-  fontFamily: MONO_FONT,
-  fontSize: "0.68rem",
-  letterSpacing: 0.4,
-  textTransform: "uppercase",
-  fontWeight: 700,
-};
 
 const STATUS_COLOR = {
   New: "primary",
@@ -178,19 +175,36 @@ function InquiryListItem({ inquiry, selected, onSelect, surfaceBorderColor }) {
   );
 }
 
-function InquiryPreview({ inquiry, surfaceBorderColor, onStatus, onDelete }) {
+function InquiryPreview({ inquiry, surfaceBorderColor, onStatus, onDelete, onBack }) {
   const theme = useTheme();
 
   return (
     <Stack
       sx={{
-        height: { xs: "auto", md: "100%" },
-        minHeight: { xs: "auto", md: 0 },
+        height: "100%",
+        minHeight: 0,
         display: "flex",
         flexDirection: "column",
       }}
     >
-      <Stack direction="row" spacing={2} alignItems="flex-start" sx={{ p: { xs: 2.5, md: 3 }, pb: 2, flexShrink: 0 }}>
+      <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ p: { xs: 2, md: 3 }, pb: 2, flexShrink: 0 }}>
+        {onBack ? (
+          <IconButton
+            size="small"
+            aria-label="Back to inbox"
+            onClick={onBack}
+            sx={{
+              mt: 0.5,
+              flexShrink: 0,
+              border: "1px solid",
+              borderColor: surfaceBorderColor,
+              borderRadius: 1,
+              display: { xs: "inline-flex", md: "none" },
+            }}
+          >
+            <ChevronLeftIcon sx={{ fontSize: 20 }} />
+          </IconButton>
+        ) : null}
         <Avatar
           sx={{
             width: 48,
@@ -204,7 +218,7 @@ function InquiryPreview({ inquiry, surfaceBorderColor, onStatus, onDelete }) {
         </Avatar>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap>
-            <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.2 }}>
+            <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.2, fontSize: { xs: "1.05rem", md: "1.25rem" } }}>
               {inquiry.subject || "(no subject)"}
             </Typography>
             <Chip label={inquiry.status} size="small" color={STATUS_COLOR[inquiry.status]} variant="outlined" />
@@ -222,11 +236,12 @@ function InquiryPreview({ inquiry, surfaceBorderColor, onStatus, onDelete }) {
 
       <Box
         sx={{
-          flex: { xs: "0 0 auto", md: "1 1 0%" },
-          minHeight: { xs: "auto", md: 0 },
-          overflow: { xs: "visible", md: "auto" },
-          p: { xs: 2.5, md: 3 },
+          flex: "1 1 0%",
+          minHeight: 0,
+          overflow: "auto",
+          p: { xs: 2, md: 3 },
           WebkitOverflowScrolling: "touch",
+          overscrollBehavior: "contain",
         }}
       >
         <Box
@@ -277,13 +292,17 @@ function InquiryPreview({ inquiry, surfaceBorderColor, onStatus, onDelete }) {
 
 export default function InquiriesPage() {
   const theme = useTheme();
+  const isMobile = useIsMobileMd();
   const location = useLocation();
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
   const { inquiries, unreadCount, setStatus, remove } = useInquiries();
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState(inquiries[0]?.id || null);
+  // Mobile: start on inbox. Desktop: open first conversation when available.
+  const [selectedId, setSelectedId] = useState(() => (
+    isMobileMdViewport() ? null : (inquiries[0]?.id || null)
+  ));
 
   useEffect(() => {
     const openInquiryId = location.state?.openInquiryId;
@@ -314,12 +333,18 @@ export default function InquiriesPage() {
       setSelectedId(null);
       return;
     }
-    if (!rows.some((row) => row.id === selectedId)) {
+    if (selectedId && !rows.some((row) => row.id === selectedId)) {
+      setSelectedId(isMobile ? null : rows[0].id);
+      return;
+    }
+    if (!selectedId && !isMobile) {
       setSelectedId(rows[0].id);
     }
-  }, [rows, selectedId]);
+  }, [rows, selectedId, isMobile]);
 
   const selected = inquiries.find((q) => q.id === selectedId) || null;
+  const showInbox = !isMobile || !selectedId;
+  const showPreview = !isMobile || Boolean(selectedId);
 
   function handleSelect(inquiry) {
     setSelectedId(inquiry.id);
@@ -334,8 +359,8 @@ export default function InquiriesPage() {
   }
 
   return (
-    <Box sx={{ ...ADMIN_LIST_PAGE_SX, gap: (t) => t.spacing(ADMIN_PAGE_SPACING) }}>
-      <Stack spacing={ADMIN_PAGE_SPACING} sx={{ flexShrink: 0 }}>
+    <Box sx={{ ...ADMIN_LIST_PAGE_SX, gap: { xs: 1, md: ADMIN_PAGE_SPACING } }}>
+      <Stack spacing={{ xs: 1, md: ADMIN_PAGE_SPACING }} sx={{ flexShrink: 0 }}>
         <AdminPageHeader
           eyebrow="Messages"
           title={(
@@ -347,30 +372,30 @@ export default function InquiriesPage() {
           subtitle="Messages from the storefront contact form."
         />
 
-        <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
-          <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "center" }}>
-            <ToggleButtonGroup
-              exclusive
-              size="small"
+        <Box sx={{ ...panelSx, ...ADMIN_LIST_FILTER_BAR_SX }}>
+          <Stack
+            direction={{ xs: "column", md: "row" }}
+            spacing={1.25}
+            alignItems={{ xs: "stretch", md: "center" }}
+            sx={{ width: "100%", minWidth: 0 }}
+          >
+            <AdminListFilterTabs
+              label="Status"
+              labelId="inquiries-filter"
+              options={FILTERS}
               value={filter}
-              onChange={(_, next) => { if (next) setFilter(next); }}
-              sx={{ flexWrap: "wrap" }}
-            >
-              {FILTERS.map((item) => (
-                <ToggleButton key={item.id} value={item.id} sx={FILTER_TOGGLE_SX}>
-                  {item.label}
-                </ToggleButton>
-              ))}
-            </ToggleButtonGroup>
+              onChange={setFilter}
+            />
 
-            <Box sx={{ flex: 1 }} />
+            <Box sx={{ flex: 1, display: { xs: "none", md: "block" } }} />
 
             <TextField
               size="small"
               placeholder="Search messages…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              sx={{ minWidth: { xs: "100%", sm: 260 } }}
+              fullWidth
+              sx={ADMIN_LIST_SEARCH_FIELD_SX}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
@@ -395,13 +420,11 @@ export default function InquiriesPage() {
             width: { md: 340 },
             flexShrink: 0,
             borderRight: { md: "1px solid" },
-            borderBottom: { xs: "1px solid", md: "none" },
             borderColor: surfaceBorderColor,
-            display: "flex",
+            display: showInbox ? "flex" : "none",
             flexDirection: "column",
             minHeight: 0,
-            maxHeight: { xs: "40%", md: "100%" },
-            flex: { xs: "0 0 40%", md: "0 0 340px" },
+            flex: { xs: "1 1 0%", md: "0 0 340px" },
           }}
         >
           <Box sx={{ px: 2, py: 1.5, borderBottom: "1px solid", borderColor: surfaceBorderColor, flexShrink: 0 }}>
@@ -431,7 +454,7 @@ export default function InquiriesPage() {
                 />
               ))
             ) : (
-              <Stack alignItems="center" justifyContent="center" sx={{ p: 5, textAlign: "center", color: "text.secondary", height: { md: "100%" } }}>
+              <Stack alignItems="center" justifyContent="center" sx={{ p: 5, textAlign: "center", color: "text.secondary", height: "100%" }}>
                 <Typography>No messages match your filters.</Typography>
               </Stack>
             )}
@@ -443,10 +466,8 @@ export default function InquiriesPage() {
             flex: "1 1 0%",
             minWidth: 0,
             minHeight: 0,
-            overflow: "auto",
-            WebkitOverflowScrolling: "touch",
-            overscrollBehavior: "contain",
-            display: "flex",
+            overflow: "hidden",
+            display: showPreview ? "flex" : "none",
             flexDirection: "column",
             bgcolor: alpha(theme.palette.text.primary, 0.015),
           }}
@@ -457,9 +478,10 @@ export default function InquiriesPage() {
               surfaceBorderColor={surfaceBorderColor}
               onStatus={setStatus}
               onDelete={handleDelete}
+              onBack={() => setSelectedId(null)}
             />
           ) : (
-            <Stack alignItems="center" justifyContent="center" sx={{ flex: 1, minHeight: { xs: 200, md: 280 }, p: 6, textAlign: "center", color: "text.secondary" }}>
+            <Stack alignItems="center" justifyContent="center" sx={{ flex: 1, minHeight: 280, p: 6, textAlign: "center", color: "text.secondary" }}>
               <SparkleIcon sx={{ fontSize: 40, color: "text.secondary", mb: 1 }} />
               <Typography>Select a conversation to read it.</Typography>
             </Stack>

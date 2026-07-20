@@ -17,8 +17,6 @@ import {
   Select,
   Stack,
   TextField,
-  ToggleButton,
-  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -57,11 +55,15 @@ import { useInfiniteScroll } from "../lib/useInfiniteScroll.js";
 import {
   AdminGridHeaderLabel,
   AdminGridSortHeader,
+  AdminListFilterTabs,
+  ADMIN_LIST_BULK_BAR_SX,
   ADMIN_LIST_FILTER_BAR_SX,
   ADMIN_LIST_FILTER_ROW_SX,
+  ADMIN_LIST_FILTER_SELECT_SX,
   ADMIN_LIST_PAGE_SX,
   ADMIN_LIST_PANEL_SX,
   ADMIN_LIST_SCROLL_SX,
+  ADMIN_LIST_SEARCH_FIELD_SX,
   ADMIN_LIST_STATS_SX,
   adminStickyHeaderRowSx,
 } from "./adminTableHeader.jsx";
@@ -83,15 +85,6 @@ const KIND_FILTERS = [
   { id: "preorder", label: "Pre-orders" },
   { id: "instock", label: "In-stock" },
 ];
-
-const FILTER_TOGGLE_SX = {
-  px: 1.5,
-  fontFamily: MONO_FONT,
-  fontSize: "0.68rem",
-  letterSpacing: 0.4,
-  textTransform: "uppercase",
-  fontWeight: 700,
-};
 
 const ORDER_SUMMARY_GRID = "36px 28px minmax(140px, 1.1fr) minmax(120px, 1fr) minmax(140px, 1.3fr) minmax(120px, 0.9fr) auto";
 const LINEITEM_GRID = "minmax(160px, 1.25fr) minmax(100px, 0.85fr) minmax(72px, 0.6fr) minmax(88px, 0.65fr) minmax(110px, 0.85fr) minmax(110px, 0.85fr)";
@@ -669,39 +662,9 @@ export default function OrdersPage() {
         </Grid>
 
         <Box sx={{ ...panelSx, ...ADMIN_LIST_FILTER_BAR_SX }}>
-          <Stack direction="row" alignItems="center" sx={ADMIN_LIST_FILTER_ROW_SX}>
-            <ToggleButtonGroup
-              exclusive
-              size="small"
-              value={queueFilter}
-              onChange={(_, next) => { if (next) setQueueFilter(next); }}
-              sx={{ flexWrap: "nowrap" }}
-            >
-              {QUEUE_FILTERS.map((item) => (
-                <ToggleButton key={item.id} value={item.id} sx={FILTER_TOGGLE_SX}>
-                  {item.label}
-                </ToggleButton>
-              ))}
-            </ToggleButtonGroup>
-
-            <FormControl size="small" sx={{ minWidth: 120 }}>
-              <InputLabel id="orders-kind-filter">Kind</InputLabel>
-              <Select
-                labelId="orders-kind-filter"
-                label="Kind"
-                value={kindFilter}
-                onChange={(event) => setKindFilter(event.target.value)}
-              >
-                {KIND_FILTERS.map((item) => (
-                  <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <Box sx={{ flex: 1, minWidth: { md: 8 }, display: { xs: "none", md: "block" } }} />
-
+          <Stack spacing={1.25} sx={{ width: "100%", minWidth: 0 }}>
             {selectedCount > 0 ? (
-              <>
+              <Stack sx={ADMIN_LIST_BULK_BAR_SX}>
                 <Chip
                   label={`${selectedCount} selected`}
                   onDelete={() => setSelectedIds(new Set())}
@@ -727,25 +690,85 @@ export default function OrdersPage() {
                     <MenuItem onClick={requestBulkArchive} sx={{ color: "error.main" }}>Archive…</MenuItem>
                   )}
                 </Menu>
-              </>
-            ) : (
-              <Chip
-                label={allLoadedSelected ? "Deselect loaded" : "Select loaded"}
-                onClick={toggleSelectAllLoaded}
-                disabled={!visibleItems.length}
-                variant="outlined"
-                sx={{ fontWeight: 700, display: { xs: "none", sm: "inline-flex" } }}
-              />
-            )}
+              </Stack>
+            ) : null}
 
-            <TextField
-              size="small"
-              placeholder="Search order, customer, item…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              sx={{ minWidth: { xs: 180, sm: 220 }, flex: { xs: "1 1 140px", md: "0 0 auto" } }}
-              InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
-            />
+            <Stack
+              direction="row"
+              alignItems="center"
+              sx={{ ...ADMIN_LIST_FILTER_ROW_SX, display: { xs: "none", md: "flex" } }}
+            >
+              <AdminListFilterTabs
+                label="Queue"
+                labelId="orders-queue-filter"
+                options={QUEUE_FILTERS}
+                value={queueFilter}
+                onChange={setQueueFilter}
+              />
+              <FormControl size="small" sx={{ minWidth: 140 }}>
+                <InputLabel id="orders-kind-filter">Kind</InputLabel>
+                <Select
+                  labelId="orders-kind-filter"
+                  label="Kind"
+                  value={kindFilter}
+                  onChange={(event) => setKindFilter(event.target.value)}
+                >
+                  {KIND_FILTERS.map((item) => (
+                    <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Box sx={{ flex: 1, minWidth: 8 }} />
+              {selectedCount === 0 ? (
+                <Chip
+                  label={allLoadedSelected ? "Deselect loaded" : "Select loaded"}
+                  onClick={toggleSelectAllLoaded}
+                  disabled={!visibleItems.length}
+                  variant="outlined"
+                  sx={{ fontWeight: 700 }}
+                />
+              ) : null}
+              <TextField
+                size="small"
+                placeholder="Search order, customer, item…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                sx={ADMIN_LIST_SEARCH_FIELD_SX}
+                InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
+              />
+            </Stack>
+
+            <Stack spacing={1.25} sx={{ display: { xs: "flex", md: "none" }, width: "100%", minWidth: 0 }}>
+              <AdminListFilterTabs
+                label="Queue"
+                labelId="orders-queue-filter-mobile"
+                options={QUEUE_FILTERS}
+                value={queueFilter}
+                onChange={setQueueFilter}
+              />
+              <FormControl size="small" sx={ADMIN_LIST_FILTER_SELECT_SX}>
+                <InputLabel id="orders-kind-filter-mobile">Kind</InputLabel>
+                <Select
+                  labelId="orders-kind-filter-mobile"
+                  label="Kind"
+                  value={kindFilter}
+                  onChange={(event) => setKindFilter(event.target.value)}
+                >
+                  {KIND_FILTERS.map((item) => (
+                    <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
+                size="small"
+                placeholder="Search order, customer, item…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                fullWidth
+                sx={ADMIN_LIST_SEARCH_FIELD_SX}
+                InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
+              />
+            </Stack>
           </Stack>
         </Box>
       </Stack>

@@ -81,6 +81,7 @@ import {
   orderCustomerTotal,
 } from "../lib/orderRevenue.js";
 import { formatDateTime } from "../lib/orderTimestamps.js";
+import { useIsMobileMd } from "../lib/mobileUi.js";
 import {
   expectedAmountReceived,
   lineOpenCredit,
@@ -451,7 +452,9 @@ function trailMetaLine(entry) {
   return [entry.payment, migrateOrderStatus(entry.status)].filter(Boolean).join(" · ");
 }
 
-function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment, onUploadProof, order, lineItemLabel, lineItems = [], trail = [], uploading }) {
+const MOBILE_TRAIL_PREVIEW_COUNT = 3;
+
+function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment, onUploadProof, order, lineItemLabel, lineItems = [], trail = [], uploading, dense = false }) {
   const meta = trailMetaLine(entry);
   const isEmailEntry = isEmailTrailEntry(entry);
   const emailLineItems = isEmailEntry ? resolveEmailTrailLineItems(entry, lineItems, trail) : [];
@@ -462,9 +465,23 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
   const canView = showAttachment && !proofPurged && Boolean(resolveProofAttachmentUrl(order, entry));
 
   return (
-    <Stack direction="row" spacing={1.25} sx={{ position: "relative", pb: isLast ? 0 : 1.25 }}>
-      <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start", flexShrink: 0, width: 158, pt: 0.35 }}>
-        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ width: "100%", minWidth: 0 }}>
+    <Stack
+      direction={{ xs: "column", sm: "row" }}
+      spacing={{ xs: 0.75, sm: 1.25 }}
+      sx={{ position: "relative", pb: isLast ? 0 : { xs: dense ? 1 : 1.25, sm: 1.25 } }}
+    >
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: { xs: "row", sm: "column" },
+          alignItems: { xs: "center", sm: "flex-start" },
+          flexShrink: 0,
+          width: { xs: "100%", sm: 158 },
+          pt: { sm: 0.35 },
+          gap: { xs: 0.75, sm: 0 },
+        }}
+      >
+        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ width: { sm: "100%" }, minWidth: 0 }}>
           <Box
             sx={{
               width: 8,
@@ -480,7 +497,17 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
           </Typography>
         </Stack>
         {!isLast ? (
-          <Box sx={{ width: 2, flex: 1, bgcolor: "divider", minHeight: 20, mt: 0.75, ml: "3px" }} />
+          <Box
+            sx={{
+              width: 2,
+              flex: 1,
+              bgcolor: "divider",
+              minHeight: 20,
+              mt: 0.75,
+              ml: "3px",
+              display: { xs: "none", sm: "block" },
+            }}
+          />
         ) : null}
       </Box>
 
@@ -492,10 +519,10 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
           borderColor: surfaceBorderColor,
           borderRadius: 1,
           bgcolor: "background.paper",
-          p: 1.5,
+          p: { xs: dense ? 1.1 : 1.25, sm: 1.5 },
         }}
       >
-        <Typography sx={{ fontWeight: 700, fontSize: "0.84rem", lineHeight: 1.35 }}>
+        <Typography sx={{ fontWeight: 700, fontSize: { xs: "0.8rem", sm: "0.84rem" }, lineHeight: 1.35 }}>
           {isEmailEntry ? emailTrailHeadline(entry) : entry.title}
           {meta && !isEmailEntry ? (
             <Typography component="span" sx={{ fontWeight: 500, color: "text.secondary", fontFamily: MONO_FONT, fontSize: "0.72rem" }}>
@@ -1557,63 +1584,60 @@ export function OrderDetailLayout({
     <Box
       sx={{
         display: "grid",
-        gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 60%) minmax(0, 40%)" },
         gap: 2,
         alignItems: { xs: "start", lg: "stretch" },
         height: { xs: "auto", lg: "100%" },
         minHeight: 0,
+        gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 60%) minmax(0, 40%)" },
+        // Mobile: status → summary → compact trail. Desktop: status+trail | summary.
+        gridTemplateAreas: {
+          xs: `"status" "summary" "trail"`,
+          lg: `"status summary" "trail summary"`,
+        },
+        gridTemplateRows: { lg: "auto minmax(0, 1fr)" },
       }}
     >
-      <Stack
-        spacing={2}
-        sx={{
-          minWidth: 0,
-          minHeight: 0,
-          height: { xs: "auto", lg: "100%" },
-          display: "flex",
-        }}
-      >
-        <Box sx={{ flexShrink: 0 }}>
-          <OrderStatusPanel
-            order={order}
-            lineItems={lineItems}
-            selectedItemId={selectedItemId}
-            onSelectItemId={setSelectedItemId}
-            panelSx={panelSx}
-            surfaceBorderColor={surfaceBorderColor}
-            setPaymentAndStatus={setPaymentAndStatus}
-            setAllocation={setAllocation}
-          />
-        </Box>
-        <Box
-          sx={{
-            flex: 1,
-            minHeight: { xs: 280, lg: 0 },
-            display: "flex",
-            flexDirection: "column",
-            overflow: { lg: "hidden" },
-          }}
-        >
-          <OrderTrailPanel
-            order={order}
-            panelSx={panelSx}
-            surfaceBorderColor={surfaceBorderColor}
-            addTrailEntry={addTrailEntry}
-            uploadTrailProof={uploadTrailProof}
-            lineItems={lineItems}
-            selectedItemId={selectedItemId}
-            canEditItem={canEditItem}
-            activeLineItem={activeLineItem}
-            compact
-            scrollable
-          />
-        </Box>
-      </Stack>
+      <Box sx={{ gridArea: "status", minWidth: 0 }}>
+        <OrderStatusPanel
+          order={order}
+          lineItems={lineItems}
+          selectedItemId={selectedItemId}
+          onSelectItemId={setSelectedItemId}
+          panelSx={panelSx}
+          surfaceBorderColor={surfaceBorderColor}
+          setPaymentAndStatus={setPaymentAndStatus}
+          setAllocation={setAllocation}
+        />
+      </Box>
 
       <Box
         sx={{
+          gridArea: "trail",
           minWidth: 0,
-          minHeight: { xs: 320, lg: 0 },
+          display: "flex",
+          flexDirection: "column",
+          overflow: { lg: "hidden" },
+        }}
+      >
+        <OrderTrailPanel
+          order={order}
+          panelSx={panelSx}
+          surfaceBorderColor={surfaceBorderColor}
+          addTrailEntry={addTrailEntry}
+          uploadTrailProof={uploadTrailProof}
+          lineItems={lineItems}
+          selectedItemId={selectedItemId}
+          canEditItem={canEditItem}
+          activeLineItem={activeLineItem}
+          compact
+          scrollable
+        />
+      </Box>
+
+      <Box
+        sx={{
+          gridArea: "summary",
+          minWidth: 0,
           height: { xs: "auto", lg: "100%" },
           maxHeight: { lg: "100%" },
           display: "flex",
@@ -1657,6 +1681,7 @@ export function OrderTrailPanel({
   const [attachmentError, setAttachmentError] = useState("");
   const [uploadingEntryId, setUploadingEntryId] = useState("");
   const [trailExpanded, setTrailExpanded] = useState(false);
+  const isMobile = useIsMobileMd();
   const internalSelection = useOrderLineItemSelection(order);
   const embedded = Boolean(lineItemsProp);
   const lineItems = lineItemsProp ?? internalSelection.lineItems;
@@ -1720,34 +1745,43 @@ export function OrderTrailPanel({
   };
 
   const trailSuffix = orderTrailSuffix(selectedItemId, activeLineItem, lineItems);
+  const previewCount = isMobile ? MOBILE_TRAIL_PREVIEW_COUNT : trail.length;
+  const inlineTrail = isMobile ? trail.slice(0, previewCount) : trail;
+  const hiddenTrailCount = Math.max(0, trail.length - inlineTrail.length);
 
-  const trailItems = trail.length ? (
-    <Stack spacing={0}>
-      {trail.map((entry, index) => (
-        <TrailTimelineItem
-          key={entry.id}
-          entry={entry}
-          trail={trail}
-          order={order}
-          isLast={index === trail.length - 1}
-          surfaceBorderColor={surfaceBorderColor}
-          onViewAttachment={handleViewAttachment}
-          onUploadProof={uploadTrailProof ? handleUploadTrailProof : null}
-          uploading={uploadingEntryId === entry.id}
-          lineItems={lineItems}
-          lineItemLabel={
-            allItemsView && entry.lineItemName
-              ? trailEntryLineItemLabel(entry, lineItems)
-              : undefined
-          }
-        />
-      ))}
-    </Stack>
-  ) : (
-    <Box sx={{ py: 4, textAlign: "center", color: "text.secondary", border: "1px dashed", borderColor: surfaceBorderColor, borderRadius: 1 }}>
-      No trail entries yet.
-    </Box>
-  );
+  function renderTrailList(entries, { dense = false } = {}) {
+    if (!entries.length) {
+      return (
+        <Box sx={{ py: 4, textAlign: "center", color: "text.secondary", border: "1px dashed", borderColor: surfaceBorderColor, borderRadius: 1 }}>
+          No trail entries yet.
+        </Box>
+      );
+    }
+    return (
+      <Stack spacing={0}>
+        {entries.map((entry, index) => (
+          <TrailTimelineItem
+            key={entry.id}
+            entry={entry}
+            trail={trail}
+            order={order}
+            isLast={index === entries.length - 1}
+            surfaceBorderColor={surfaceBorderColor}
+            onViewAttachment={handleViewAttachment}
+            onUploadProof={uploadTrailProof ? handleUploadTrailProof : null}
+            uploading={uploadingEntryId === entry.id}
+            lineItems={lineItems}
+            dense={dense}
+            lineItemLabel={
+              allItemsView && entry.lineItemName
+                ? trailEntryLineItemLabel(entry, lineItems)
+                : undefined
+            }
+          />
+        ))}
+      </Stack>
+    );
+  }
 
   return (
     <>
@@ -1758,11 +1792,11 @@ export function OrderTrailPanel({
           ...(scrollable ? {
             display: "flex",
             flexDirection: "column",
-            flex: 1,
+            flex: { xs: "0 0 auto", lg: 1 },
             minHeight: 0,
-            height: "100%",
-            maxHeight: "100%",
-            overflow: "hidden",
+            height: { xs: "auto", lg: "100%" },
+            maxHeight: { xs: "none", lg: "100%" },
+            overflow: { xs: "visible", lg: "hidden" },
           } : {}),
         }}
       >
@@ -1773,12 +1807,19 @@ export function OrderTrailPanel({
           spacing={1}
           sx={{ flexShrink: 0, mb: compact ? 1.5 : 2.5 }}
         >
-          <AdminSectionTitle
-            sx={{ lineHeight: 1.35, minWidth: 0 }}
-            suffix={trailSuffix}
-          >
-            Order trail
-          </AdminSectionTitle>
+          <Stack direction="row" alignItems="baseline" spacing={0.75} sx={{ minWidth: 0, flexWrap: "wrap" }}>
+            <AdminSectionTitle
+              sx={{ lineHeight: 1.35, minWidth: 0, mb: 0 }}
+              suffix={trailSuffix}
+            >
+              Order trail
+            </AdminSectionTitle>
+            {trail.length ? (
+              <Typography sx={{ color: "text.secondary", fontWeight: 600, fontSize: "0.72rem", fontFamily: MONO_FONT }}>
+                ({trail.length})
+              </Typography>
+            ) : null}
+          </Stack>
           <Tooltip title="Expand trail">
             <IconButton
               size="small"
@@ -1857,15 +1898,32 @@ export function OrderTrailPanel({
 
         <Box
           sx={scrollable ? {
-            flex: 1,
+            flex: { xs: "0 0 auto", lg: 1 },
             minHeight: 0,
-            overflowY: "auto",
+            overflowY: { xs: "visible", lg: "auto" },
             overscrollBehavior: "contain",
-            pr: 0.5,
-            mr: -0.5,
+            pr: { lg: 0.5 },
+            mr: { lg: -0.5 },
           } : undefined}
         >
-          {trailItems}
+          {renderTrailList(inlineTrail, { dense: isMobile })}
+          {hiddenTrailCount > 0 ? (
+            <Button
+              fullWidth
+              size="small"
+              variant="outlined"
+              onClick={() => setTrailExpanded(true)}
+              sx={{
+                mt: 1.25,
+                fontFamily: MONO_FONT,
+                fontSize: "0.72rem",
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+              }}
+            >
+              View all {trail.length} trail entries
+            </Button>
+          ) : null}
         </Box>
       </Box>
 
@@ -1880,13 +1938,14 @@ export function OrderTrailPanel({
         onClose={() => setTrailExpanded(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
         PaperProps={{
           sx: {
             ...panelSx,
             bgcolor: "background.paper",
             backgroundImage: "none",
-            height: "min(820px, 90dvh)",
-            maxHeight: "90dvh",
+            height: { xs: "100%", md: "min(820px, 90dvh)" },
+            maxHeight: { xs: "100%", md: "90dvh" },
             display: "flex",
             flexDirection: "column",
           },
@@ -1914,9 +1973,10 @@ export function OrderTrailPanel({
             minHeight: 0,
             overflowY: "auto",
             overscrollBehavior: "contain",
+            WebkitOverflowScrolling: "touch",
           }}
         >
-          {trailItems}
+          {renderTrailList(trail)}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 1.5, flexShrink: 0 }}>
           <Button onClick={() => setTrailExpanded(false)} variant="contained" color="primary">
@@ -1924,7 +1984,6 @@ export function OrderTrailPanel({
           </Button>
         </DialogActions>
       </Dialog>
-
       <AttachmentPreviewModal
         open={Boolean(previewAttachment)}
         attachment={previewAttachment}

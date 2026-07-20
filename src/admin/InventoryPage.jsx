@@ -50,11 +50,15 @@ import {
 import {
   AdminTableHeaderCell,
   AdminTableSortHeader,
+  AdminListFilterTabs,
+  ADMIN_LIST_BULK_BAR_SX,
   ADMIN_LIST_FILTER_BAR_SX,
   ADMIN_LIST_FILTER_ROW_SX,
+  ADMIN_LIST_FILTER_SELECT_SX,
   ADMIN_LIST_PAGE_SX,
   ADMIN_LIST_PANEL_SX,
   ADMIN_LIST_SCROLL_SX,
+  ADMIN_LIST_SEARCH_FIELD_SX,
   ADMIN_LIST_STATS_SX,
   ADMIN_TABLE_SORT_LABEL_SX,
 } from "./adminTableHeader.jsx";
@@ -845,64 +849,9 @@ export default function InventoryPage() {
         </Grid>
 
         <Box sx={{ ...panelSx, ...ADMIN_LIST_FILTER_BAR_SX }}>
-          <Stack direction="row" alignItems="center" sx={ADMIN_LIST_FILTER_ROW_SX}>
-            <ToggleButtonGroup
-              exclusive
-              size="small"
-              value={statusFilter}
-              onChange={(_, next) => { if (next) setStatusFilter(next); }}
-              sx={{ flexWrap: "nowrap" }}
-            >
-              {STATUS_FILTERS.map((item) => (
-                <ToggleButton
-                  key={item.id}
-                  value={item.id}
-                  sx={{
-                    px: 1.5,
-                    fontFamily: MONO_FONT,
-                    fontSize: "0.68rem",
-                    letterSpacing: 0.4,
-                    textTransform: "uppercase",
-                    fontWeight: 700,
-                  }}
-                >
-                  {item.label}
-                </ToggleButton>
-              ))}
-            </ToggleButtonGroup>
-
-            <FormControl size="small" sx={{ minWidth: 130 }}>
-              <InputLabel id="inventory-type-filter">Type</InputLabel>
-              <Select
-                labelId="inventory-type-filter"
-                label="Type"
-                value={typeFilter}
-                onChange={(event) => setTypeFilter(event.target.value)}
-              >
-                {TYPE_FILTERS.map((item) => (
-                  <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <FormControl size="small" sx={{ minWidth: 120 }}>
-              <InputLabel id="inventory-catalog-filter">Catalog</InputLabel>
-              <Select
-                labelId="inventory-catalog-filter"
-                label="Catalog"
-                value={catalogFilter}
-                onChange={(event) => setCatalogFilter(event.target.value)}
-              >
-                {CATALOG_FILTERS.map((item) => (
-                  <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <Box sx={{ flex: 1, minWidth: { md: 8 }, display: { xs: "none", md: "block" } }} />
-
+          <Stack spacing={1.25} sx={{ width: "100%", minWidth: 0 }}>
             {selectedCount > 0 ? (
-              <>
+              <Stack sx={ADMIN_LIST_BULK_BAR_SX}>
                 <Chip
                   label={`${selectedCount} selected`}
                   onDelete={() => setSelectedIds(new Set())}
@@ -932,43 +881,147 @@ export default function InventoryPage() {
                     ]
                   )}
                 </Menu>
-              </>
-            ) : (
-              <Chip
-                label={allVisibleSelected ? "Deselect loaded" : "Select loaded"}
-                onClick={toggleSelectAllVisible}
-                disabled={!visibleItems.length}
-                variant="outlined"
-                sx={{ fontWeight: 700, display: { xs: "none", sm: "inline-flex" } }}
-              />
-            )}
+              </Stack>
+            ) : null}
 
-            <ToggleButtonGroup
-              exclusive
-              size="small"
-              value={view}
-              onChange={(_, next) => { if (next) setView(next); }}
+            {/* Desktop: single filter row */}
+            <Stack
+              direction="row"
+              alignItems="center"
+              sx={{ ...ADMIN_LIST_FILTER_ROW_SX, display: { xs: "none", md: "flex" } }}
             >
-              <Tooltip title="Table">
-                <ToggleButton value="table" aria-label="Table view" sx={{ px: 1.25 }}>
-                  <ViewTableIcon sx={{ fontSize: 20 }} />
-                </ToggleButton>
-              </Tooltip>
-              <Tooltip title="Cards">
-                <ToggleButton value="cards" aria-label="Cards view" sx={{ px: 1.25 }}>
-                  <ViewGridIcon sx={{ fontSize: 20 }} />
-                </ToggleButton>
-              </Tooltip>
-            </ToggleButtonGroup>
+              <AdminListFilterTabs
+                label="Status"
+                labelId="inventory-status-filter"
+                options={STATUS_FILTERS}
+                value={statusFilter}
+                onChange={setStatusFilter}
+              />
+              <FormControl size="small" sx={{ minWidth: 150 }}>
+                <InputLabel id="inventory-type-filter">Type</InputLabel>
+                <Select
+                  labelId="inventory-type-filter"
+                  label="Type"
+                  value={typeFilter}
+                  onChange={(event) => setTypeFilter(event.target.value)}
+                >
+                  {TYPE_FILTERS.map((item) => (
+                    <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: 140 }}>
+                <InputLabel id="inventory-catalog-filter">Catalog</InputLabel>
+                <Select
+                  labelId="inventory-catalog-filter"
+                  label="Catalog"
+                  value={catalogFilter}
+                  onChange={(event) => setCatalogFilter(event.target.value)}
+                >
+                  {CATALOG_FILTERS.map((item) => (
+                    <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Box sx={{ flex: 1, minWidth: 8 }} />
+              {selectedCount === 0 ? (
+                <Chip
+                  label={allVisibleSelected ? "Deselect loaded" : "Select loaded"}
+                  onClick={toggleSelectAllVisible}
+                  disabled={!visibleItems.length}
+                  variant="outlined"
+                  sx={{ fontWeight: 700 }}
+                />
+              ) : null}
+              <ToggleButtonGroup
+                exclusive
+                size="small"
+                value={view}
+                onChange={(_, next) => { if (next) setView(next); }}
+                sx={{ flexShrink: 0 }}
+              >
+                <Tooltip title="Table">
+                  <ToggleButton value="table" aria-label="Table view" sx={{ px: 1.25 }}>
+                    <ViewTableIcon sx={{ fontSize: 20 }} />
+                  </ToggleButton>
+                </Tooltip>
+                <Tooltip title="Cards">
+                  <ToggleButton value="cards" aria-label="Cards view" sx={{ px: 1.25 }}>
+                    <ViewGridIcon sx={{ fontSize: 20 }} />
+                  </ToggleButton>
+                </Tooltip>
+              </ToggleButtonGroup>
+              <TextField
+                size="small"
+                placeholder="Search SKU or name…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                sx={ADMIN_LIST_SEARCH_FIELD_SX}
+                InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
+              />
+            </Stack>
 
-            <TextField
-              size="small"
-              placeholder="Search SKU or name…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              sx={{ minWidth: { xs: 160, sm: 220 }, flex: { xs: "1 1 140px", md: "0 0 auto" } }}
-              InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
-            />
+            {/* Mobile: stacked filters so labels and search never crush */}
+            <Stack spacing={1.25} sx={{ display: { xs: "flex", md: "none" }, width: "100%", minWidth: 0 }}>
+              <AdminListFilterTabs
+                label="Status"
+                labelId="inventory-status-filter-mobile"
+                options={STATUS_FILTERS}
+                value={statusFilter}
+                onChange={setStatusFilter}
+              />
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ width: "100%", minWidth: 0 }}>
+                <FormControl size="small" sx={ADMIN_LIST_FILTER_SELECT_SX}>
+                  <InputLabel id="inventory-type-filter-mobile">Type</InputLabel>
+                  <Select
+                    labelId="inventory-type-filter-mobile"
+                    label="Type"
+                    value={typeFilter}
+                    onChange={(event) => setTypeFilter(event.target.value)}
+                  >
+                    {TYPE_FILTERS.map((item) => (
+                      <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl size="small" sx={ADMIN_LIST_FILTER_SELECT_SX}>
+                  <InputLabel id="inventory-catalog-filter-mobile">Catalog</InputLabel>
+                  <Select
+                    labelId="inventory-catalog-filter-mobile"
+                    label="Catalog"
+                    value={catalogFilter}
+                    onChange={(event) => setCatalogFilter(event.target.value)}
+                  >
+                    {CATALOG_FILTERS.map((item) => (
+                      <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <ToggleButtonGroup
+                  exclusive
+                  size="small"
+                  value={view}
+                  onChange={(_, next) => { if (next) setView(next); }}
+                  sx={{ flexShrink: 0 }}
+                >
+                  <ToggleButton value="table" aria-label="Table view" sx={{ px: 1.1 }}>
+                    <ViewTableIcon sx={{ fontSize: 20 }} />
+                  </ToggleButton>
+                  <ToggleButton value="cards" aria-label="Cards view" sx={{ px: 1.1 }}>
+                    <ViewGridIcon sx={{ fontSize: 20 }} />
+                  </ToggleButton>
+                </ToggleButtonGroup>
+              </Stack>
+              <TextField
+                size="small"
+                placeholder="Search SKU or name…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                fullWidth
+                sx={ADMIN_LIST_SEARCH_FIELD_SX}
+                InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
+              />
+            </Stack>
           </Stack>
         </Box>
       </Stack>

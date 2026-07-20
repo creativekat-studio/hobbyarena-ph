@@ -25,8 +25,6 @@ import {
   TableRow,
   Tabs,
   TextField,
-  ToggleButton,
-  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -47,6 +45,7 @@ import {
 } from "../components/icons.jsx";
 import { InfiniteScrollTableSentinel } from "../components/InfiniteScrollSentinel.jsx";
 import {
+  AdminListFilterTabs,
   AdminTableHeaderCell,
   AdminTableSortHeader,
   ADMIN_LIST_FILTER_BAR_SX,
@@ -54,6 +53,7 @@ import {
   ADMIN_LIST_PAGE_SX,
   ADMIN_LIST_PANEL_SX,
   ADMIN_LIST_SCROLL_SX,
+  ADMIN_LIST_SEARCH_FIELD_SX,
   ADMIN_LIST_STATS_SX,
 } from "./adminTableHeader.jsx";
 import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
@@ -86,15 +86,6 @@ const FILTERS = [
   { id: "active", label: "Active" },
   { id: "dormant", label: "Dormant" },
 ];
-
-const FILTER_TOGGLE_SX = {
-  px: 1.5,
-  fontFamily: MONO_FONT,
-  fontSize: "0.68rem",
-  letterSpacing: 0.4,
-  textTransform: "uppercase",
-  fontWeight: 700,
-};
 
 const AUTH_PROVIDER_LABEL = {
   google: "Google",
@@ -769,29 +760,30 @@ export default function CustomersPage() {
         </Grid>
 
         <Box sx={{ ...panelSx, ...ADMIN_LIST_FILTER_BAR_SX }}>
-          <Stack direction="row" alignItems="center" sx={ADMIN_LIST_FILTER_ROW_SX}>
-            <ToggleButtonGroup
-              exclusive
-              size="small"
-              value={filter}
-              onChange={(_, next) => { if (next) setFilter(next); }}
-              sx={{ flexWrap: "nowrap" }}
-            >
-              {FILTERS.map((item) => (
-                <ToggleButton key={item.id} value={item.id} sx={FILTER_TOGGLE_SX}>
-                  {item.label}
-                </ToggleButton>
-              ))}
-            </ToggleButtonGroup>
-
-            <Box sx={{ flex: 1, minWidth: { md: 8 }, display: { xs: "none", md: "block" } }} />
+          <Stack
+            direction={{ xs: "column", md: "row" }}
+            spacing={1.25}
+            alignItems={{ xs: "stretch", md: "center" }}
+            sx={{ width: "100%", minWidth: 0 }}
+          >
+            <Stack direction="row" alignItems="center" sx={{ ...ADMIN_LIST_FILTER_ROW_SX, flex: { md: 1 } }}>
+              <AdminListFilterTabs
+                label="View"
+                labelId="customers-filter"
+                options={FILTERS}
+                value={filter}
+                onChange={setFilter}
+              />
+              <Box sx={{ flex: 1, minWidth: 8, display: { xs: "none", md: "block" } }} />
+            </Stack>
 
             <TextField
               size="small"
               placeholder="Search name or email…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              sx={{ minWidth: { xs: 180, sm: 220 }, flex: { xs: "1 1 140px", md: "0 0 auto" } }}
+              fullWidth
+              sx={ADMIN_LIST_SEARCH_FIELD_SX}
               InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
             />
           </Stack>

@@ -1,5 +1,16 @@
-import { TableCell, TableSortLabel, Typography } from "@mui/material";
+import {
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
+  TableCell,
+  TableSortLabel,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from "@mui/material";
 import { MONO_FONT } from "../theme.js";
+import { useIsMobileMd } from "../lib/mobileUi.js";
 
 /** Shared admin grid header look — mono, uppercase, muted. */
 export const ADMIN_TABLE_HEADER_SX = {
@@ -63,20 +74,125 @@ export const ADMIN_LIST_STATS_SX = {
   display: { xs: "none", md: "flex" },
 };
 
-/** Compact filter panel shell. */
+/**
+ * Compact filter panel shell.
+ * Override panel overflow so outlined Select InputLabels are not clipped.
+ */
 export const ADMIN_LIST_FILTER_BAR_SX = {
-  p: { xs: 1, md: 2.5 },
+  overflow: "visible",
+  px: { xs: 1, md: 2.5 },
+  pt: { xs: 2.25, md: 2.5 },
+  pb: { xs: 1.25, md: 2.5 },
+  minWidth: 0,
+  width: "100%",
+  boxSizing: "border-box",
 };
 
-/** One dense filter row; horizontal swipe on mobile instead of wrapping tall. */
+/** Filter controls row (dropdowns / toggles). Wraps; children may shrink. */
 export const ADMIN_LIST_FILTER_ROW_SX = {
-  flexWrap: { xs: "nowrap", md: "wrap" },
-  overflowX: { xs: "auto", md: "visible" },
-  WebkitOverflowScrolling: "touch",
-  pb: { xs: 0.25, md: 0 },
+  flexWrap: "wrap",
+  overflow: "visible",
+  width: "100%",
+  minWidth: 0,
   gap: { xs: 1, md: 1.5 },
-  "& > *": { flexShrink: 0 },
 };
+
+/** Secondary selects — grow equally on mobile without crushing labels. */
+export const ADMIN_LIST_FILTER_SELECT_SX = {
+  flex: { xs: "1 1 0%", md: "0 0 auto" },
+  minWidth: { xs: 0, md: 120 },
+  width: { xs: "100%", md: "auto" },
+};
+
+/** Full-width select (e.g. Status/Queue on its own mobile row). */
+export const ADMIN_LIST_FILTER_SELECT_FULL_SX = {
+  width: "100%",
+  minWidth: 0,
+};
+
+/** Search field — full width under filters on mobile, inline on desktop. */
+export const ADMIN_LIST_SEARCH_FIELD_SX = {
+  width: { xs: "100%", md: "auto" },
+  minWidth: { xs: 0, md: 220 },
+  flex: { xs: "1 1 100%", md: "0 0 auto" },
+  maxWidth: "100%",
+};
+
+/** Selection chip + Actions strip — own row so it never crowds filters. */
+export const ADMIN_LIST_BULK_BAR_SX = {
+  flexDirection: "row",
+  alignItems: "center",
+  flexWrap: "wrap",
+  gap: 1,
+  width: "100%",
+};
+
+export const ADMIN_LIST_FILTER_TOGGLE_SX = {
+  px: 1.5,
+  fontFamily: MONO_FONT,
+  fontSize: "0.68rem",
+  letterSpacing: 0.4,
+  textTransform: "uppercase",
+  fontWeight: 700,
+};
+
+/**
+ * Queue/status filter tabs — Select dropdown on mobile, toggle group on desktop.
+ * `options`: [{ id, label }]
+ */
+export function AdminListFilterTabs({
+  label = "Filter",
+  labelId,
+  options,
+  value,
+  onChange,
+  minWidth = 120,
+  sx,
+}) {
+  const isMobile = useIsMobileMd();
+  const id = labelId || `admin-list-filter-${label}`.toLowerCase().replace(/\s+/g, "-");
+
+  if (isMobile) {
+    return (
+      <FormControl
+        size="small"
+        fullWidth
+        sx={{
+          ...ADMIN_LIST_FILTER_SELECT_FULL_SX,
+          ...sx,
+        }}
+      >
+        <InputLabel id={id}>{label}</InputLabel>
+        <Select
+          labelId={id}
+          label={label}
+          value={value}
+          onChange={(event) => onChange?.(event.target.value)}
+        >
+          {(options || []).map((item) => (
+            <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+    );
+  }
+
+  return (
+    <ToggleButtonGroup
+      exclusive
+      size="small"
+      value={value}
+      onChange={(_, next) => { if (next != null) onChange?.(next); }}
+      sx={{ flexWrap: "nowrap" }}
+    >
+      {(options || []).map((item) => (
+        <ToggleButton key={item.id} value={item.id} sx={ADMIN_LIST_FILTER_TOGGLE_SX}>
+          {item.label}
+        </ToggleButton>
+      ))}
+    </ToggleButtonGroup>
+  );
+}
 
 /** Non-sortable header cell for MUI Table. */
 export function AdminTableHeaderCell({ children, sx, ...props }) {
