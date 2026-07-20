@@ -4,6 +4,7 @@ import { MONO_FONT } from "../theme.js";
 import { wider } from "../lib/layout.js";
 import { CardIcon, ShieldIcon, SparkleIcon } from "./icons.jsx";
 import { paymentMethodsFromAccounts } from "../data/checkoutSettings.js";
+import { useDesignSettings } from "../lib/designSettings.jsx";
 import BirSealBadge, { useBirSealVisible } from "./BirSealBadge.jsx";
 
 function PaymentBadge({ method, account, surfaceBorderColor }) {
@@ -146,7 +147,9 @@ function ComingSoonRow({ panelSx }) {
 
 export default function BankDetailsSection({ bankDetails, panelSx, surfaceBorderColor }) {
   const theme = useTheme();
-  const showBirBelowPayment = useBirSealVisible("payment");
+  const { birPaymentLayoutId } = useDesignSettings();
+  const showBir = useBirSealVisible("payment");
+  const layout = showBir ? birPaymentLayoutId : "below";
 
   if (!bankDetails?.enabled) return null;
 
@@ -159,7 +162,7 @@ export default function BankDetailsSection({ bankDetails, panelSx, surfaceBorder
   return (
     <Box id="payment-options" sx={{ ...panelSx, overflow: "hidden", py: { xs: 3, md: 4 }, px: { xs: 2.5, md: 4 } }}>
       <Grid container spacing={{ xs: 3, md: 5 }} alignItems="center">
-        <Grid size={{ xs: 12, md: 5 }}>
+        <Grid size={{ xs: 12, md: layout === "beside" ? 7 : 5 }}>
           <Stack spacing={2.5}>
             <Chip
               label="Secure checkout"
@@ -176,17 +179,48 @@ export default function BankDetailsSection({ bankDetails, panelSx, surfaceBorder
                 color: "primary.main",
               }}
             />
-            <Typography variant="h4" sx={{ fontWeight: 800, lineHeight: 1.15, maxWidth: wider(420) }}>
-              {bankDetails.title}
-            </Typography>
-            <Box sx={{ width: 48, height: 3, borderRadius: 1, bgcolor: "primary.main" }} />
-            <Typography color="text.secondary" sx={{ fontSize: "0.95rem", maxWidth: wider(360), lineHeight: 1.6 }}>
-              {bankDetails.subtitle}
-            </Typography>
+            {layout === "beside" && showBir ? (
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: { xs: "1fr", sm: "minmax(0, 1fr) minmax(180px, 280px)" },
+                  gap: 2,
+                  alignItems: "center",
+                }}
+              >
+                <Box>
+                  <Typography variant="h4" sx={{ fontWeight: 800, lineHeight: 1.15, maxWidth: wider(420) }}>
+                    {bankDetails.title}
+                  </Typography>
+                  <Box sx={{ width: 48, height: 3, borderRadius: 1, bgcolor: "primary.main", my: 1.5 }} />
+                  <Typography color="text.secondary" sx={{ fontSize: "0.95rem", maxWidth: wider(360), lineHeight: 1.6 }}>
+                    {bankDetails.subtitle}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: "flex", justifyContent: { xs: "flex-start", sm: "flex-end" } }}>
+                  <BirSealBadge placement="payment" maxWidth={280} />
+                </Box>
+              </Box>
+            ) : (
+              <>
+                <Typography variant="h4" sx={{ fontWeight: 800, lineHeight: 1.15, maxWidth: wider(420) }}>
+                  {bankDetails.title}
+                </Typography>
+                <Box sx={{ width: 48, height: 3, borderRadius: 1, bgcolor: "primary.main" }} />
+                <Typography color="text.secondary" sx={{ fontSize: "0.95rem", maxWidth: wider(360), lineHeight: 1.6 }}>
+                  {bankDetails.subtitle}
+                </Typography>
+                {layout === "under_copy" && showBir ? (
+                  <Box sx={{ display: "flex", justifyContent: "flex-start", pt: 0.5 }}>
+                    <BirSealBadge placement="payment" maxWidth={320} />
+                  </Box>
+                ) : null}
+              </>
+            )}
           </Stack>
         </Grid>
 
-        <Grid size={{ xs: 12, md: 7 }}>
+        <Grid size={{ xs: 12, md: layout === "beside" ? 5 : 7 }}>
           {banks.length ? (
             <PaymentCategoryRow
               icon={ShieldIcon}
@@ -235,7 +269,7 @@ export default function BankDetailsSection({ bankDetails, panelSx, surfaceBorder
         </Typography>
       </Stack>
 
-      {showBirBelowPayment ? (
+      {layout === "below" && showBir ? (
         <Box sx={{ display: "flex", justifyContent: "center", mt: 3 }}>
           <BirSealBadge placement="payment" maxWidth={400} />
         </Box>

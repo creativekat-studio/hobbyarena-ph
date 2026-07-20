@@ -1762,7 +1762,7 @@ function SocialContactTab({ panelSx, surfaceBorderColor }) {
             ? "Hidden on storefront"
             : [
                 bank.birSealMarkImage ? "Footer" : null,
-                bank.birQrImage ? "Payment" : null,
+                bank.birQrImage ? "Payment section" : null,
               ].filter(Boolean).join(" · ") || "Enabled · no images yet"
         }
         expanded={expanded}
@@ -1781,6 +1781,10 @@ function SocialContactTab({ panelSx, surfaceBorderColor }) {
               {bank.showBirSeal ? "Shown on storefront" : "Hidden"}
             </Typography>
           </Stack>
+          <Typography sx={{ color: "text.secondary", fontSize: "0.82rem", lineHeight: 1.5 }}>
+            Payment-section layout (beside headline, under copy, or below logos) is switched in{" "}
+            <strong>Admin → Design → BIR badge in payment section</strong>.
+          </Typography>
 
           <TextField
             label="BIR seal note (tooltip)"

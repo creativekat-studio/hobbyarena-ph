@@ -8,6 +8,7 @@ import {
   PREORDER_COUNTDOWN_VARIANTS,
   PREORDER_PRICING_VARIANTS,
 } from "../data/preorderDisplay.js";
+import { DEFAULT_BIR_PAYMENT_LAYOUT, normalizeBirPaymentLayout } from "../data/birSeal.js";
 import { useFirebaseData } from "./firebase/config.js";
 import { useAdminFirestoreWrite } from "./firebase/adminWriteAccess.js";
 import { saveDesignSettings, subscribeDesignSettings } from "./firebase/repositories/design.js";
@@ -58,6 +59,7 @@ function defaultSettings() {
     countdownVariant: DEFAULT_COUNTDOWN_VARIANT,
     pricingVariant: DEFAULT_PRICING_VARIANT,
     defaultColorMode: getDesignProposal(DEFAULT_DESIGN_PROPOSAL).defaultMode || DEFAULT_COLOR_MODE,
+    birPaymentLayoutId: DEFAULT_BIR_PAYMENT_LAYOUT,
   };
 }
 
@@ -71,6 +73,7 @@ function normalizeSettings(raw) {
     countdownVariant: normalizeCountdown(raw.countdownVariant ?? base.countdownVariant),
     pricingVariant: normalizePricing(raw.pricingVariant ?? base.pricingVariant),
     defaultColorMode: normalizeColorMode(raw.defaultColorMode ?? base.defaultColorMode),
+    birPaymentLayoutId: normalizeBirPaymentLayout(raw.birPaymentLayoutId ?? base.birPaymentLayoutId),
   };
 }
 
@@ -102,6 +105,7 @@ function settingsPayload(settings) {
     countdownVariant: settings.countdownVariant,
     pricingVariant: settings.pricingVariant,
     defaultColorMode: settings.defaultColorMode,
+    birPaymentLayoutId: settings.birPaymentLayoutId,
   };
 }
 
@@ -207,6 +211,7 @@ export function DesignSettingsProvider({ children }) {
   const setCountdownVariant = useCallback((next) => patchSettings({ countdownVariant: next }), [patchSettings]);
   const setPricingVariant = useCallback((next) => patchSettings({ pricingVariant: next }), [patchSettings]);
   const setDefaultColorMode = useCallback((next) => patchSettings({ defaultColorMode: next }), [patchSettings]);
+  const setBirPaymentLayoutId = useCallback((next) => patchSettings({ birPaymentLayoutId: next }), [patchSettings]);
 
   const proposal = useMemo(() => getDesignProposal(settings.proposalId), [settings.proposalId]);
 
@@ -225,6 +230,7 @@ export function DesignSettingsProvider({ children }) {
       setCountdownVariant,
       setPricingVariant,
       setDefaultColorMode,
+      setBirPaymentLayoutId,
       saveSettings,
       discardChanges,
       // Aliases used by existing hooks/components
@@ -245,6 +251,7 @@ export function DesignSettingsProvider({ children }) {
       setCountdownVariant,
       setPricingVariant,
       setDefaultColorMode,
+      setBirPaymentLayoutId,
       saveSettings,
       discardChanges,
     ],

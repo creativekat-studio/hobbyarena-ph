@@ -9,6 +9,7 @@ import {
   PREORDER_COUNTDOWN_VARIANTS,
   PREORDER_PRICING_VARIANTS,
 } from "../data/preorderDisplay.js";
+import { BIR_PAYMENT_LAYOUTS } from "../data/birSeal.js";
 
 function SectionLabel({ children }) {
   return (
@@ -124,6 +125,8 @@ export default function DesignPreviewSettings({ panelSx, surfaceBorderColor }) {
     pricingVariant,
     setCountdownVariant,
     setPricingVariant,
+    birPaymentLayoutId,
+    setBirPaymentLayoutId,
   } = useDesignSettings();
 
   function chooseColorMode(option) {
@@ -273,6 +276,31 @@ export default function DesignPreviewSettings({ panelSx, surfaceBorderColor }) {
             </Stack>
             <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", lineHeight: 1.5, mt: 1.5 }}>
               {PREORDER_PRICING_VARIANTS[pricingVariant]?.description}
+            </Typography>
+          </SettingsPanel>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 6 }}>
+          <SettingsPanel
+            panelSx={panelSx}
+            title="BIR badge in payment section"
+            subtitle="Where the full BIR registered badge sits inside the homepage bank / payment block. Upload the image in CMS → Business Info."
+          >
+            <Stack spacing={0.75}>
+              {Object.values(BIR_PAYMENT_LAYOUTS).map((option) => (
+                <OptionButton
+                  key={option.id}
+                  active={birPaymentLayoutId === option.id}
+                  onClick={() => setBirPaymentLayoutId(option.id)}
+                  color="secondary"
+                  surfaceBorderColor={surfaceBorderColor}
+                >
+                  {option.label}
+                </OptionButton>
+              ))}
+            </Stack>
+            <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", lineHeight: 1.5, mt: 1.5 }}>
+              {BIR_PAYMENT_LAYOUTS[birPaymentLayoutId]?.description}
             </Typography>
           </SettingsPanel>
         </Grid>

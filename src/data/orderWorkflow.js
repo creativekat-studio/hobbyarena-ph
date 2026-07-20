@@ -386,6 +386,18 @@ export const ORDER_QUEUES = [
     ),
   },
   {
+    id: "unpaid",
+    label: "Unpaid",
+    match: (o) =>
+      migrateOrderStatus(o.status) === "Unpaid"
+      || migratePaymentStatus(o.payment) === "Unpaid"
+      || getOrderLineItems(o).some(
+        (item) =>
+          migrateOrderStatus(item.status) === "Unpaid"
+          || migratePaymentStatus(item.payment) === "Unpaid",
+      ),
+  },
+  {
     id: "pickup",
     label: "Ready for pickup",
     match: (o) => migrateOrderStatus(o.status) === "Ready for Pickup",

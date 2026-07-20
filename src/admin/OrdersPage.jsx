@@ -166,7 +166,8 @@ function StatCard({ panelSx, icon, label, value, accent }) {
   );
 }
 
-const DONE_STATUSES = new Set(["Fulfilled", "Refunded"]);
+/** Terminal line statuses shown as a status chip in the main orders grid. */
+const DONE_STATUSES = new Set(["Fulfilled", "Refunded", "Unpaid"]);
 
 function isLineItemDone(item) {
   return DONE_STATUSES.has(migrateOrderStatus(item.status));
@@ -299,7 +300,7 @@ function AdminOrderAccordionRow({
               title={(
                 <Box sx={{ py: 0.5 }}>
                   <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, mb: 0.5 }}>
-                    {doneCount} of {lineItems.length} items fulfilled
+                    {doneCount} of {lineItems.length} items closed
                   </Typography>
                   <Stack spacing={0.25}>
                     {lineItems.map((item) => (

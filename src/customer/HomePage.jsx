@@ -29,7 +29,6 @@ import PreorderPricing from "../components/PreorderPricing.jsx";
 import { useInventory } from "../lib/inventoryStore.jsx";
 import BannerMarquee from "../components/BannerMarquee.jsx";
 import PaymentMethodsMarquee from "../components/PaymentMethodsMarquee.jsx";
-import BirSealBadge, { useBirSealVisible } from "../components/BirSealBadge.jsx";
 import TestimonialsShowcase from "../components/TestimonialsShowcase.jsx";
 import {
   BoxIcon,
@@ -794,8 +793,6 @@ export default function HomePage() {
   const headlineSx = heroHeadlineSx(theme);
   const sectionTitleSx = sectionHeadlineSx(theme);
   const heroGlow = brand.heroGlowColor ?? theme.palette.primary.main;
-  const showBirBelowPayment = useBirSealVisible("payment");
-
   useEffect(() => {
     const target = location.state?.scrollTo;
     if (target) {
@@ -952,11 +949,6 @@ export default function HomePage() {
           ) : null}
 
           <PaymentMethodsMarquee panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} bankDetails={content.bankDetails} />
-          {showBirBelowPayment ? (
-            <Box sx={{ display: "flex", justifyContent: "center", px: { xs: 1, md: 2 } }}>
-              <BirSealBadge placement="payment" maxWidth={400} />
-            </Box>
-          ) : null}
         </Stack>
       </Container>
     </Box>

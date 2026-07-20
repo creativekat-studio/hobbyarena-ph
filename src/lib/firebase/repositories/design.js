@@ -31,6 +31,7 @@ export async function saveDesignSettings(settings) {
     countdownVariant: settings.countdownVariant,
     pricingVariant: settings.pricingVariant,
     defaultColorMode: settings.defaultColorMode,
+    birPaymentLayoutId: settings.birPaymentLayoutId,
     updatedAt: serverTimestamp(),
   };
   await setDoc(designRef(db), payload, { merge: true });

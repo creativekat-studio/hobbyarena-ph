@@ -4,6 +4,8 @@ import { keyframes } from "@mui/system";
 import { MONO_FONT } from "../theme.js";
 import { paymentMethodsFromAccounts } from "../data/checkoutSettings.js";
 import { marqueeDuration } from "../lib/marquee.js";
+import { useDesignSettings } from "../lib/designSettings.jsx";
+import BirSealBadge, { useBirSealVisible } from "./BirSealBadge.jsx";
 
 const marqueeSlide = keyframes`
   0%   { transform: translateX(0); }
@@ -88,8 +90,81 @@ function PaymentMarqueeGroup({ methods, accountsById, surfaceBorderColor, ariaHi
   );
 }
 
+function PaymentSectionHeader({ bankDetails, showBir, layout }) {
+  const theme = useTheme();
+  const title = bankDetails?.title || "Choose from a wide variety of payment options available";
+  const subtitle = bankDetails?.subtitle
+    || "Pay your way — Philippine banks and e-wallets accepted. Upload proof of payment after checkout.";
+  const beside = layout === "beside" && showBir;
+
+  const chip = (
+    <Chip
+      label="Secure checkout"
+      size="small"
+      sx={{
+        fontFamily: MONO_FONT,
+        fontWeight: 700,
+        letterSpacing: 0.8,
+        border: "1px solid",
+        borderColor: alpha(theme.palette.primary.main, 0.35),
+        bgcolor: "transparent",
+        color: "primary.main",
+        alignSelf: beside ? { xs: "center", md: "flex-start" } : "center",
+      }}
+    />
+  );
+
+  if (beside) {
+    return (
+      <Stack spacing={2.5} sx={{ px: { xs: 2, md: 4 }, mb: 3 }}>
+        {chip}
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) minmax(220px, 360px)" },
+            gap: { xs: 2.5, md: 4 },
+            alignItems: "center",
+          }}
+        >
+          <Stack spacing={1.5} textAlign={{ xs: "center", md: "left" }}>
+            <Typography variant="h4" sx={{ fontWeight: 800, maxWidth: { md: 520 }, lineHeight: 1.2, mx: { xs: "auto", md: 0 } }}>
+              {title}
+            </Typography>
+            <Typography color="text.secondary" sx={{ maxWidth: 520, fontSize: "0.95rem", mx: { xs: "auto", md: 0 } }}>
+              {subtitle}
+            </Typography>
+          </Stack>
+          <Box sx={{ display: "flex", justifyContent: { xs: "center", md: "flex-end" } }}>
+            <BirSealBadge placement="payment" maxWidth={360} />
+          </Box>
+        </Box>
+      </Stack>
+    );
+  }
+
+  return (
+    <Stack spacing={2.5} alignItems="center" textAlign="center" sx={{ px: { xs: 2, md: 4 }, mb: 3 }}>
+      {chip}
+      <Typography variant="h4" sx={{ fontWeight: 800, maxWidth: 640, lineHeight: 1.2 }}>
+        {title}
+      </Typography>
+      <Typography color="text.secondary" sx={{ maxWidth: 520, fontSize: "0.95rem" }}>
+        {subtitle}
+      </Typography>
+      {layout === "under_copy" && showBir ? (
+        <Box sx={{ display: "flex", justifyContent: "center", width: "100%", pt: 0.5 }}>
+          <BirSealBadge placement="payment" maxWidth={400} />
+        </Box>
+      ) : null}
+    </Stack>
+  );
+}
+
 export default function PaymentMethodsMarquee({ panelSx, surfaceBorderColor, bankDetails }) {
   const theme = useTheme();
+  const { birPaymentLayoutId } = useDesignSettings();
+  const showBir = useBirSealVisible("payment");
+  const layout = showBir ? birPaymentLayoutId : "below";
   const activeAccounts = (bankDetails?.accounts ?? []).filter((account) => account.active !== false);
   const accountsById = new Map(activeAccounts.map((account) => [account.id, account]));
   const methods = paymentMethodsFromAccounts(activeAccounts);
@@ -99,27 +174,7 @@ export default function PaymentMethodsMarquee({ panelSx, surfaceBorderColor, ban
 
   return (
     <Box id="payment-options" sx={{ ...panelSx, overflow: "hidden", py: { xs: 3, md: 4 } }}>
-      <Stack spacing={2.5} alignItems="center" textAlign="center" sx={{ px: { xs: 2, md: 4 }, mb: 3 }}>
-        <Chip
-          label="Secure checkout"
-          size="small"
-          sx={{
-            fontFamily: MONO_FONT,
-            fontWeight: 700,
-            letterSpacing: 0.8,
-            border: "1px solid",
-            borderColor: alpha(theme.palette.primary.main, 0.35),
-            bgcolor: "transparent",
-            color: "primary.main",
-          }}
-        />
-        <Typography variant="h4" sx={{ fontWeight: 800, maxWidth: 640, lineHeight: 1.2 }}>
-          Choose from a wide variety of payment options available
-        </Typography>
-        <Typography color="text.secondary" sx={{ maxWidth: 520, fontSize: "0.95rem" }}>
-          Pay your way — Philippine banks and e-wallets accepted. Upload proof of payment after checkout.
-        </Typography>
-      </Stack>
+      <PaymentSectionHeader bankDetails={bankDetails} showBir={showBir} layout={layout} />
 
       <Box
         sx={{
@@ -158,6 +213,12 @@ export default function PaymentMethodsMarquee({ panelSx, surfaceBorderColor, ban
           <PaymentMarqueeGroup methods={methods} accountsById={accountsById} surfaceBorderColor={surfaceBorderColor} ariaHidden />
         </Box>
       </Box>
+
+      {layout === "below" && showBir ? (
+        <Box sx={{ display: "flex", justifyContent: "center", px: { xs: 2, md: 4 }, mt: 3 }}>
+          <BirSealBadge placement="payment" maxWidth={400} />
+        </Box>
+      ) : null}
     </Box>
   );
 }
