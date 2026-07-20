@@ -9,6 +9,7 @@ import {
   parseProofDataUrl,
   uploadProofWithAdmin,
 } from "./_lib/orderCreate.js";
+import { isGuestCaptchaEnabled } from "./_lib/cmsSettings.js";
 import { checkOrderRateLimit, recordOrderRateLimit } from "./_lib/orderRateLimit.js";
 import { requireAdmin } from "./_lib/requireAdmin.js";
 import { verifyRecaptchaToken } from "./_lib/verifyRecaptcha.js";
@@ -95,8 +96,8 @@ export default async function handler(req, res) {
       }
     }
 
-    // Guests must pass reCAPTCHA; members and admin manual creates skip it.
-    if (!manual && guest) {
+    // Guests must pass reCAPTCHA when enabled in CMS Site mode; members/manual skip.
+    if (!manual && guest && await isGuestCaptchaEnabled(db)) {
       const captcha = await verifyRecaptchaToken(body.recaptchaToken);
       if (!captcha.ok) {
         return res.status(400).json({ error: captcha.error });

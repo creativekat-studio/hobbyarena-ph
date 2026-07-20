@@ -699,6 +699,34 @@ function SiteModeTab({ panelSx, surfaceBorderColor }) {
         </Stack>
       </Box>
 
+      <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
+        <SectionHeader title="Checkout security" />
+        <Typography sx={{ color: "text.secondary", fontSize: "0.85rem", mb: 2.5, lineHeight: 1.55 }}>
+          Guest checkout can show Google reCAPTCHA when site keys are configured. Turn this off for local testing
+          or if captcha is blocking real customers. Signed-in members never see captcha.
+        </Typography>
+        <Stack direction="row" alignItems="center" spacing={2}>
+          <Switch
+            checked={storefront.guestCaptchaEnabled !== false}
+            onChange={(e) => setStorefront({ guestCaptchaEnabled: e.target.checked })}
+            color="primary"
+          />
+          <Box>
+            <Typography sx={CMS_SWITCH_LABEL_SX}>
+              {storefront.guestCaptchaEnabled !== false
+                ? "Guest reCAPTCHA required"
+                : "Guest reCAPTCHA off"}
+            </Typography>
+            <Typography sx={{ color: "text.secondary", fontSize: "0.82rem", mt: 0.25 }}>
+              Needs <Box component="code" sx={{ fontFamily: MONO_FONT, fontSize: "0.78rem" }}>VITE_RECAPTCHA_SITE_KEY</Box>
+              {" "}and{" "}
+              <Box component="code" sx={{ fontFamily: MONO_FONT, fontSize: "0.78rem" }}>RECAPTCHA_SECRET_KEY</Box>
+              {" "}on the server when enabled.
+            </Typography>
+          </Box>
+        </Stack>
+      </Box>
+
       <CmsTabSaveBar surfaceBorderColor={surfaceBorderColor} />
     </Stack>
   );

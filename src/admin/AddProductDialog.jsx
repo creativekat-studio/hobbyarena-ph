@@ -11,6 +11,7 @@ import {
   FormControlLabel,
   IconButton,
   Link,
+  Menu,
   MenuItem,
   Stack,
   Switch,
@@ -29,7 +30,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import ProductDescriptionEditor, { normalizeDescriptionSections, serializeDescriptionSections } from "../components/ProductDescriptionEditor.jsx";
 import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
-import { TrashIcon } from "../components/icons.jsx";
+import { MenuIcon, TrashIcon } from "../components/icons.jsx";
 import { AdminTableHeaderCell } from "./adminTableHeader.jsx";
 import { useCatalog } from "../lib/catalogStore.jsx";
 import { useInventory } from "../lib/inventoryStore.jsx";
@@ -191,6 +192,7 @@ export default function AddProductDialog({
   const [tab, setTab] = useState(0);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteBlockedOpen, setDeleteBlockedOpen] = useState(false);
+  const [visibilityMenuAnchor, setVisibilityMenuAnchor] = useState(null);
   const fileInputRef = useRef(null);
   const isPreorderForm = form.type === "Pre-order";
   let featuredOthers = isPreorderForm ? featuredCountPreorder : featuredCountSealed;
@@ -285,6 +287,7 @@ export default function AddProductDialog({
     setTab(0);
     setDeleteConfirmOpen(false);
     setDeleteBlockedOpen(false);
+    setVisibilityMenuAnchor(null);
     onClose();
   }
 
@@ -730,75 +733,113 @@ export default function AddProductDialog({
           py: 2,
           borderTop: "1px solid",
           borderColor: surfaceBorderColor,
-          flexDirection: "column",
-          alignItems: "stretch",
-          gap: 1.5,
+          justifyContent: "flex-start",
+          gap: 1,
         }}
       >
-        {tab === 0 ? (
-          <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
-            <FormControlLabel
-              control={(
-                <Switch
-                  checked={form.published}
-                  onChange={(e) => update("published", e.target.checked)}
-                  color="primary"
-                />
-              )}
-              label={form.published ? "Published on storefront" : "Draft — hidden from shop"}
-            />
-            <FormControlLabel
-              control={(
-                <Switch
-                  checked={form.featured && !outOfStock}
-                  onChange={(e) => update("featured", e.target.checked)}
-                  color="secondary"
-                  disabled={featuredDisabled}
-                />
-              )}
-              label={
-                outOfStock
-                  ? "Out of stock — can’t feature"
-                  : featuredAtLimit
-                    ? `${featuredKindLabel} featured full (${featuredCount}/${maxFeatured})`
-                    : form.featured
-                      ? `Featured on homepage (${featuredCount}/${maxFeatured} ${featuredKindLabel})`
-                      : `Feature on homepage (${featuredCount}/${maxFeatured} ${featuredKindLabel})`
-              }
-            />
-          </Stack>
+        {isEdit && onDelete ? (
+          <Tooltip title={deleteBlocked ? "Unable to archive — existing in-progress order" : "Archive product"}>
+            <span>
+              <IconButton
+                color="error"
+                onClick={requestDelete}
+                disabled={deleteBlocked}
+                aria-label="Archive product"
+                size="small"
+                sx={{
+                  border: "1px solid",
+                  borderColor: "error.main",
+                  borderRadius: 1,
+                }}
+              >
+                <TrashIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </span>
+          </Tooltip>
         ) : null}
-        <Stack direction="row" alignItems="center" spacing={1} sx={{ width: "100%" }}>
-          {isEdit && onDelete ? (
-            <Tooltip title={deleteBlocked ? "Unable to archive — existing in-progress order" : "Archive product"}>
-              <span>
-                <IconButton
-                  color="error"
-                  onClick={requestDelete}
-                  disabled={deleteBlocked}
-                  aria-label="Archive product"
-                  size="small"
-                  sx={{
-                    border: "1px solid",
-                    borderColor: "error.main",
-                    borderRadius: 1,
-                  }}
-                >
-                  <TrashIcon sx={{ fontSize: 18 }} />
-                </IconButton>
-              </span>
+        {tab === 0 ? (
+          <>
+            <Tooltip title="Visibility">
+              <IconButton
+                size="small"
+                aria-label="Product visibility options"
+                aria-haspopup="menu"
+                aria-expanded={Boolean(visibilityMenuAnchor)}
+                onClick={(event) => setVisibilityMenuAnchor(event.currentTarget)}
+                sx={{
+                  border: "1px solid",
+                  borderColor: surfaceBorderColor,
+                  borderRadius: 1,
+                }}
+              >
+                <MenuIcon sx={{ fontSize: 18 }} />
+              </IconButton>
             </Tooltip>
-          ) : null}
-          <Box sx={{ flex: 1 }} />
-          <Button onClick={handleClose} color="inherit">Cancel</Button>
-          {tab === 0 ? (
-            <Button type="submit" variant="contained" color="primary" disabled={uploading} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
-              {isEdit ? "Save changes" : "Add product"}
-            </Button>
-          ) : null}
-        </Stack>
-      </DialogActions>
-      <TypeConfirmDialog
+            <Menu
+              anchorEl={visibilityMenuAnchor}
+              open={Boolean(visibilityMenuAnchor)}
+              onClose={() => setVisibilityMenuAnchor(null)}
+              anchorOrigin={{ vertical: "top", horizontal: "left" }}
+              transformOrigin={{ vertical: "bottom", horizontal: "left" }}
+              slotProps={{
+                paper: {
+                  sx: {
+                    minWidth: 280,
+                    border: "1px solid",
+                    borderColor: surfaceBorderColor,
+                  },
+                },
+              }}
+            >
+              <Box sx={{ px: 2, py: 1.5 }} onClick={(event) => event.stopPropagation()}>
+                <Stack spacing={1.25}>
+                  <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 800, letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>
+                    Visibility
+                  </Typography>
+                  <FormControlLabel
+                    control={(
+                      <Switch
+                        checked={form.published}
+                        onChange={(e) => update("published", e.target.checked)}
+                        color="primary"
+                      />
+                    )}
+                    label={form.published ? "Published on storefront" : "Draft — hidden from shop"}
+                    sx={{ mx: 0, alignItems: "center" }}
+                  />
+                  <FormControlLabel
+                    control={(
+                      <Switch
+                        checked={form.featured && !outOfStock}
+                        onChange={(e) => update("featured", e.target.checked)}
+                        color="secondary"
+                        disabled={featuredDisabled}
+                      />
+                    )}
+                    label={
+                      outOfStock
+                        ? "Out of stock — can’t feature"
+                        : featuredAtLimit
+                          ? `${featuredKindLabel} featured full (${featuredCount}/${maxFeatured})`
+                          : form.featured
+                            ? `Featured on homepage (${featuredCount}/${maxFeatured} ${featuredKindLabel})`
+                            : `Feature on homepage (${featuredCount}/${maxFeatured} ${featuredKindLabel})`
+                    }
+                    sx={{ mx: 0, alignItems: "center" }}
+                  />
+                </Stack>
+              </Box>
+            </Menu>
+          </>
+        ) : null}
+        <Box sx={{ flex: 1 }} />
+        <Button onClick={handleClose} color="inherit">Cancel</Button>
+        {tab === 0 ? (
+          <Button type="submit" variant="contained" color="primary" disabled={uploading} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
+            {isEdit ? "Save changes" : "Add product"}
+          </Button>
+        ) : null}
+      </DialogActions>      <TypeConfirmDialog
         open={deleteConfirmOpen}
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={confirmDelete}

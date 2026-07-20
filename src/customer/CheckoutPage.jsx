@@ -36,7 +36,7 @@ import {
   STORE_PICKUP_INFO,
   calcShipping,
 } from "../data/checkoutSettings.js";
-import { useCms } from "../lib/cmsContent.jsx";
+import { isGuestCaptchaEnabled, useCms } from "../lib/cmsContent.jsx";
 import { useCheckoutConfirmation, writeCheckoutConfirmation } from "../lib/checkoutConfirmation.js";
 import { compressProofFile } from "../lib/imageCompression.js";
 import { UPLOAD_PROOF_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLimits.js";
@@ -676,7 +676,11 @@ function PaymentStep({
   );
   const [selectedBankId, setSelectedBankId] = useState(banks[0]?.id ?? "");
   const selectedBank = banks.find((bank) => bank.id === selectedBankId) ?? banks[0];
-  const guestNeedsCaptcha = Boolean(guestCheckout && recaptchaSiteKey);
+  const guestNeedsCaptcha = Boolean(
+    guestCheckout
+    && recaptchaSiteKey
+    && isGuestCaptchaEnabled(content.storefront),
+  );
 
   useEffect(() => {
     if (banks.length && !banks.some((bank) => bank.id === selectedBankId)) {
@@ -878,7 +882,7 @@ function PaymentStep({
         />
       </Box>
 
-      {guestCheckout ? (
+      {guestNeedsCaptcha ? (
         <Box sx={{ mt: 2.5 }}>
           <Typography variant="body2" sx={{ fontWeight: 700, mb: 1 }}>
             Quick security check
@@ -934,6 +938,7 @@ export default function CheckoutPage() {
   const outletContext = useOutletContext();
   const surfaces = outletContext?.surfaces ?? getSurfaces(theme, mode === "dark");
   const { panelSx, surfaceBorderColor } = surfaces;
+  const { content } = useCms();
   const { user, isCustomer, loading, updateCustomerProfileDetails } = useAuth();
   const { customers } = useCustomers();
   const { items, subtotal, balanceDue, hasPreorder, clearCart } = useCart();
@@ -1114,7 +1119,12 @@ export default function CheckoutPage() {
       return;
     }
     const guestCheckout = Boolean(isGuest);
-    if (guestCheckout && getRecaptchaSiteKey() && !recaptchaToken) {
+    if (
+      guestCheckout
+      && isGuestCaptchaEnabled(content.storefront)
+      && getRecaptchaSiteKey()
+      && !recaptchaToken
+    ) {
       setPaymentError("Please complete the “I’m not a robot” check.");
       return;
     }

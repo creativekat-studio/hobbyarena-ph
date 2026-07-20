@@ -122,8 +122,15 @@ const DEFAULT_CONTENT = {
     landingMessage:
       "Hobby Arena is getting a major upgrade. Follow us for updates — sealed drops, pre-orders, and the thrill of the pull are on the way.",
     landingSocialLabel: "Stay in the loop",
+    /** When false, guest checkout skips reCAPTCHA (client + create-order API). */
+    guestCaptchaEnabled: true,
   },
 };
+
+/** Guest checkout captcha — on unless explicitly disabled in CMS Site mode. */
+export function isGuestCaptchaEnabled(storefront) {
+  return storefront?.guestCaptchaEnabled !== false;
+}
 
 function mergeTestimonials(saved) {
   if (!saved) return DEFAULT_CONTENT.testimonials;
@@ -207,6 +214,7 @@ function mergeStorefront(saved) {
     ...DEFAULT_CONTENT.storefront,
     ...rest,
     landingSocialLabel,
+    guestCaptchaEnabled: saved.guestCaptchaEnabled !== false,
   };
 }
 
