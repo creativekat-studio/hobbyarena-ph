@@ -1,6 +1,7 @@
 import { buildAdminOrderNotificationEmail, buildOrderAcknowledgementEmail } from "./_lib/orderEmail.js";
 import { dispatchEmail } from "./_lib/dispatchEmail.js";
 import { getEmailConfig, isValidEmail } from "./_lib/emailConfig.js";
+import { enforceRateLimit, rateLimitKey } from "./_lib/rateLimit.js";
 
 function readOrder(body) {
   if (!body || typeof body !== "object") return null;
@@ -89,6 +90,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Invalid order payload." });
     }
     const { order, reminder } = payload;
+
+    if (!enforceRateLimit(req, res, {
+      limit: 10,
+      windowMs: 10 * 60 * 1000,
+      key: rateLimitKey(req, `order-ack|${order.email}`),
+    })) {
+      return undefined;
+    }
 
     const { adminEmail } = getEmailConfig();
     const customerEmail = buildOrderAcknowledgementEmail(order, reminder ? { reminder } : {});

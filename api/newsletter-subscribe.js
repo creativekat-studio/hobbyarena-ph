@@ -8,6 +8,7 @@ import {
   escapeHtml,
   wrapSimpleEmail,
 } from "./_lib/emailTemplate.js";
+import { enforceRateLimit, rateLimitKey } from "./_lib/rateLimit.js";
 
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
@@ -97,6 +98,14 @@ export default async function handler(req, res) {
     const email = normalizeEmail(req.body?.email);
     if (!isValidEmail(email)) {
       return res.status(400).json({ error: "A valid email is required." });
+    }
+
+    if (!enforceRateLimit(req, res, {
+      limit: 8,
+      windowMs: 10 * 60 * 1000,
+      key: rateLimitKey(req, `newsletter|${email}`),
+    })) {
+      return undefined;
     }
 
     const profile = await upsertMarketingOptIn(email);

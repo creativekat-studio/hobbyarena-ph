@@ -336,6 +336,11 @@ export function AuthProvider({ children }) {
       }
     }
 
+    // Demo admin is local mock-only — never in production builds or when Firebase is on.
+    if (import.meta.env.PROD) {
+      throw new Error("Admin sign-in requires Firebase. Configure VITE_FIREBASE_* env vars.");
+    }
+
     if (
       email?.trim().toLowerCase() !== DEMO_ADMIN.email ||
       password !== DEMO_ADMIN.password

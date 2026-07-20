@@ -9,6 +9,8 @@ import {
   DEFAULT_PASSWORD_RESET_BODY,
   buildPasswordResetEmail,
 } from "./_lib/passwordResetEmail.js";
+import { enforceRateLimit, rateLimitKey } from "./_lib/rateLimit.js";
+import { requireAdmin } from "./_lib/requireAdmin.js";
 
 function readBodyOverride(raw) {
   const text = typeof raw === "string" ? raw.trim() : "";
@@ -101,6 +103,12 @@ export default async function handler(req, res) {
     const continueUrl = resolveContinueUrl(req.body?.continueUrl);
     const placeholderLink = `${String(getEmailLinks().siteUrl || "https://www.hobbyarena.ph").replace(/\/$/, "")}/account/reset-password?mode=resetPassword&test=1`;
 
+    // Preview + admin test sends require a signed-in admin.
+    if (preview || isTest) {
+      const admin = await requireAdmin(req, res);
+      if (!admin) return undefined;
+    }
+
     if (preview) {
       const content = buildPasswordResetEmail({
         email: isValidEmail(email) ? email : "trainer@example.com",
@@ -118,6 +126,14 @@ export default async function handler(req, res) {
 
     if (!isValidEmail(email)) {
       return res.status(400).json({ error: "Enter a valid email address." });
+    }
+
+    if (!isTest && !enforceRateLimit(req, res, {
+      limit: 5,
+      windowMs: 15 * 60 * 1000,
+      key: rateLimitKey(req, `password-reset|${email}`),
+    })) {
+      return undefined;
     }
 
     const genericOk = {

@@ -1,6 +1,7 @@
 import { buildAdminInquiryEmail, buildInquiryAutoReply } from "./_lib/inquiryEmail.js";
 import { dispatchEmail } from "./_lib/dispatchEmail.js";
 import { getEmailConfig, isValidEmail } from "./_lib/emailConfig.js";
+import { enforceRateLimit, rateLimitKey } from "./_lib/rateLimit.js";
 
 function readInquiry(body) {
   if (!body || typeof body !== "object") return null;
@@ -23,6 +24,14 @@ export default async function handler(req, res) {
     const inquiry = readInquiry(req.body);
     if (!inquiry) {
       return res.status(400).json({ error: "Invalid inquiry payload." });
+    }
+
+    if (!enforceRateLimit(req, res, {
+      limit: 5,
+      windowMs: 10 * 60 * 1000,
+      key: rateLimitKey(req, `inquiry|${inquiry.email}`),
+    })) {
+      return undefined;
     }
 
     const { adminEmail } = getEmailConfig();

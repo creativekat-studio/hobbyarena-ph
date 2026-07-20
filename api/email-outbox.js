@@ -4,8 +4,17 @@ import {
   isEmailSimulate,
   listSimulatedEmails,
 } from "./_lib/emailSimulator.js";
+import { isApiProduction, requireAdmin } from "./_lib/requireAdmin.js";
 
 export default async function handler(req, res) {
+  // Never expose the simulated outbox on production.
+  if (isApiProduction()) {
+    return res.status(404).json({ error: "Not found." });
+  }
+
+  const admin = await requireAdmin(req, res);
+  if (!admin) return undefined;
+
   if (req.method === "GET") {
     const { id, status } = req.query || {};
     if (status === "1") {

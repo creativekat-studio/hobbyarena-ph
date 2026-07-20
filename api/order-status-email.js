@@ -1,6 +1,7 @@
 import { buildOrderStatusEmail } from "./_lib/orderStatusEmail.js";
 import { dispatchEmail } from "./_lib/dispatchEmail.js";
 import { isValidEmail } from "./_lib/emailConfig.js";
+import { requireAdmin } from "./_lib/requireAdmin.js";
 
 function readReminderConfig(raw) {
   if (!raw || typeof raw !== "object") return null;
@@ -109,6 +110,9 @@ export default async function handler(req, res) {
   }
 
   try {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return undefined;
+
     const payload = readPayload(req.body);
     if (!payload) {
       return res.status(400).json({ error: "Invalid status email payload." });
