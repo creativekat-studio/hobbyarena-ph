@@ -71,12 +71,17 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Orders — checkout creates docs; customers can append balance-proof trail entries
+    // Orders — creates go through /api/create-order (Admin SDK). Clients cannot invent prices.
     match /orders/{orderId} {
       allow read: if isAdmin() || (isSignedIn() && resource.data.email == request.auth.token.email);
-      allow create: if true;
+      allow create: if false;
       allow update: if isAdmin() || customerBalanceProofUpdate();
       allow delete: if isAdmin();
+    }
+
+    // Order spam windows — Admin SDK only
+    match /_rateLimits/{docId} {
+      allow read, write: if false;
     }
 
     // Contact form inquiries — anyone can submit; admin manages

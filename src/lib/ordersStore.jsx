@@ -2,8 +2,9 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { onAuthStateChanged } from "firebase/auth";
 import { getDataSource } from "./firebase/config.js";
 import { getFirebaseAuth } from "./firebase/app.js";
-import { subscribeAllOrders, subscribeCustomerOrders, createOrder, upsertOrder, patchCustomerOrderTrail } from "./firebase/repositories/orders.js";
-import { ensureAnonymousAuth, isAdminAccount } from "./firebase/auth.js";
+import { subscribeAllOrders, subscribeCustomerOrders, upsertOrder, patchCustomerOrderTrail } from "./firebase/repositories/orders.js";
+import { createOrderViaApi } from "./createOrderApi.js";
+import { isAdminAccount } from "./firebase/auth.js";
 import { shouldExposeAdminSession } from "../auth/authSurface.js";
 import {
   balanceAfterAllocation,
@@ -597,6 +598,57 @@ export function OrdersProvider({ children }) {
     };
 
     const placeOrder = async (payload) => {
+      // Firebase path: trusted API validates catalog prices, rate limits, and guest captcha.
+      if (firebaseEnabled) {
+        placingOrderRef.current = true;
+        try {
+          const proofUrl = payload.proofOfPayment
+            ? await normalizeProofDataUrl(payload.proofOfPayment)
+            : null;
+          const saved = await createOrderViaApi({
+            ...payload,
+            proofOfPayment: proofUrl,
+          });
+          const emailKind = saved.type === "Pre-order" ? "preorder" : "purchase";
+          const acknowledgement = mockOrderEmail(
+            { ...saved, customer: saved.customer, balanceDue: saved.balanceDue },
+            emailKind,
+          );
+          const created = {
+            ...saved,
+            emails: [acknowledgement],
+            proofOfPayment: proofUrl || null,
+          };
+          setOrders((current) => [created, ...current]);
+          console.info("[orders] Saved via create-order API:", created.id);
+          if (proofUrl) {
+            queueMicrotask(() => storeOrderProof(created.id, proofUrl));
+          }
+          queueOrderAcknowledgement(created, ({ ok, result, error }) => {
+            setOrders((current) => current.map((o) => {
+              if (o.id !== created.id || !o.emails?.length) return o;
+              const emails = [...o.emails];
+              const skipped = Boolean(result?.customerSkipped);
+              emails[0] = {
+                ...emails[0],
+                status: ok ? (skipped ? "skipped" : "sent") : "failed",
+                provider: "resend",
+                messageId: result?.customerMessageId ?? null,
+                error: ok ? (skipped ? result?.customerSkipReason : undefined) : error,
+                sentAt: ok && !skipped ? new Date().toISOString() : undefined,
+              };
+              return { ...o, emails };
+            }));
+          });
+          return created;
+        } catch (error) {
+          console.error("[orders] create-order API failed:", error);
+          throw error;
+        } finally {
+          placingOrderRef.current = false;
+        }
+      }
+
       const prev = ordersRef.current;
       const summarized = summarizeItems(payload.cartItems);
       const type = payload.type ?? summarized.type;
@@ -681,7 +733,6 @@ export function OrdersProvider({ children }) {
             attachment: proofUrl
               ? (index === 0
                 ? attachmentFromProof(proofUrl)
-                // Same checkout proof for every line — file lives once on item 0 / Storage.
                 : { label: "Proof of payment", type: "image", stored: true, kind: "deposit" })
               : undefined,
           }),
@@ -690,37 +741,7 @@ export function OrdersProvider({ children }) {
 
       let created = { ...order, ...syncOrderRollup(lineItems) };
       setOrders((current) => [order, ...current]);
-
-      if (firebaseEnabled) {
-        placingOrderRef.current = true;
-        try {
-          // Best-effort anonymous session. Storage rules allow guest proof uploads
-          // without Auth when Anonymous Auth is disabled in this project.
-          if (proofUrl && !payload.manual) {
-            await ensureAnonymousAuth();
-          }
-          const saved = await createOrder(created);
-          if (saved.id !== created.id) {
-            setOrders((current) => current.map((o) => (o.id === created.id ? saved : o)));
-            created = saved;
-          } else {
-            setOrders((current) => current.map((o) => (o.id === created.id ? { ...o, ...saved } : o)));
-            created = { ...created, ...saved };
-          }
-          console.info("[orders] Saved to Firestore:", created.id);
-          if (proofUrl) {
-            queueMicrotask(() => storeOrderProof(created.id, proofUrl));
-          }
-        } catch (error) {
-          console.error("[orders] Failed to save new order to Firestore:", error);
-          setOrders((current) => current.filter((o) => o.id !== created.id));
-          throw error;
-        } finally {
-          placingOrderRef.current = false;
-        }
-      } else if (proofUrl) {
-        storeOrderProof(id, proofUrl);
-      }
+      if (proofUrl) storeOrderProof(id, proofUrl);
 
       queueOrderAcknowledgement(created, ({ ok, result, error }) => {
         setOrders((current) => current.map((o) => {

@@ -54,6 +54,23 @@ function AuthCard({ panelSx }) {
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    try {
+      const redirectPending = window.sessionStorage.getItem("hobbyarena:googleRedirect");
+      const authError = window.sessionStorage.getItem("hobbyarena:authError");
+      if (authError) {
+        setError(authError);
+        window.sessionStorage.removeItem("hobbyarena:authError");
+      }
+      if (redirectPending) {
+        setInfo("Finishing Google sign-in…");
+        window.sessionStorage.removeItem("hobbyarena:googleRedirect");
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   function switchMode(next) {
     setMode(next);
     setError("");
@@ -64,15 +81,29 @@ function AuthCard({ panelSx }) {
     event.preventDefault();
     setError("");
     setInfo("");
+    // iOS Safari autofill often skips React onChange — read the live form fields.
+    const formData = new FormData(event.currentTarget);
+    const nextName = String(formData.get("name") || name || "").trim();
+    const nextEmail = String(formData.get("email") || email || "").trim();
+    const nextPassword = String(formData.get("password") || password || "");
+    setName(nextName);
+    setEmail(nextEmail);
+    setPassword(nextPassword);
     setBusy(true);
     try {
       if (mode === "reset") {
-        await sendPasswordReset(email);
+        await sendPasswordReset(nextEmail);
         setInfo("If an email/password account exists for that address, we sent a reset link.");
       } else if (mode === "signin") {
-        await signInCustomer(email, password);
+        await signInCustomer(nextEmail, nextPassword);
       } else {
-        await registerCustomer({ name, email, password, acceptedTerms, marketingOptIn });
+        await registerCustomer({
+          name: nextName,
+          email: nextEmail,
+          password: nextPassword,
+          acceptedTerms,
+          marketingOptIn,
+        });
       }
     } catch (err) {
       setError(err.message || "Something went wrong.");
@@ -86,7 +117,11 @@ function AuthCard({ panelSx }) {
     setInfo("");
     setBusy(true);
     try {
-      await signInWithGoogle();
+      const user = await signInWithGoogle();
+      if (!user) {
+        setInfo("Redirecting to Google…");
+        return;
+      }
     } catch (err) {
       setError(err.message || "Google sign-in failed.");
     } finally {
@@ -134,12 +169,13 @@ function AuthCard({ panelSx }) {
         {info ? <Alert severity="success">{info}</Alert> : null}
 
         {mode === "signup" ? (
-          <TextField label="Full name" fullWidth value={name} onChange={(e) => setName(e.target.value)} required />
+          <TextField name="name" label="Full name" fullWidth value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" />
         ) : null}
-        <TextField label="Email" type="email" fullWidth value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <TextField name="email" label="Email" type="email" fullWidth value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
         {mode === "signin" || mode === "signup" ? (
           <Stack spacing={0.75}>
             <PasswordField
+              name="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required

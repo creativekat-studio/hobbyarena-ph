@@ -1,12 +1,14 @@
 import {
   confirmPasswordReset,
   createUserWithEmailAndPassword,
+  getRedirectResult,
   GoogleAuthProvider,
   onAuthStateChanged,
   sendPasswordResetEmail,
   signInAnonymously,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
   updateProfile,
   verifyPasswordResetCode,
@@ -16,6 +18,15 @@ import { ROLES } from "../../auth/roles.js";
 import { shouldExposeAdminSession } from "../../auth/authSurface.js";
 
 const googleProvider = new GoogleAuthProvider();
+
+/** Mobile + in-app browsers often break signInWithPopup (COOP / blocked windows). */
+export function prefersGoogleRedirect() {
+  if (typeof window === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  if (/iPhone|iPad|iPod|Android/i.test(ua)) return true;
+  if (/FBAN|FBAV|Instagram|Line\/|Twitter|MicroMessenger|WhatsApp/i.test(ua)) return true;
+  return false;
+}
 
 const ADMIN_CUSTOMER_BLOCK =
   "This email is reserved for admin. Sign in at /admin/login instead.";
@@ -60,6 +71,7 @@ export function mapAuthError(error) {
     "auth/weak-password": "Password must be at least 8 characters.",
     "auth/too-many-requests": "Too many attempts. Try again later.",
     "auth/popup-closed-by-user": "Sign-in cancelled.",
+    "auth/popup-blocked": "Your browser blocked the Google window. Try again — we’ll use a full-page sign-in.",
     "auth/network-request-failed": "Network issue — check your connection and try again.",
     "auth/internal-error": "Something went wrong with sign-in. Please try again.",
     "auth/account-exists-with-different-credential":
@@ -282,16 +294,58 @@ export async function firebaseRegisterCustomer({ name, email, password }) {
   return buildCustomerUser(credential.user);
 }
 
-export async function firebaseSignInWithGoogle() {
-  const auth = getFirebaseAuth();
-  if (!auth) throw new Error("Firebase Auth is not configured.");
-  const credential = await signInWithPopup(auth, googleProvider);
-  const user = await buildCustomerUser(credential.user);
+async function finishGoogleCredential(firebaseUser) {
+  const user = await buildCustomerUser(firebaseUser);
   if (user.isAdmin) {
-    await signOut(auth);
+    const auth = getFirebaseAuth();
+    if (auth) await signOut(auth);
     throw new Error(ADMIN_CUSTOMER_BLOCK);
   }
   return user;
+}
+
+/**
+ * Complete a Google redirect sign-in after the page reloads.
+ * @returns {Promise<object|null>} customer profile, or null if no redirect pending
+ */
+export async function completeGoogleRedirectResult() {
+  const auth = getFirebaseAuth();
+  if (!auth) return null;
+  const result = await getRedirectResult(auth);
+  if (!result?.user) return null;
+  return finishGoogleCredential(result.user);
+}
+
+/**
+ * Google sign-in. On mobile / in-app browsers uses redirect (returns `{ redirecting: true }`).
+ * Desktop uses popup; falls back to redirect if the popup is blocked.
+ */
+export async function firebaseSignInWithGoogle() {
+  const auth = getFirebaseAuth();
+  if (!auth) throw new Error("Firebase Auth is not configured.");
+
+  const startRedirect = async () => {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem("hobbyarena:googleRedirect", "1");
+    }
+    await signInWithRedirect(auth, googleProvider);
+    return { redirecting: true };
+  };
+
+  if (prefersGoogleRedirect()) {
+    return startRedirect();
+  }
+
+  try {
+    const credential = await signInWithPopup(auth, googleProvider);
+    return finishGoogleCredential(credential.user);
+  } catch (error) {
+    const code = error?.code || "";
+    if (code === "auth/popup-blocked" || code === "auth/cancelled-popup-request") {
+      return startRedirect();
+    }
+    throw error;
+  }
 }
 
 /**

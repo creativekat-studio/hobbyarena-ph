@@ -47,6 +47,7 @@ import { isValidEmail } from "../lib/email/emailUtils.js";
 import PasswordField from "../components/PasswordField.jsx";
 import QrCodeTile from "../components/QrCodeTile.jsx";
 import BirSealBadge, { useBirSealVisible } from "../components/BirSealBadge.jsx";
+import RecaptchaV2, { getRecaptchaSiteKey } from "../components/RecaptchaV2.jsx";
 
 const STEPS = ["Account", "Details", "Payment"];
 
@@ -170,20 +171,34 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
     event.preventDefault();
     setError("");
     setInfo("");
-    if (!isValidEmail(email)) {
+    // iOS Safari autofill often skips React onChange — read the live form fields.
+    const formData = new FormData(event.currentTarget);
+    const nextName = String(formData.get("name") || name || "").trim();
+    const nextEmail = String(formData.get("email") || email || "").trim();
+    const nextPassword = String(formData.get("password") || password || "");
+    setName(nextName);
+    setEmail(nextEmail);
+    setPassword(nextPassword);
+    if (!isValidEmail(nextEmail)) {
       setError("Enter a valid email address (name@domain.com).");
       return;
     }
     setBusy(true);
     try {
       if (mode === "reset") {
-        await sendPasswordReset(email);
+        await sendPasswordReset(nextEmail);
         setInfo("If an email/password account exists for that address, we sent a reset link.");
       } else if (mode === "signin") {
-        const signedIn = await signInCustomer(email, password);
+        const signedIn = await signInCustomer(nextEmail, nextPassword);
         onContinue({ name: signedIn.displayName, email: signedIn.email, guest: false });
       } else if (mode === "signup") {
-        const registered = await registerCustomer({ name, email, password, acceptedTerms, marketingOptIn: false });
+        const registered = await registerCustomer({
+          name: nextName,
+          email: nextEmail,
+          password: nextPassword,
+          acceptedTerms,
+          marketingOptIn: false,
+        });
         onContinue({ name: registered.displayName, email: registered.email, guest: false });
       }
     } catch (err) {
@@ -199,6 +214,10 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
     setBusy(true);
     try {
       const signedIn = await signInWithGoogle();
+      if (!signedIn) {
+        setInfo("Redirecting to Google…");
+        return;
+      }
       onContinue({ name: signedIn.displayName, email: signedIn.email, guest: false });
     } catch (err) {
       setError(err.message || "Google sign-in failed.");
@@ -220,7 +239,8 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
         Create an account to track orders, or continue as a guest — either way works.
       </Typography>
 
-      {error && mode === "guest" ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
+      {mode === "guest" && error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
+      {mode === "guest" && info ? <Alert severity="info" sx={{ mb: 2 }}>{info}</Alert> : null}
 
       {authMode === "firebase" ? (
         <Stack spacing={2} sx={{ mb: 3 }}>
@@ -325,9 +345,10 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
               </Typography>
             ) : null}
             {mode === "signup" ? (
-              <TextField label="Full name" fullWidth value={name} onChange={(e) => setName(e.target.value)} required />
+              <TextField name="name" label="Full name" fullWidth value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" />
             ) : null}
             <TextField
+              name="email"
               label="Email"
               type="email"
               fullWidth
@@ -341,6 +362,7 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
             {mode === "signin" || mode === "signup" ? (
               <Stack spacing={0.5}>
                 <PasswordField
+                  name="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -629,16 +651,36 @@ function StockHoldBanner({ hold, surfaceBorderColor }) {
   );
 }
 
-function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proofFile, setProofFile, confirmedTransfer, setConfirmedTransfer, onBack, onPlaceOrder, busy, error, setError, hold }) {
+function PaymentStep({
+  panelSx,
+  surfaceBorderColor,
+  total,
+  orderIdPreview,
+  proofFile,
+  setProofFile,
+  confirmedTransfer,
+  setConfirmedTransfer,
+  onBack,
+  onPlaceOrder,
+  busy,
+  error,
+  setError,
+  hold,
+  guestCheckout,
+  recaptchaToken,
+  setRecaptchaToken,
+}) {
   const theme = useTheme();
   const { content } = useCms();
   const showBirBelowPayment = useBirSealVisible("payment");
+  const recaptchaSiteKey = getRecaptchaSiteKey();
   const banks = useMemo(
     () => (content.bankDetails?.accounts ?? []).filter((bank) => bank.active !== false),
     [content.bankDetails?.accounts],
   );
   const [selectedBankId, setSelectedBankId] = useState(banks[0]?.id ?? "");
   const selectedBank = banks.find((bank) => bank.id === selectedBankId) ?? banks[0];
+  const guestNeedsCaptcha = Boolean(guestCheckout && recaptchaSiteKey);
 
   useEffect(() => {
     if (banks.length && !banks.some((bank) => bank.id === selectedBankId)) {
@@ -840,6 +882,22 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
         />
       </Box>
 
+      {guestCheckout ? (
+        <Box sx={{ mt: 2.5 }}>
+          <Typography variant="body2" sx={{ fontWeight: 700, mb: 1 }}>
+            Quick security check
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.25, lineHeight: 1.45 }}>
+            Guests confirm once with “I’m not a robot” before placing an order. Members skip this step.
+          </Typography>
+          <RecaptchaV2
+            siteKey={recaptchaSiteKey}
+            onChange={setRecaptchaToken}
+            onReadyError={() => setError("Could not load the security check. Refresh and try again.")}
+          />
+        </Box>
+      ) : null}
+
       {error ? (
         <Alert severity="error" sx={{ mt: 2 }}>
           {error}
@@ -850,7 +908,14 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
         <Button variant="outlined" color="inherit" onClick={onBack} sx={{ borderColor: surfaceBorderColor }}>Back</Button>
         <Button
           variant="contained"
-          disabled={busy || !proofFile || !confirmedTransfer || hold?.status === "blocked" || hold?.status === "expired"}
+          disabled={
+            busy
+            || !proofFile
+            || !confirmedTransfer
+            || hold?.status === "blocked"
+            || hold?.status === "expired"
+            || (guestNeedsCaptcha && !recaptchaToken)
+          }
           onClick={onPlaceOrder}
           sx={{ flexGrow: 1, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}
         >
@@ -890,6 +955,7 @@ export default function CheckoutPage() {
   }));
   const [proofFile, setProofFile] = useState(null);
   const [confirmedTransfer, setConfirmedTransfer] = useState(false);
+  const [recaptchaToken, setRecaptchaToken] = useState(null);
   const [busy, setBusy] = useState(false);
   const [paymentError, setPaymentError] = useState("");
   const [holdState, setHoldState] = useState({ status: "idle", expiresAt: null, shortfalls: [] });
@@ -1051,6 +1117,11 @@ export default function CheckoutPage() {
       setPaymentError("Some items are no longer available — they were reserved by another shopper.");
       return;
     }
+    const guestCheckout = Boolean(isGuest);
+    if (guestCheckout && getRecaptchaSiteKey() && !recaptchaToken) {
+      setPaymentError("Please complete the “I’m not a robot” check.");
+      return;
+    }
     setBusy(true);
     (async () => {
       try {
@@ -1063,7 +1134,6 @@ export default function CheckoutPage() {
 
         const depositPercent = items.find((item) => item.depositPercent)?.depositPercent ?? 30;
 
-        const guestCheckout = Boolean(isGuest);
         const order = await placeOrder({
           cartItems: items,
           customer: details.name.trim(),
@@ -1081,6 +1151,7 @@ export default function CheckoutPage() {
           depositPercent,
           proofOfPayment: proofFile.dataUrl,
           guest: guestCheckout,
+          recaptchaToken: guestCheckout ? recaptchaToken : null,
           // Guests must not attach a signed-in uid — they are guest checkouts.
           userId: guestCheckout ? null : (user?.uid || null),
         });
@@ -1246,6 +1317,9 @@ export default function CheckoutPage() {
                   busy={busy}
                   error={paymentError}
                   setError={setPaymentError}
+                  guestCheckout={Boolean(isGuest)}
+                  recaptchaToken={recaptchaToken}
+                  setRecaptchaToken={setRecaptchaToken}
                   hold={{
                     status: holdState.status,
                     remainingMs: holdRemaining,

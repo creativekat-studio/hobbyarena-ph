@@ -5,6 +5,7 @@ import { requestPasswordReset } from "../lib/emailService.js";
 import { getEmailBodyOverride } from "../lib/emailTemplatesStore.js";
 import {
   buildCustomerUser,
+  completeGoogleRedirectResult,
   firebaseRegisterCustomer,
   firebaseSignInAdmin,
   firebaseSignInCustomer,
@@ -154,6 +155,34 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (firebaseEnabled) {
+      let cancelled = false;
+
+      // Finish Google redirect before/while auth subscription settles (mobile).
+      completeGoogleRedirectResult()
+        .then((user) => {
+          if (cancelled || !user) return;
+          setAuthSurface("customer");
+          publishCustomerSession(user);
+          try {
+            window.sessionStorage.removeItem("hobbyarena:googleRedirect");
+            window.sessionStorage.removeItem("hobbyarena:authError");
+          } catch {
+            // ignore
+          }
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          try {
+            window.sessionStorage.setItem(
+              "hobbyarena:authError",
+              mapAuthError(error),
+            );
+            window.sessionStorage.removeItem("hobbyarena:googleRedirect");
+          } catch {
+            // ignore
+          }
+        });
+
       const unsubscribe = subscribeToAuthChanges(
         (nextCustomer) => {
           publishCustomerSession(nextCustomer);
@@ -161,7 +190,10 @@ export function AuthProvider({ children }) {
         setAdmin,
         () => setLoading(false),
       );
-      return unsubscribe;
+      return () => {
+        cancelled = true;
+        unsubscribe();
+      };
     }
 
     const sessions = readSessions();
@@ -221,6 +253,8 @@ export function AuthProvider({ children }) {
     try {
       setAuthSurface("customer");
       const user = await firebaseSignInWithGoogle();
+      // Mobile redirect leaves the page; session completes on return via getRedirectResult.
+      if (user?.redirecting) return null;
       return publishCustomerSession(user);
     } catch (error) {
       throw new Error(mapAuthError(error));
