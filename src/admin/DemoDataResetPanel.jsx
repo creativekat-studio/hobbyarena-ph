@@ -11,9 +11,9 @@ import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
 import { resetDemoOrdersAndCustomers } from "../lib/firebase/repositories/demoReset.js";
 
 /**
- * Localhost-only wipe of sales demo data: restock from orders, then delete
- * orders / stock holds. Leaves customers, products (aside from stock),
- * CMS, classifications, emails, and design alone.
+ * Localhost / Vercel preview wipe of sales demo data: restock from orders,
+ * then delete orders / stock holds. Leaves customers, products (aside from stock),
+ * CMS, classifications, emails, and design alone. Hidden in production.
  */
 export default function DemoDataResetPanel({ panelSx, surfaceBorderColor }) {
   const [open, setOpen] = useState(false);
@@ -56,7 +56,7 @@ export default function DemoDataResetPanel({ panelSx, surfaceBorderColor }) {
             Reset demo orders
           </Typography>
           <Typography sx={{ color: "text.secondary", fontSize: "0.85rem", mt: 0.75, lineHeight: 1.5, maxWidth: 640 }}>
-            Localhost only. Returns committed in-stock quantities to inventory, then deletes all{" "}
+            Available on localhost and the Vercel preview site only — not in production. Returns committed in-stock quantities to inventory, then deletes all{" "}
             <strong>orders</strong> and checkout <strong>stock holds</strong>.{" "}
             <strong>Customers</strong>, inventory products, CMS, classifications,
             emails, and design are left untouched (stock numbers only increase

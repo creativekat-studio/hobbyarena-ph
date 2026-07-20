@@ -24,7 +24,7 @@ export const CMS_TAB_LABELS = [
   "Announcements",
   "Reviews",
   "Bank details",
-  "Social & Contact",
+  "Business Info",
 ];
 
 const TAB_SECTIONS = {

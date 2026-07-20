@@ -44,7 +44,6 @@ import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
 import AdminColorPicker from "../components/AdminColorPicker.jsx";
 import InventoryProductThumb from "../components/InventoryProductThumb.jsx";
 import { PERK_ICON_OPTIONS, getPerkIcon } from "../lib/perkIcons.js";
-
 const LINK_OPTIONS = [
   { value: "featured-products", label: "Products page (/products)" },
   { value: "featured-preorders", label: "Pre-orders page (/preorders)" },
@@ -74,7 +73,19 @@ function readAsDataUrl(file) {
   });
 }
 
-function BankAssetUpload({ label, value, onChange, surfaceBorderColor, kind }) {
+function BankAssetUpload({
+  label,
+  value,
+  onChange,
+  surfaceBorderColor,
+  kind,
+  aspectRatio = "1 / 1",
+  minHeight = 112,
+  boxHeight,
+  boxWidth,
+  helperText,
+  hideLabel = false,
+}) {
   const theme = useTheme();
   const firebaseEnabled = useFirebaseData();
   const inputRef = useRef(null);
@@ -98,7 +109,8 @@ function BankAssetUpload({ label, value, onChange, surfaceBorderColor, kind }) {
     setUploading(true);
     setError("");
     try {
-      const preserveTransparency = kind === "bank-logo" || file.type === "image/png";
+      const preserveTransparency =
+        kind === "bank-logo" || kind === "bir-seal" || kind === "bir-seal-mark" || file.type === "image/png";
       const url = firebaseEnabled
         ? await uploadCmsAsset(file, kind)
         : await readAsDataUrl(await compressProductImageFile(file, { preserveTransparency }));
@@ -111,19 +123,25 @@ function BankAssetUpload({ label, value, onChange, surfaceBorderColor, kind }) {
     }
   }
 
+  const showLabel = Boolean(label) && !hideLabel;
+  const showHelper = Boolean(helperText?.trim());
+  const uploadLabel = label || "image";
+
   return (
-    <Stack spacing={0.75} sx={{ minWidth: 0 }}>
-      <Typography
-        sx={{
-          fontFamily: MONO_FONT,
-          fontSize: "0.65rem",
-          letterSpacing: 0.8,
-          textTransform: "uppercase",
-          color: "text.secondary",
-        }}
-      >
-        {label}
-      </Typography>
+    <Stack spacing={showLabel || showHelper ? 0.75 : 0} sx={{ minWidth: 0, height: boxHeight ? "100%" : "auto" }}>
+      {showLabel ? (
+        <Typography
+          sx={{
+            fontFamily: MONO_FONT,
+            fontSize: "0.65rem",
+            letterSpacing: 0.8,
+            textTransform: "uppercase",
+            color: "text.secondary",
+          }}
+        >
+          {label}
+        </Typography>
+      ) : null}
       <input
         ref={inputRef}
         type="file"
@@ -134,7 +152,7 @@ function BankAssetUpload({ label, value, onChange, surfaceBorderColor, kind }) {
       <Box
         role={value ? undefined : "button"}
         tabIndex={uploading || value ? undefined : 0}
-        aria-label={value ? undefined : `Upload ${label}`}
+        aria-label={value ? undefined : `Upload ${uploadLabel}`}
         onClick={() => {
           if (!uploading && !value) inputRef.current?.click();
         }}
@@ -146,8 +164,21 @@ function BankAssetUpload({ label, value, onChange, surfaceBorderColor, kind }) {
         }}
         sx={{
           position: "relative",
-          aspectRatio: "1 / 1",
-          minHeight: 112,
+          boxSizing: "border-box",
+          ...(boxHeight
+            ? {
+                aspectRatio: "unset",
+                height: "100%",
+                minHeight: boxHeight,
+                maxHeight: boxHeight,
+                width: boxWidth || "100%",
+                maxWidth: boxWidth || "none",
+                flex: "1 1 auto",
+              }
+            : {
+                aspectRatio,
+                minHeight,
+              }),
           borderRadius: 1.25,
           border: "1px solid",
           borderColor: value ? surfaceBorderColor : alpha(theme.palette.primary.main, 0.45),
@@ -246,11 +277,15 @@ function BankAssetUpload({ label, value, onChange, surfaceBorderColor, kind }) {
       </Box>
       {error ? (
         <Typography sx={{ fontSize: "0.72rem", color: "error.main" }}>{error}</Typography>
-      ) : (
+      ) : showHelper ? (
+        <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.4 }}>
+          {helperText}
+        </Typography>
+      ) : helperText === undefined ? (
         <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.4 }}>
           {UPLOAD_SIZE_DISCLAIMER}
         </Typography>
-      )}
+      ) : null}
     </Stack>
   );
 }
@@ -659,7 +694,7 @@ function SiteModeTab({ panelSx, surfaceBorderColor }) {
             fullWidth
             value={storefront.landingSocialLabel ?? "Stay in the loop"}
             onChange={(e) => setStorefront({ landingSocialLabel: e.target.value })}
-            helperText="Heading above social icons on the landing page. Links come from Social & Contact."
+            helperText="Heading above social icons on the landing page. Links come from Business Info."
           />
         </Stack>
       </Box>
@@ -1562,12 +1597,6 @@ function BankDetailsTab({ panelSx, surfaceBorderColor }) {
           </Stack>
           <TextField label="Section title" fullWidth value={bank.title} onChange={(e) => setBankDetails({ title: e.target.value })} />
           <TextField label="Section subtitle" fullWidth multiline minRows={2} value={bank.subtitle} onChange={(e) => setBankDetails({ subtitle: e.target.value })} />
-          <Stack direction="row" alignItems="center" spacing={2}>
-            <Switch checked={bank.showBirSeal} onChange={(e) => setBankDetails({ showBirSeal: e.target.checked })} color="primary" />
-            <Typography sx={{ ...CMS_SWITCH_LABEL_SX, fontWeight: 600 }}>Show BIR QR placeholder</Typography>
-          </Stack>
-          <TextField label="BIR seal note" fullWidth value={bank.birSealNote} onChange={(e) => setBankDetails({ birSealNote: e.target.value })} />
-          <TextField label="BIR QR image URL (optional)" fullWidth placeholder="/payment/bir-qr.png" value={bank.birQrImage ?? ""} onChange={(e) => setBankDetails({ birQrImage: e.target.value })} />
         </Stack>
       </CmsSectionAccordion>
 
@@ -1666,9 +1695,10 @@ function BankDetailsTab({ panelSx, surfaceBorderColor }) {
 }
 
 function SocialContactTab({ panelSx, surfaceBorderColor }) {
-  const { content, setSocial, setContact } = useCms();
+  const { content, setSocial, setContact, setBankDetails } = useCms();
   const social = content.social;
   const contact = content.contact;
+  const bank = content.bankDetails;
   const [expanded, setExpanded] = useAccordionExpanded("social");
 
   const handleAccordionChange = (panel) => (_event, isExpanded) => {
@@ -1724,12 +1754,103 @@ function SocialContactTab({ panelSx, surfaceBorderColor }) {
         </Stack>
       </CmsSectionAccordion>
 
+      <CmsSectionAccordion
+        id="bir"
+        title="BIR registered badge"
+        summary={
+          !bank.showBirSeal
+            ? "Hidden on storefront"
+            : [
+                bank.birSealMarkImage ? "Footer" : null,
+                bank.birQrImage ? "Payment" : null,
+              ].filter(Boolean).join(" · ") || "Enabled · no images yet"
+        }
+        expanded={expanded}
+        onChange={handleAccordionChange}
+        panelSx={panelSx}
+        surfaceBorderColor={surfaceBorderColor}
+      >
+        <Stack spacing={2} sx={{ pt: 2 }}>
+          <Stack direction="row" alignItems="center" spacing={2}>
+            <Switch
+              checked={bank.showBirSeal === true}
+              onChange={(e) => setBankDetails({ showBirSeal: e.target.checked })}
+              color="primary"
+            />
+            <Typography sx={CMS_SWITCH_LABEL_SX}>
+              {bank.showBirSeal ? "Shown on storefront" : "Hidden"}
+            </Typography>
+          </Stack>
+
+          <TextField
+            label="BIR seal note (tooltip)"
+            fullWidth
+            value={bank.birSealNote}
+            onChange={(e) => setBankDetails({ birSealNote: e.target.value })}
+          />
+
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "flex-start" }}>
+            <Stack spacing={0.75} sx={{ width: 112, flexShrink: 0 }}>
+              <Typography
+                sx={{
+                  fontFamily: MONO_FONT,
+                  fontSize: "0.65rem",
+                  letterSpacing: 0.8,
+                  textTransform: "uppercase",
+                  color: "text.secondary",
+                }}
+              >
+                BIR Seal
+              </Typography>
+              <Box sx={{ width: 112, height: 112 }}>
+                <BankAssetUpload
+                  label="BIR Seal"
+                  kind="bir-seal-mark"
+                  boxHeight={112}
+                  boxWidth={112}
+                  value={bank.birSealMarkImage ?? ""}
+                  surfaceBorderColor={surfaceBorderColor}
+                  onChange={(url) => setBankDetails({ birSealMarkImage: url })}
+                  helperText=""
+                  hideLabel
+                />
+              </Box>
+            </Stack>
+            <Stack spacing={0.75} sx={{ width: "100%", maxWidth: 280 }}>
+              <Typography
+                sx={{
+                  fontFamily: MONO_FONT,
+                  fontSize: "0.65rem",
+                  letterSpacing: 0.8,
+                  textTransform: "uppercase",
+                  color: "text.secondary",
+                }}
+              >
+                Full BIR badge
+              </Typography>
+              <Box sx={{ width: "100%", height: 112 }}>
+                <BankAssetUpload
+                  label="Full BIR badge"
+                  kind="bir-seal"
+                  boxHeight={112}
+                  value={bank.birQrImage ?? ""}
+                  surfaceBorderColor={surfaceBorderColor}
+                  onChange={(url) => setBankDetails({ birQrImage: url })}
+                  helperText=""
+                  hideLabel
+                />
+              </Box>
+            </Stack>
+          </Stack>
+        </Stack>
+      </CmsSectionAccordion>
+
       <CmsTabSaveBar surfaceBorderColor={surfaceBorderColor} />
     </Stack>
   );
 }
 
-const TABS = ["Site mode", "Homepage", "Banners", "Announcements", "Reviews", "Bank details", "Social & Contact"];
+const TABS = ["Site mode", "Homepage", "Banners", "Announcements", "Reviews", "Bank details", "Business Info"];
 
 export default function CmsPage() {
   const { surfaces } = useOutletContext();

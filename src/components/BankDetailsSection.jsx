@@ -4,6 +4,7 @@ import { MONO_FONT } from "../theme.js";
 import { wider } from "../lib/layout.js";
 import { CardIcon, ShieldIcon, SparkleIcon } from "./icons.jsx";
 import { paymentMethodsFromAccounts } from "../data/checkoutSettings.js";
+import BirSealBadge, { useBirSealVisible } from "./BirSealBadge.jsx";
 
 function PaymentBadge({ method, account, surfaceBorderColor }) {
   const logo = account?.logo;
@@ -145,6 +146,7 @@ function ComingSoonRow({ panelSx }) {
 
 export default function BankDetailsSection({ bankDetails, panelSx, surfaceBorderColor }) {
   const theme = useTheme();
+  const showBirBelowPayment = useBirSealVisible("payment");
 
   if (!bankDetails?.enabled) return null;
 
@@ -232,6 +234,12 @@ export default function BankDetailsSection({ bankDetails, panelSx, surfaceBorder
           Need help? <strong>Contact us anytime.</strong>
         </Typography>
       </Stack>
+
+      {showBirBelowPayment ? (
+        <Box sx={{ display: "flex", justifyContent: "center", mt: 3 }}>
+          <BirSealBadge placement="payment" maxWidth={400} />
+        </Box>
+      ) : null}
     </Box>
   );
 }

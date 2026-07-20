@@ -276,6 +276,7 @@ export default function DesignPreviewSettings({ panelSx, surfaceBorderColor }) {
             </Typography>
           </SettingsPanel>
         </Grid>
+
       </Grid>
 
       <DesignSectionSaveBar surfaceBorderColor={surfaceBorderColor} />

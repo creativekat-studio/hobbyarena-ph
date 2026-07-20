@@ -46,6 +46,7 @@ import { formatPhPhoneInput, isValidPhPhone } from "../lib/phone.js";
 import { isValidEmail } from "../lib/email/emailUtils.js";
 import PasswordField from "../components/PasswordField.jsx";
 import QrCodeTile from "../components/QrCodeTile.jsx";
+import BirSealBadge, { useBirSealVisible } from "../components/BirSealBadge.jsx";
 
 const STEPS = ["Account", "Details", "Payment"];
 
@@ -631,6 +632,7 @@ function StockHoldBanner({ hold, surfaceBorderColor }) {
 function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proofFile, setProofFile, confirmedTransfer, setConfirmedTransfer, onBack, onPlaceOrder, busy, error, setError, hold }) {
   const theme = useTheme();
   const { content } = useCms();
+  const showBirBelowPayment = useBirSealVisible("payment");
   const banks = useMemo(
     () => (content.bankDetails?.accounts ?? []).filter((bank) => bank.active !== false),
     [content.bankDetails?.accounts],
@@ -756,6 +758,12 @@ function PaymentStep({ panelSx, surfaceBorderColor, total, orderIdPreview, proof
           <Box sx={{ flexShrink: 0, alignSelf: { xs: "center", sm: "center" } }}>
             <QrCodeTile label={selectedBank.label} imageUrl={selectedBank.qrImage} surfaceBorderColor={surfaceBorderColor} />
           </Box>
+        </Box>
+      ) : null}
+
+      {showBirBelowPayment ? (
+        <Box sx={{ display: "flex", justifyContent: "center", mb: 2.5 }}>
+          <BirSealBadge placement="payment" maxWidth={360} />
         </Box>
       ) : null}
 

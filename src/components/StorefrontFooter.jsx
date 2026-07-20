@@ -4,9 +4,11 @@ import { Link as RouterLink } from "react-router-dom";
 import { wider } from "../lib/layout.js";
 import { useCms } from "../lib/cmsContent.jsx";
 import { FacebookIcon, InstagramIcon, TiktokIcon } from "./icons.jsx";
+import BirSealBadge, { useBirSealVisible } from "./BirSealBadge.jsx";
 
 export default function StorefrontFooter({ panelSx, surfaceBorderColor, heroTagline }) {
   const { content } = useCms();
+  const showBirInFooter = useBirSealVisible("footer");
 
   return (
     <Box sx={{ borderTop: "1px solid", borderColor: surfaceBorderColor, pt: 4, mt: 4 }}>
@@ -35,6 +37,11 @@ export default function StorefrontFooter({ panelSx, surfaceBorderColor, heroTagl
                   </IconButton>
                 ))}
             </Stack>
+            {showBirInFooter ? (
+              <Box sx={{ mt: 2.5 }}>
+                <BirSealBadge placement="footer" maxWidth={64} />
+              </Box>
+            ) : null}
           </Box>
           <Box sx={{ justifySelf: { md: "center" }, px: { md: 1 } }}>
             <Typography sx={{ fontWeight: 800, mb: 1.5 }}>Shop</Typography>

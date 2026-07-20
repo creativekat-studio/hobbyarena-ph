@@ -93,9 +93,10 @@ const DEFAULT_CONTENT = {
     enabled: true,
     title: "Choose from the wide variety of payment options available",
     subtitle: "We offer secure and convenient payment methods to suit your needs.",
-    showBirSeal: true,
-    birSealNote: "Official BIR QR Code Seal — coming soon.",
+    showBirSeal: false,
+    birSealNote: "Bureau of Internal Revenue — Registered",
     birQrImage: "",
+    birSealMarkImage: "",
     accounts: [],
   },
   social: {
@@ -174,6 +175,7 @@ function mergeBankDetails(saved) {
   return {
     ...DEFAULT_CONTENT.bankDetails,
     ...saved,
+    showBirSeal: saved.showBirSeal === true,
     accounts: savedAccounts.map((account) => mergeBankAccount(
       {
         id: account.id,

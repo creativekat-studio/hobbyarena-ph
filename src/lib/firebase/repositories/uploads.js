@@ -135,7 +135,8 @@ export async function uploadCmsAsset(file, kind = "asset") {
 
   // Bank logos are often white/colored marks on transparent PNG. Converting those
   // to JPEG with a white fill erases the artwork (shows as a blank white bar).
-  const preserveTransparency = kind === "bank-logo" || file.type === "image/png";
+  const preserveTransparency =
+    kind === "bank-logo" || kind === "bir-seal" || kind === "bir-seal-mark" || file.type === "image/png";
   const compressedFile = await compressProductImageFile(file, { preserveTransparency });
   const filename = `${kind}-${Date.now()}-${sanitizeFileName(compressedFile.name)}`;
   const path = STORAGE_PATHS.cmsAssets(filename);
