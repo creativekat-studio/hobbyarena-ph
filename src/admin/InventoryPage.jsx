@@ -38,6 +38,7 @@ import { PESO } from "../components/ProductCard.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import InventoryProductThumb from "../components/InventoryProductThumb.jsx";
 import { BoxIcon, EditIcon, InfoIcon, InventoryIcon, SearchIcon, ShieldIcon, SparkleIcon, TrashIcon, ViewGridIcon, ViewTableIcon } from "../components/icons.jsx";
+import { lineMatchFromOptions, useCatalog } from "../lib/catalogStore.jsx";
 import { MAX_FEATURED_PRODUCTS, useInventory } from "../lib/inventoryStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { openOrdersByProductId } from "../data/orderWorkflow.js";
@@ -72,12 +73,6 @@ const STATUS_FILTERS = [
   { id: "featured", label: "Featured" },
   { id: "low", label: "Low stock" },
   { id: "archived", label: "Archived" },
-];
-
-const CATALOG_FILTERS = [
-  { id: "all", label: "All catalog" },
-  { id: "pokemon", label: "Pokémon" },
-  { id: "onepiece", label: "One Piece" },
 ];
 
 const TYPE_FILTERS = [
@@ -572,8 +567,15 @@ export default function InventoryPage() {
     addProduct,
     updateProduct,
   } = useInventory();
+  const { lineOptions } = useCatalog();
   const { orders } = useOrders();
   const openOrdersByProduct = useMemo(() => openOrdersByProductId(orders), [orders]);
+  const catalogFilters = useMemo(
+    () => lineOptions.map((opt) => (
+      opt.value === "all" ? { ...opt, label: "All catalog" } : opt
+    )),
+    [lineOptions],
+  );
   const [statusFilter, setStatusFilter] = useState("all");
   const [catalogFilter, setCatalogFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -661,19 +663,24 @@ export default function InventoryPage() {
           break;
       }
 
-      switch (catalogFilter) {
-        case "pokemon":
-          return row.line.startsWith("Pokémon");
-        case "onepiece":
-          return row.line.startsWith("One Piece");
-        default:
-          return true;
+      const lineMatch = lineMatchFromOptions(catalogFilters, catalogFilter);
+      if (lineMatch) {
+        const productLine = String(row.line || "");
+        if (productLine !== lineMatch && !productLine.startsWith(lineMatch)) return false;
       }
+
+      return true;
     });
     return sortRowsBy(filtered, sort, INVENTORY_SORT_ACCESSORS, (a, b) =>
       String(a.sku || "").localeCompare(String(b.sku || ""), undefined, { numeric: true }),
     );
-  }, [items, statusFilter, catalogFilter, typeFilter, query, sort]);
+  }, [items, statusFilter, catalogFilter, catalogFilters, typeFilter, query, sort]);
+
+  useEffect(() => {
+    if (!catalogFilters.some((opt) => opt.value === catalogFilter)) {
+      setCatalogFilter("all");
+    }
+  }, [catalogFilters, catalogFilter]);
 
   const {
     visibleItems,
@@ -918,8 +925,8 @@ export default function InventoryPage() {
                   value={catalogFilter}
                   onChange={(event) => setCatalogFilter(event.target.value)}
                 >
-                  {CATALOG_FILTERS.map((item) => (
-                    <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
+                  {catalogFilters.map((item) => (
+                    <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -992,8 +999,8 @@ export default function InventoryPage() {
                     value={catalogFilter}
                     onChange={(event) => setCatalogFilter(event.target.value)}
                   >
-                    {CATALOG_FILTERS.map((item) => (
-                      <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
+                    {catalogFilters.map((item) => (
+                      <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>

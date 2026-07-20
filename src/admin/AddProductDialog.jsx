@@ -724,9 +724,19 @@ export default function AddProductDialog({
         </Box>
         )}
       </DialogContent>
-      <DialogActions sx={{ px: 3, py: 2, borderTop: "1px solid", borderColor: surfaceBorderColor, flexWrap: "wrap", gap: 1 }}>
+      <DialogActions
+        sx={{
+          px: 3,
+          py: 2,
+          borderTop: "1px solid",
+          borderColor: surfaceBorderColor,
+          flexDirection: "column",
+          alignItems: "stretch",
+          gap: 1.5,
+        }}
+      >
         {tab === 0 ? (
-          <Stack direction="row" spacing={2} sx={{ mr: "auto" }} flexWrap="wrap" useFlexGap>
+          <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
             <FormControlLabel
               control={(
                 <Switch
@@ -757,32 +767,37 @@ export default function AddProductDialog({
               }
             />
           </Stack>
-        ) : (
-          <Box sx={{ mr: "auto" }} />
-        )}
-        {isEdit && onDelete ? (
-          <Tooltip title={deleteBlocked ? "Unable to archive — existing in-progress order" : "Archive product"}>
-            <span>
-              <Button
-                color="error"
-                variant="outlined"
-                onClick={requestDelete}
-                startIcon={<TrashIcon sx={{ fontSize: 18 }} />}
-                sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
-              >
-                Archive
-              </Button>
-            </span>
-          </Tooltip>
         ) : null}
-        <Button onClick={handleClose} color="inherit">Cancel</Button>
-        {tab === 0 ? (
-          <Button type="submit" variant="contained" color="primary" disabled={uploading} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
-            {isEdit ? "Save changes" : "Add product"}
-          </Button>
-        ) : null}
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ width: "100%" }}>
+          {isEdit && onDelete ? (
+            <Tooltip title={deleteBlocked ? "Unable to archive — existing in-progress order" : "Archive product"}>
+              <span>
+                <IconButton
+                  color="error"
+                  onClick={requestDelete}
+                  disabled={deleteBlocked}
+                  aria-label="Archive product"
+                  size="small"
+                  sx={{
+                    border: "1px solid",
+                    borderColor: "error.main",
+                    borderRadius: 1,
+                  }}
+                >
+                  <TrashIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+              </span>
+            </Tooltip>
+          ) : null}
+          <Box sx={{ flex: 1 }} />
+          <Button onClick={handleClose} color="inherit">Cancel</Button>
+          {tab === 0 ? (
+            <Button type="submit" variant="contained" color="primary" disabled={uploading} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
+              {isEdit ? "Save changes" : "Add product"}
+            </Button>
+          ) : null}
+        </Stack>
       </DialogActions>
-
       <TypeConfirmDialog
         open={deleteConfirmOpen}
         onClose={() => setDeleteConfirmOpen(false)}
