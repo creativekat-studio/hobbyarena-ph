@@ -1,5 +1,12 @@
 import { initializeApp, getApps } from "firebase/app";
-import { getAuth, connectAuthEmulator } from "firebase/auth";
+import {
+  browserLocalPersistence,
+  browserPopupRedirectResolver,
+  getAuth,
+  indexedDBLocalPersistence,
+  initializeAuth,
+  connectAuthEmulator,
+} from "firebase/auth";
 import {
   getFirestore,
   initializeFirestore,
@@ -36,7 +43,16 @@ export function getFirebaseAuth() {
   const firebaseApp = getFirebaseApp();
   if (!firebaseApp) return null;
   if (!auth) {
-    auth = getAuth(firebaseApp);
+    try {
+      // Explicit persistence + popup/redirect resolver — more reliable on mobile Safari.
+      auth = initializeAuth(firebaseApp, {
+        persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+        popupRedirectResolver: browserPopupRedirectResolver,
+      });
+    } catch {
+      // Already initialized (HMR / second caller)
+      auth = getAuth(firebaseApp);
+    }
     if (shouldUseEmulators()) {
       connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
     }

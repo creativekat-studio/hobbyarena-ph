@@ -5,20 +5,21 @@ import { EyeIcon, EyeOffIcon } from "./icons.jsx";
 export default function PasswordField({
   label = "Password",
   value,
+  defaultValue,
   onChange,
   helperText,
   autoComplete = "current-password",
   ...props
 }) {
   const [visible, setVisible] = useState(false);
+  const controlled = value !== undefined;
 
   return (
     <TextField
       label={label}
       type={visible ? "text" : "password"}
       fullWidth
-      value={value}
-      onChange={onChange}
+      {...(controlled ? { value, onChange } : { defaultValue: defaultValue ?? "" })}
       helperText={helperText}
       autoComplete={autoComplete}
       InputProps={{

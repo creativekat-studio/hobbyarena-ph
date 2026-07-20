@@ -45,9 +45,6 @@ import PasswordField from "../components/PasswordField.jsx";
 function AuthCard({ panelSx }) {
   const { signInCustomer, signInWithGoogle, registerCustomer, sendPasswordReset, authMode } = useAuth();
   const [mode, setMode] = useState("signin");
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [error, setError] = useState("");
@@ -81,14 +78,24 @@ function AuthCard({ panelSx }) {
     event.preventDefault();
     setError("");
     setInfo("");
-    // iOS Safari autofill often skips React onChange — read the live form fields.
+    // Uncontrolled + FormData: iOS Safari autofill does not reliably update React state,
+    // and controlled empty `value` can block HTML5 required before submit runs.
     const formData = new FormData(event.currentTarget);
-    const nextName = String(formData.get("name") || name || "").trim();
-    const nextEmail = String(formData.get("email") || email || "").trim();
-    const nextPassword = String(formData.get("password") || password || "");
-    setName(nextName);
-    setEmail(nextEmail);
-    setPassword(nextPassword);
+    const nextName = String(formData.get("name") || "").trim();
+    const nextEmail = String(formData.get("email") || "").trim();
+    const nextPassword = String(formData.get("password") || "");
+    if (!nextEmail) {
+      setError("Email is required.");
+      return;
+    }
+    if ((mode === "signin" || mode === "signup") && !nextPassword) {
+      setError("Password is required.");
+      return;
+    }
+    if (mode === "signup" && !nextName) {
+      setError("Name is required.");
+      return;
+    }
     setBusy(true);
     try {
       if (mode === "reset") {
@@ -155,6 +162,7 @@ function AuthCard({ panelSx }) {
       }}
       component="form"
       onSubmit={handleSubmit}
+      key={mode}
     >
       <Stack spacing={2.5} sx={{ "@media (max-height: 820px)": { gap: 1.75 } }}>
         <Stack spacing={0.5}>
@@ -169,16 +177,14 @@ function AuthCard({ panelSx }) {
         {info ? <Alert severity="success">{info}</Alert> : null}
 
         {mode === "signup" ? (
-          <TextField name="name" label="Full name" fullWidth value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" />
+          <TextField name="name" label="Full name" fullWidth defaultValue="" autoComplete="name" />
         ) : null}
-        <TextField name="email" label="Email" type="email" fullWidth value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+        <TextField name="email" label="Email" type="email" fullWidth defaultValue="" autoComplete="email" inputProps={{ inputMode: "email" }} />
         {mode === "signin" || mode === "signup" ? (
           <Stack spacing={0.75}>
             <PasswordField
               name="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
+              defaultValue=""
               helperText={mode === "signup" ? "At least 8 characters." : undefined}
               autoComplete={mode === "signup" ? "new-password" : "current-password"}
             />

@@ -140,9 +140,6 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
   const theme = useTheme();
   const { user, isCustomer, signInCustomer, signInWithGoogle, registerCustomer, sendPasswordReset, authMode } = useAuth();
   const [mode, setMode] = useState("guest");
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
@@ -171,16 +168,21 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
     event.preventDefault();
     setError("");
     setInfo("");
-    // iOS Safari autofill often skips React onChange — read the live form fields.
+    // Uncontrolled + FormData so iOS Safari autofill is not wiped by React state.
     const formData = new FormData(event.currentTarget);
-    const nextName = String(formData.get("name") || name || "").trim();
-    const nextEmail = String(formData.get("email") || email || "").trim();
-    const nextPassword = String(formData.get("password") || password || "");
-    setName(nextName);
-    setEmail(nextEmail);
-    setPassword(nextPassword);
+    const nextName = String(formData.get("name") || "").trim();
+    const nextEmail = String(formData.get("email") || "").trim();
+    const nextPassword = String(formData.get("password") || "");
     if (!isValidEmail(nextEmail)) {
       setError("Enter a valid email address (name@domain.com).");
+      return;
+    }
+    if ((mode === "signin" || mode === "signup") && !nextPassword) {
+      setError("Password is required.");
+      return;
+    }
+    if (mode === "signup" && !nextName) {
+      setError("Name is required.");
       return;
     }
     setBusy(true);
@@ -335,7 +337,7 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
           Continue as guest
         </Button>
       ) : (
-        <Box component="form" onSubmit={handleAuthSubmit} sx={{ mt: 3 }}>
+        <Box component="form" onSubmit={handleAuthSubmit} sx={{ mt: 3 }} key={mode}>
           {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
           {info ? <Alert severity="success" sx={{ mb: 2 }}>{info}</Alert> : null}
           <Stack spacing={2}>
@@ -345,27 +347,21 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
               </Typography>
             ) : null}
             {mode === "signup" ? (
-              <TextField name="name" label="Full name" fullWidth value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" />
+              <TextField name="name" label="Full name" fullWidth defaultValue="" autoComplete="name" />
             ) : null}
             <TextField
               name="email"
               label="Email"
               type="email"
               fullWidth
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              error={Boolean(email.trim()) && !isValidEmail(email)}
-              helperText={email.trim() && !isValidEmail(email) ? "Use a full email like name@domain.com" : undefined}
+              defaultValue=""
               inputProps={{ inputMode: "email", autoComplete: "email" }}
             />
             {mode === "signin" || mode === "signup" ? (
               <Stack spacing={0.5}>
                 <PasswordField
                   name="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
+                  defaultValue=""
                   helperText={mode === "signup" ? "At least 8 characters." : " "}
                   autoComplete={mode === "signup" ? "new-password" : "current-password"}
                 />

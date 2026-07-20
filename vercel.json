@@ -9,7 +9,26 @@
       "schedule": "0 3 1 * *"
     }
   ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin-allow-popups"
+        }
+      ]
+    }
+  ],
   "rewrites": [
+    {
+      "source": "/__/auth/:path*",
+      "destination": "https://hobby-arena-store.firebaseapp.com/__/auth/:path*"
+    },
+    {
+      "source": "/__/firebase/:path*",
+      "destination": "https://hobby-arena-store.firebaseapp.com/__/firebase/:path*"
+    },
     {
       "source": "/((?!api/|src/|@|node_modules/|assets/|products/)(?!.*\\..*).*)",
       "destination": "/index.html"

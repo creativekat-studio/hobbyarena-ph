@@ -1,4 +1,5 @@
 import {
+  browserPopupRedirectResolver,
   confirmPasswordReset,
   createUserWithEmailAndPassword,
   getRedirectResult,
@@ -18,15 +19,6 @@ import { ROLES } from "../../auth/roles.js";
 import { shouldExposeAdminSession } from "../../auth/authSurface.js";
 
 const googleProvider = new GoogleAuthProvider();
-
-/** Mobile + in-app browsers often break signInWithPopup (COOP / blocked windows). */
-export function prefersGoogleRedirect() {
-  if (typeof window === "undefined") return false;
-  const ua = navigator.userAgent || "";
-  if (/iPhone|iPad|iPod|Android/i.test(ua)) return true;
-  if (/FBAN|FBAV|Instagram|Line\/|Twitter|MicroMessenger|WhatsApp/i.test(ua)) return true;
-  return false;
-}
 
 const ADMIN_CUSTOMER_BLOCK =
   "This email is reserved for admin. Sign in at /admin/login instead.";
@@ -317,32 +309,32 @@ export async function completeGoogleRedirectResult() {
 }
 
 /**
- * Google sign-in. On mobile / in-app browsers uses redirect (returns `{ redirecting: true }`).
- * Desktop uses popup; falls back to redirect if the popup is blocked.
+ * Google sign-in via popup (Firebase-recommended for browsers that block
+ * third-party storage). Same-origin authDomain + /__/auth proxy makes this
+ * work on mobile Safari/Chrome. Redirect is only a last resort if the popup
+ * is blocked.
  */
 export async function firebaseSignInWithGoogle() {
   const auth = getFirebaseAuth();
   if (!auth) throw new Error("Firebase Auth is not configured.");
 
-  const startRedirect = async () => {
-    if (typeof window !== "undefined") {
-      window.sessionStorage.setItem("hobbyarena:googleRedirect", "1");
-    }
-    await signInWithRedirect(auth, googleProvider);
-    return { redirecting: true };
-  };
-
-  if (prefersGoogleRedirect()) {
-    return startRedirect();
-  }
-
   try {
-    const credential = await signInWithPopup(auth, googleProvider);
+    const credential = await signInWithPopup(
+      auth,
+      googleProvider,
+      browserPopupRedirectResolver,
+    );
     return finishGoogleCredential(credential.user);
   } catch (error) {
     const code = error?.code || "";
+    if (code === "auth/popup-closed-by-user") throw error;
     if (code === "auth/popup-blocked" || code === "auth/cancelled-popup-request") {
-      return startRedirect();
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem("hobbyarena:googleRedirect", "1");
+      }
+      // Works when authDomain is same-origin (Vercel proxies /__/auth).
+      await signInWithRedirect(auth, googleProvider, browserPopupRedirectResolver);
+      return { redirecting: true };
     }
     throw error;
   }

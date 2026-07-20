@@ -45,12 +45,22 @@ VITE_DATA_SOURCE=local
 1. **Build → Authentication → Get started**
 2. Enable **Email/Password**
 3. Enable **Google** (add support email when prompted)
-4. **Authentication → Settings → Authorized domains** — ensure `localhost` is listed (for local dev)
-5. Add admin emails to `.env.local`:
+4. **Authentication → Settings → Authorized domains** — ensure these are listed:
+   - `localhost`
+   - `hobbyarena.vercel.app`
+   - `hobbyarena.ph`
+   - `www.hobbyarena.ph`
+5. **Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client** (Web client used by Firebase Google sign-in) → Authorized redirect URIs must include same-origin handlers:
+   - `https://hobby-arena-store.firebaseapp.com/__/auth/handler`
+   - `https://hobbyarena.vercel.app/__/auth/handler`
+   - `https://hobbyarena.ph/__/auth/handler`
+   - `https://www.hobbyarena.ph/__/auth/handler`
+   (The app proxies `/__/auth` on Vercel so mobile Safari can complete Google sign-in.)
+6. Add admin emails to `.env.local`:
    ```env
    VITE_ADMIN_EMAILS=website.hobbyarena@gmail.com
    ```
-6. (Later) Add `admin` custom claim via Admin SDK for production-grade admin access
+7. (Later) Add `admin` custom claim via Admin SDK for production-grade admin access
 
 ## 6. Test Auth + Firestore
 

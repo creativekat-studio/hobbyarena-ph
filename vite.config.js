@@ -8,6 +8,7 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const apiProxy = env.VITE_API_PROXY || "http://localhost:3000";
+  const firebaseAuthHost = env.VITE_FIREBASE_AUTH_DOMAIN || "hobby-arena-store.firebaseapp.com";
 
   return {
     plugins: [react()],
@@ -28,6 +29,17 @@ export default defineConfig(({ mode }) => {
         "/api": {
           target: apiProxy,
           changeOrigin: true,
+        },
+        // Same-origin Firebase Auth helper (mobile Google sign-in)
+        "/__/auth": {
+          target: `https://${firebaseAuthHost}`,
+          changeOrigin: true,
+          secure: true,
+        },
+        "/__/firebase": {
+          target: `https://${firebaseAuthHost}`,
+          changeOrigin: true,
+          secure: true,
         },
       },
     },
