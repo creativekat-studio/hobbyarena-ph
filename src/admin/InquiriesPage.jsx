@@ -334,10 +334,6 @@ export default function InquiriesPage() {
   }
 
   return (
-    /*
-     * Desktop: fill AdminLayout pane; inbox/preview scroll internally.
-     * Mobile: natural page height so the whole Inquiries view scrolls.
-     */
     <Box sx={{ ...ADMIN_LIST_PAGE_SX, gap: (t) => t.spacing(ADMIN_PAGE_SPACING) }}>
       <Stack spacing={ADMIN_PAGE_SPACING} sx={{ flexShrink: 0 }}>
         <AdminPageHeader
@@ -403,9 +399,9 @@ export default function InquiriesPage() {
             borderColor: surfaceBorderColor,
             display: "flex",
             flexDirection: "column",
-            minHeight: { xs: "auto", md: 0 },
-            maxHeight: { xs: "none", md: "100%" },
-            flex: { xs: "0 0 auto", md: "0 0 340px" },
+            minHeight: 0,
+            maxHeight: { xs: "40%", md: "100%" },
+            flex: { xs: "0 0 40%", md: "0 0 340px" },
           }}
         >
           <Box sx={{ px: 2, py: 1.5, borderBottom: "1px solid", borderColor: surfaceBorderColor, flexShrink: 0 }}>
@@ -417,10 +413,11 @@ export default function InquiriesPage() {
 
           <Box
             sx={{
-              flex: { xs: "0 0 auto", md: "1 1 0%" },
-              minHeight: { xs: "auto", md: 0 },
-              overflow: { xs: "visible", md: "auto" },
+              flex: "1 1 0%",
+              minHeight: 0,
+              overflow: "auto",
               WebkitOverflowScrolling: "touch",
+              overscrollBehavior: "contain",
             }}
           >
             {rows.length ? (
@@ -443,9 +440,12 @@ export default function InquiriesPage() {
 
         <Box
           sx={{
-            flex: { xs: "0 0 auto", md: "1 1 0%" },
+            flex: "1 1 0%",
             minWidth: 0,
-            minHeight: { xs: "auto", md: 0 },
+            minHeight: 0,
+            overflow: "auto",
+            WebkitOverflowScrolling: "touch",
+            overscrollBehavior: "contain",
             display: "flex",
             flexDirection: "column",
             bgcolor: alpha(theme.palette.text.primary, 0.015),

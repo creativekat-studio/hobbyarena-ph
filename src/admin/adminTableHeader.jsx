@@ -20,41 +20,62 @@ export const ADMIN_TABLE_SORT_LABEL_SX = {
   "& .MuiTableSortLabel-icon": { fontSize: "0.95rem", color: "inherit !important" },
 };
 
-/** Sticky header row fill for CSS-grid tables (Orders). Sticky on md+ only. */
+/** Sticky header row fill for CSS-grid tables (Orders). */
 export function adminStickyHeaderRowSx(surfaceBackground, surfaceBorderColor) {
   return {
     backgroundColor: surfaceBackground || "#12204A",
     borderBottom: "1px solid",
     borderColor: surfaceBorderColor,
-    position: { xs: "static", md: "sticky" },
+    position: "sticky",
     top: 0,
     zIndex: 2,
   };
 }
 
-/** List-page shell: fill + nested scroll on desktop; natural height (page scroll) on mobile. */
+/** List-page shell: fill AdminLayout pane; chrome stays put; grid scrolls inside. */
 export const ADMIN_LIST_PAGE_SX = {
   display: "flex",
   flexDirection: "column",
-  flex: { xs: "0 0 auto", md: "1 1 0%" },
-  minHeight: { xs: "auto", md: 0 },
+  flex: "1 1 0%",
+  minHeight: 0,
 };
 
-/** Grid/table panel around an internal scroller (desktop) or full-page flow (mobile). */
+/** Grid/table panel around the internal scroller. */
 export const ADMIN_LIST_PANEL_SX = {
-  flex: { xs: "0 0 auto", md: "1 1 0%" },
-  minHeight: { xs: "auto", md: 0 },
-  overflow: { xs: "visible", md: "hidden" },
+  flex: "1 1 0%",
+  minHeight: 0,
+  overflow: "hidden",
   display: "flex",
   flexDirection: "column",
 };
 
-/** Inner scroll root — overflow/sticky only from md up. Must be a direct flex child of the panel. */
+/** Inner scroll root — attach infinite-scroll rootRef here. Direct flex child of the panel. */
 export const ADMIN_LIST_SCROLL_SX = {
-  flex: { xs: "0 0 auto", md: "1 1 0%" },
-  minHeight: { xs: "auto", md: 0 },
-  overflow: { xs: "visible", md: "auto" },
+  flex: "1 1 0%",
+  minHeight: 0,
+  overflow: "auto",
   WebkitOverflowScrolling: "touch",
+  overscrollBehavior: "contain",
+};
+
+/** KPI cards — desktop only so the grid keeps mobile viewport height. */
+export const ADMIN_LIST_STATS_SX = {
+  display: { xs: "none", md: "flex" },
+};
+
+/** Compact filter panel shell. */
+export const ADMIN_LIST_FILTER_BAR_SX = {
+  p: { xs: 1, md: 2.5 },
+};
+
+/** One dense filter row; horizontal swipe on mobile instead of wrapping tall. */
+export const ADMIN_LIST_FILTER_ROW_SX = {
+  flexWrap: { xs: "nowrap", md: "wrap" },
+  overflowX: { xs: "auto", md: "visible" },
+  WebkitOverflowScrolling: "touch",
+  pb: { xs: 0.25, md: 0 },
+  gap: { xs: 1, md: 1.5 },
+  "& > *": { flexShrink: 0 },
 };
 
 /** Non-sortable header cell for MUI Table. */

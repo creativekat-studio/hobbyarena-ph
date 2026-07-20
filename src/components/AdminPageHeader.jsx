@@ -165,27 +165,19 @@ export default function AdminPageHeader({ eyebrow, title, subtitle, action }) {
   );
 }
 
-/** Optional: show page action + subtitle on mobile below the top bar. */
-export function AdminPageHeaderMobileMeta({ subtitle }) {
-  const { header, mobileSlotRef } = useAdminPageHeaderContext();
-  const showSubtitle = subtitle ?? header?.subtitle;
-
-  if (!showSubtitle) {
-    return (
-      <Box
-        ref={(node) => syncSlotRef(mobileSlotRef, node)}
-        id={ADMIN_HEADER_ACTION_MOBILE_SLOT_ID}
-        sx={{ display: { xs: "block", sm: "none" } }}
-      />
-    );
-  }
+/** Mobile action slot under the top bar (no subtitle — keeps list grids tall). */
+export function AdminPageHeaderMobileMeta() {
+  const { mobileSlotRef } = useAdminPageHeaderContext();
 
   return (
-    <Stack spacing={1.25} sx={{ display: { xs: "flex", sm: "none" }, mb: 0.5 }}>
-      <Typography color="text.secondary" sx={{ fontSize: "0.84rem", lineHeight: 1.45 }}>
-        {showSubtitle}
-      </Typography>
-      <Box ref={(node) => syncSlotRef(mobileSlotRef, node)} id={ADMIN_HEADER_ACTION_MOBILE_SLOT_ID} />
-    </Stack>
+    <Box
+      ref={(node) => syncSlotRef(mobileSlotRef, node)}
+      id={ADMIN_HEADER_ACTION_MOBILE_SLOT_ID}
+      sx={{
+        display: { xs: "block", sm: "none" },
+        mb: 1,
+        "&:empty": { display: "none", mb: 0 },
+      }}
+    />
   );
 }

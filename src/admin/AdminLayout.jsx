@@ -227,17 +227,17 @@ export default function AdminLayout() {
               display: "flex",
               flexDirection: "column",
               alignItems: "stretch",
-              py: { xs: 1.25, md: 1.5 },
-              px: { xs: 1.5, md: 2.5 },
+              py: { xs: 1, md: 1.5 },
+              px: { xs: 1.25, md: 2.5 },
             }}
           >
             <AdminPageHeaderMobileMeta />
             {/*
               flex: 1 + minHeight: 0 + overflow: auto:
-              - List pages (Orders / Inventory / Customers) set flex:1 and scroll
-                their grids internally while filling this pane.
+              - List pages (Orders / Inventory / Customers) fill this pane and
+                scroll only their grid; header/filters stay put.
               - Content pages (Dashboard, CMS, …) keep natural height and scroll
-                here, so KPIs and charts stay visible.
+                here when they overflow.
             */}
             <Box
               sx={{

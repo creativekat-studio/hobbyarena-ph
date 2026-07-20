@@ -31,6 +31,7 @@ import {
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import { MONO_FONT, getStatAccents } from "../theme.js";
 import { avatarStyles } from "../lib/surfaces.js";
@@ -48,11 +49,13 @@ import { InfiniteScrollTableSentinel } from "../components/InfiniteScrollSentine
 import {
   AdminTableHeaderCell,
   AdminTableSortHeader,
+  ADMIN_LIST_FILTER_BAR_SX,
+  ADMIN_LIST_FILTER_ROW_SX,
   ADMIN_LIST_PAGE_SX,
   ADMIN_LIST_PANEL_SX,
   ADMIN_LIST_SCROLL_SX,
+  ADMIN_LIST_STATS_SX,
 } from "./adminTableHeader.jsx";
-import { useIsMobileMd } from "../lib/mobileUi.js";
 import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
 import { useCustomers } from "../lib/customersStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
@@ -227,6 +230,7 @@ function DetailField({ label, value }) {
 
 function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderColor }) {
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const navigate = useNavigate();
   const [tab, setTab] = useState("history");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -252,9 +256,9 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
     if (!open) return;
     setStatusFilter("all");
     setTab("history");
-    setTableExpanded(false);
-  }, [open, customer?.email, customer?.uid, customer?.id]);
-
+    // Mobile: collapse profile chrome so order history has room to render.
+    setTableExpanded(isMobile);
+  }, [open, customer?.email, customer?.uid, customer?.id, isMobile]);
   if (!customer) return null;
 
   const tierColor = customer.tier?.badgeColor || theme.palette.primary.main;
@@ -276,7 +280,8 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
   }
 
   function handleRequestClose() {
-    if (tableExpanded) {
+    // Desktop: first collapse an expanded table. Mobile starts expanded — close immediately.
+    if (tableExpanded && !isMobile) {
       setTableExpanded(false);
       return;
     }
@@ -300,19 +305,20 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
           maxHeight: "92dvh",
           display: "flex",
           flexDirection: "column",
+          overflow: "hidden",
         },
       }}
     >
-      <DialogTitle sx={{ pb: 1.5, flexShrink: 0 }}>
-        <Stack direction="row" spacing={1.75} alignItems="center">
-          <Box sx={{ width: 48, height: 48, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1.2rem", flexShrink: 0, ...avatarStyles(theme) }}>
+      <DialogTitle sx={{ px: { xs: 2, md: 3 }, py: { xs: 1.25, md: 1.5 }, flexShrink: 0 }}>
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <Box sx={{ width: { xs: 40, md: 48 }, height: { xs: 40, md: 48 }, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: { xs: "1rem", md: "1.2rem" }, flexShrink: 0, ...avatarStyles(theme) }}>
             {(customer.name || "?").charAt(0)}
           </Box>
           <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.2 }}>{customer.name}</Typography>
-            <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>{customer.email}</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.2, fontSize: { xs: "1.05rem", md: "1.25rem" } }}>{customer.name}</Typography>
+            <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{customer.email}</Typography>
           </Box>
-          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap justifyContent="flex-end">
+          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap justifyContent="flex-end" sx={{ display: { xs: tableExpanded ? "none" : "flex", sm: "flex" } }}>
             <Chip
               label={customer.tier?.name || "Member"}
               sx={{
@@ -329,9 +335,20 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
         </Stack>
       </DialogTitle>
 
-      <Box sx={{ px: 3, pb: 2, flexShrink: 0, borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
-        <Stack spacing={2}>
-          {!tableExpanded ? (
+      {!tableExpanded ? (
+        <Box
+          sx={{
+            px: { xs: 2, md: 3 },
+            pb: 2,
+            flexShrink: 1,
+            minHeight: 0,
+            maxHeight: { xs: "42%", md: "none" },
+            overflow: { xs: "auto", md: "visible" },
+            borderBottom: "1px solid",
+            borderColor: surfaceBorderColor,
+          }}
+        >
+          <Stack spacing={2}>
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Phone" value={customer.phone} /></Grid>
               <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Sign-in" value={customer.signInMethod} /></Grid>
@@ -339,36 +356,34 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
               <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Marketing" value={customer.marketingOptIn ? "Opted in" : "Not opted in"} /></Grid>
               <Grid size={{ xs: 12 }}><DetailField label="Address" value={addressLine} /></Grid>
             </Grid>
-          ) : null}
 
-          <Grid container spacing={1.5}>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <Box sx={{ p: 1.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}>
-                <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>Orders</Typography>
-                <Typography sx={{ fontWeight: 800, fontSize: "1.35rem", mt: 0.25 }}>{customer.orders}</Typography>
-              </Box>
+            <Grid container spacing={1.5}>
+              <Grid size={{ xs: 6, sm: 3 }}>
+                <Box sx={{ p: 1.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}>
+                  <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>Orders</Typography>
+                  <Typography sx={{ fontWeight: 800, fontSize: "1.35rem", mt: 0.25 }}>{customer.orders}</Typography>
+                </Box>
+              </Grid>
+              <Grid size={{ xs: 6, sm: 3 }}>
+                <Box sx={{ p: 1.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}>
+                  <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>Total spent</Typography>
+                  <Typography sx={{ fontWeight: 800, fontSize: "1.05rem", mt: 0.5 }}>{PESO.format(customer.totalSpent)}</Typography>
+                </Box>
+              </Grid>
+              <Grid size={{ xs: 6, sm: 3 }}>
+                <Box sx={{ p: 1.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}>
+                  <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>Fulfilled</Typography>
+                  <Typography sx={{ fontWeight: 800, fontSize: "1.05rem", mt: 0.5 }}>{PESO.format(customer.fulfilledSpend)}</Typography>
+                </Box>
+              </Grid>
+              <Grid size={{ xs: 6, sm: 3 }}>
+                <Box sx={{ p: 1.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}>
+                  <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>Last order</Typography>
+                  <Typography sx={{ fontWeight: 800, fontSize: "0.9rem", mt: 0.5, fontFamily: MONO_FONT }}>{customer.lastOrderDate || "—"}</Typography>
+                </Box>
+              </Grid>
             </Grid>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <Box sx={{ p: 1.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}>
-                <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>Total spent</Typography>
-                <Typography sx={{ fontWeight: 800, fontSize: "1.05rem", mt: 0.5 }}>{PESO.format(customer.totalSpent)}</Typography>
-              </Box>
-            </Grid>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <Box sx={{ p: 1.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}>
-                <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>Fulfilled</Typography>
-                <Typography sx={{ fontWeight: 800, fontSize: "1.05rem", mt: 0.5 }}>{PESO.format(customer.fulfilledSpend)}</Typography>
-              </Box>
-            </Grid>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <Box sx={{ p: 1.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}>
-                <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>Last order</Typography>
-                <Typography sx={{ fontWeight: 800, fontSize: "0.9rem", mt: 0.5, fontFamily: MONO_FONT }}>{customer.lastOrderDate || "—"}</Typography>
-              </Box>
-            </Grid>
-          </Grid>
 
-          {!tableExpanded ? (
             <Box sx={{ p: 1.75, borderRadius: 1, border: "1px solid", borderColor: alpha(tierColor, 0.45), bgcolor: alpha(tierColor, 0.08) }}>
               <Stack spacing={1}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
@@ -413,38 +428,46 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
                 )}
               </Stack>
             </Box>
-          ) : null}
-        </Stack>
-      </Box>
+          </Stack>
+        </Box>
+      ) : null}
 
-      <Box sx={{ flexShrink: 0, px: 3, borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
+      <Box sx={{ flexShrink: 0, px: { xs: 2, md: 3 }, borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
         <Stack
-          direction={{ xs: "column", sm: "row" }}
-          spacing={1.5}
-          alignItems={{ xs: "stretch", sm: "center" }}
+          direction="row"
+          spacing={1}
+          alignItems="center"
           justifyContent="space-between"
-          sx={{ py: 0.5 }}
+          sx={{ py: 0.5, flexWrap: "wrap", rowGap: 1 }}
         >
           <Tabs
             value={tab}
             onChange={(_, next) => setTab(next)}
             sx={{
-              minHeight: 44,
+              minHeight: 40,
+              flex: "1 1 auto",
+              minWidth: 0,
               "& .MuiTab-root": {
                 fontFamily: MONO_FONT,
                 fontWeight: 800,
-                fontSize: "0.72rem",
-                letterSpacing: 0.8,
+                fontSize: "0.68rem",
+                letterSpacing: 0.6,
                 textTransform: "uppercase",
-                minHeight: 44,
+                minHeight: 40,
+                px: { xs: 1, sm: 1.5 },
               },
             }}
           >
-            <Tab value="history" label={`Order history (${filteredOrders.length}${statusFilter !== "all" ? ` / ${(orderList || []).length}` : ""})`} />
+            <Tab
+              value="history"
+              label={isMobile
+                ? `Orders (${filteredOrders.length})`
+                : `Order history (${filteredOrders.length}${statusFilter !== "all" ? ` / ${(orderList || []).length}` : ""})`}
+            />
           </Tabs>
           {(orderList || []).length > 0 ? (
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ my: 1 }}>
-              <FormControl size="small" sx={{ minWidth: { xs: "100%", sm: 220 }, flex: { xs: 1, sm: "none" } }}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <FormControl size="small" sx={{ minWidth: { xs: 120, sm: 180 } }}>
                 <InputLabel id="customer-order-status-filter">Status</InputLabel>
                 <Select
                   labelId="customer-order-status-filter"
@@ -460,10 +483,10 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
                   ))}
                 </Select>
               </FormControl>
-              <Tooltip title={tableExpanded ? "Collapse table" : "Expand table"}>
+              <Tooltip title={tableExpanded ? "Show profile" : "Focus order table"}>
                 <IconButton
                   size="small"
-                  aria-label={tableExpanded ? "Collapse order table" : "Expand order table"}
+                  aria-label={tableExpanded ? "Show customer profile" : "Focus order table"}
                   onClick={() => setTableExpanded((prev) => !prev)}
                   sx={{ color: "text.secondary", border: "1px solid", borderColor: surfaceBorderColor, borderRadius: 1 }}
                 >
@@ -477,9 +500,9 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
 
       <DialogContent
         sx={{
-          p: 0,
-          flex: 1,
-          minHeight: 0,
+          p: "0 !important",
+          flex: "1 1 auto",
+          minHeight: { xs: 200, md: 0 },
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -488,8 +511,8 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
         {tab === "history" ? (
           orderList?.length ? (
             filteredOrders.length ? (
-              <TableContainer sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-                <Table stickyHeader size="small">
+              <TableContainer sx={{ flex: 1, minHeight: 0, overflow: "auto", WebkitOverflowScrolling: "touch" }}>
+                <Table stickyHeader size="small" sx={{ minWidth: { xs: 420, sm: 560 } }}>
                   <TableHead>
                     <TableRow>
                       <AdminTableHeaderCell>Order</AdminTableHeaderCell>
@@ -557,7 +580,7 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
         ) : null}
       </DialogContent>
 
-      <DialogActions sx={{ px: 3, py: 2, flexShrink: 0 }}>
+      <DialogActions sx={{ px: { xs: 2, md: 3 }, py: 1.5, flexShrink: 0 }}>
         <Button onClick={handleRequestClose} color="inherit">Close</Button>
       </DialogActions>
     </Dialog>
@@ -717,37 +740,42 @@ export default function CustomersPage() {
     URL.revokeObjectURL(url);
   }
 
-  const isMobile = useIsMobileMd();
-
   return (
-    <Box sx={{ ...ADMIN_LIST_PAGE_SX, gap: (t) => t.spacing(ADMIN_PAGE_SPACING) }}>
+    <Box sx={{ ...ADMIN_LIST_PAGE_SX, gap: { xs: 1, md: ADMIN_PAGE_SPACING } }}>
       <AdminPageHeader
         eyebrow="People"
         title="Customers"
         subtitle="Storefront accounts and guest checkouts — open a row to view profile, tier, and orders."
         action={(
-          <Button variant="contained" color="primary" onClick={exportMarketingList} disabled={!stats.optIn} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.78rem" }}>
-            Export opt-in list
+          <Button
+            variant="contained"
+            color="primary"
+            size="small"
+            onClick={exportMarketingList}
+            disabled={!stats.optIn}
+            sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
+          >
+            Export opt-in
           </Button>
         )}
       />
 
-      <Stack spacing={ADMIN_PAGE_SPACING} sx={{ flexShrink: 0 }}>
-        <Grid container spacing={2}>
+      <Stack spacing={{ xs: 1, md: ADMIN_PAGE_SPACING }} sx={{ flexShrink: 0 }}>
+        <Grid container spacing={2} sx={ADMIN_LIST_STATS_SX}>
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={UserIcon} label="Customers" value={stats.total} accent={accents[0]} /></Grid>
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={SparkleIcon} label="Marketing opt-in" value={`${stats.optIn} (${stats.optInPct}%)`} accent={accents[1]} /></Grid>
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Lifetime value" value={PESO.format(stats.ltv)} accent={theme.palette.success.main} /></Grid>
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Avg. spend" value={PESO.format(stats.avgSpend)} accent={accents[3]} /></Grid>
         </Grid>
 
-        <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
-          <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "center" }}>
+        <Box sx={{ ...panelSx, ...ADMIN_LIST_FILTER_BAR_SX }}>
+          <Stack direction="row" alignItems="center" sx={ADMIN_LIST_FILTER_ROW_SX}>
             <ToggleButtonGroup
               exclusive
               size="small"
               value={filter}
               onChange={(_, next) => { if (next) setFilter(next); }}
-              sx={{ flexWrap: "wrap" }}
+              sx={{ flexWrap: "nowrap" }}
             >
               {FILTERS.map((item) => (
                 <ToggleButton key={item.id} value={item.id} sx={FILTER_TOGGLE_SX}>
@@ -756,14 +784,14 @@ export default function CustomersPage() {
               ))}
             </ToggleButtonGroup>
 
-            <Box sx={{ flex: 1 }} />
+            <Box sx={{ flex: 1, minWidth: { md: 8 }, display: { xs: "none", md: "block" } }} />
 
             <TextField
               size="small"
               placeholder="Search name or email…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              sx={{ minWidth: { xs: "100%", sm: 220 } }}
+              sx={{ minWidth: { xs: 180, sm: 220 }, flex: { xs: "1 1 140px", md: "0 0 auto" } }}
               InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
             />
           </Stack>
@@ -771,117 +799,116 @@ export default function CustomersPage() {
       </Stack>
 
       <Box sx={{ ...ADMIN_LIST_PANEL_SX, ...panelSx }}>
-        <TableContainer
-          ref={isMobile ? undefined : scrollRootRef}
-          sx={ADMIN_LIST_SCROLL_SX}
-        >
-          <Table stickyHeader={!isMobile}>
-            <TableHead>
-              <TableRow>
-                <AdminTableSortHeader
-                  id="name"
-                  label="Customer"
-                  sort={sort}
-                  onSort={handleSort}
-                />
-                <AdminTableHeaderCell>Tier</AdminTableHeaderCell>
-                <AdminTableSortHeader
-                  id="joined"
-                  label="Joined"
-                  sort={sort}
-                  onSort={handleSort}
-                  sx={{ display: { xs: "none", sm: "table-cell" } }}
-                />
-                <AdminTableHeaderCell sx={{ display: { xs: "none", md: "table-cell" } }}>Sign-in</AdminTableHeaderCell>
-                <AdminTableHeaderCell align="right" sx={{ display: { xs: "none", sm: "table-cell" } }}>Orders</AdminTableHeaderCell>
-                <AdminTableHeaderCell align="right" sx={{ display: { xs: "none", md: "table-cell" } }}>Total spent</AdminTableHeaderCell>
-                <AdminTableHeaderCell align="center" sx={{ display: { xs: "none", lg: "table-cell" } }}>Marketing</AdminTableHeaderCell>
-                <AdminTableHeaderCell align="center">Status</AdminTableHeaderCell>
-                <AdminTableHeaderCell align="right" />
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {visibleItems.map((customer) => (
-                <TableRow
-                  key={customer.id || customer.uid || customer.email}
-                  hover
-                  onClick={() => setSelectedCustomer(customer)}
-                  sx={{ cursor: "pointer" }}
-                >
-                  <TableCell>
-                    <Stack direction="row" spacing={1.5} alignItems="center">
-                      <Box sx={{ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, ...avatarStyles(theme) }}>
-                        {customer.name.charAt(0)}
-                      </Box>
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography sx={{ fontWeight: 600, fontSize: "0.88rem" }}>{customer.name}</Typography>
-                        <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>{customer.email}</Typography>
-                      </Box>
-                    </Stack>
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      label={customer.tier?.name || "Member"}
-                      variant="outlined"
-                      sx={{
-                        ...ADMIN_STATUS_CHIP_SX,
-                        fontWeight: 800,
-                        color: customer.tier?.badgeColor || "primary.main",
-                        borderColor: customer.tier?.badgeColor || "primary.main",
-                        bgcolor: customer.tier?.badgeColor
-                          ? alpha(customer.tier.badgeColor, 0.12)
-                          : alpha(theme.palette.primary.main, 0.08),
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell sx={{ color: "text.secondary", display: { xs: "none", sm: "table-cell" } }}>{customer.joined}</TableCell>
-                  <TableCell sx={{ color: "text.secondary", display: { xs: "none", md: "table-cell" } }}>{customer.signInMethod}</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 700, fontFamily: MONO_FONT, display: { xs: "none", sm: "table-cell" } }}>{customer.orders}</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 700, display: { xs: "none", md: "table-cell" } }}>{PESO.format(customer.totalSpent)}</TableCell>
-                  <TableCell align="center" sx={{ display: { xs: "none", lg: "table-cell" } }}>
-                    <Chip
-                      label={customer.marketingOptIn ? "Opted in" : "No"}
-                      color={customer.marketingOptIn ? "success" : "default"}
-                      variant="outlined"
-                      sx={ADMIN_STATUS_CHIP_SX}
-                    />
-                  </TableCell>
-                  <TableCell align="center">
-                    <CustomerStatusChip status={customer.status} />
-                  </TableCell>
-                  <TableCell align="right">
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setSelectedCustomer(customer);
-                      }}
-                      sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
-                    >
-                      View
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {totalCount === 0 ? (
+        <Box ref={scrollRootRef} sx={ADMIN_LIST_SCROLL_SX}>
+          <TableContainer sx={{ overflow: "visible" }}>
+            <Table stickyHeader>
+              <TableHead>
                 <TableRow>
-                  <TableCell colSpan={9} sx={{ textAlign: "center", py: 5, color: "text.secondary" }}>
-                    No customers yet. Accounts appear here after Google/email sign-up or guest checkout.
-                  </TableCell>
+                  <AdminTableSortHeader
+                    id="name"
+                    label="Customer"
+                    sort={sort}
+                    onSort={handleSort}
+                  />
+                  <AdminTableHeaderCell>Tier</AdminTableHeaderCell>
+                  <AdminTableSortHeader
+                    id="joined"
+                    label="Joined"
+                    sort={sort}
+                    onSort={handleSort}
+                    sx={{ display: { xs: "none", sm: "table-cell" } }}
+                  />
+                  <AdminTableHeaderCell sx={{ display: { xs: "none", md: "table-cell" } }}>Sign-in</AdminTableHeaderCell>
+                  <AdminTableHeaderCell align="right" sx={{ display: { xs: "none", sm: "table-cell" } }}>Orders</AdminTableHeaderCell>
+                  <AdminTableHeaderCell align="right" sx={{ display: { xs: "none", md: "table-cell" } }}>Total spent</AdminTableHeaderCell>
+                  <AdminTableHeaderCell align="center" sx={{ display: { xs: "none", lg: "table-cell" } }}>Marketing</AdminTableHeaderCell>
+                  <AdminTableHeaderCell align="center">Status</AdminTableHeaderCell>
+                  <AdminTableHeaderCell align="right" />
                 </TableRow>
-              ) : (
-                <InfiniteScrollTableSentinel
-                  sentinelRef={sentinelRef}
-                  hasMore={hasMore}
-                  visibleCount={visibleCount}
-                  totalCount={totalCount}
-                  colSpan={9}
-                />
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
+              </TableHead>
+              <TableBody>
+                {visibleItems.map((customer) => (
+                  <TableRow
+                    key={customer.id || customer.uid || customer.email}
+                    hover
+                    onClick={() => setSelectedCustomer(customer)}
+                    sx={{ cursor: "pointer" }}
+                  >
+                    <TableCell>
+                      <Stack direction="row" spacing={1.5} alignItems="center">
+                        <Box sx={{ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, ...avatarStyles(theme) }}>
+                          {customer.name.charAt(0)}
+                        </Box>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography sx={{ fontWeight: 600, fontSize: "0.88rem" }}>{customer.name}</Typography>
+                          <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>{customer.email}</Typography>
+                        </Box>
+                      </Stack>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={customer.tier?.name || "Member"}
+                        variant="outlined"
+                        sx={{
+                          ...ADMIN_STATUS_CHIP_SX,
+                          fontWeight: 800,
+                          color: customer.tier?.badgeColor || "primary.main",
+                          borderColor: customer.tier?.badgeColor || "primary.main",
+                          bgcolor: customer.tier?.badgeColor
+                            ? alpha(customer.tier.badgeColor, 0.12)
+                            : alpha(theme.palette.primary.main, 0.08),
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell sx={{ color: "text.secondary", display: { xs: "none", sm: "table-cell" } }}>{customer.joined}</TableCell>
+                    <TableCell sx={{ color: "text.secondary", display: { xs: "none", md: "table-cell" } }}>{customer.signInMethod}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, fontFamily: MONO_FONT, display: { xs: "none", sm: "table-cell" } }}>{customer.orders}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, display: { xs: "none", md: "table-cell" } }}>{PESO.format(customer.totalSpent)}</TableCell>
+                    <TableCell align="center" sx={{ display: { xs: "none", lg: "table-cell" } }}>
+                      <Chip
+                        label={customer.marketingOptIn ? "Opted in" : "No"}
+                        color={customer.marketingOptIn ? "success" : "default"}
+                        variant="outlined"
+                        sx={ADMIN_STATUS_CHIP_SX}
+                      />
+                    </TableCell>
+                    <TableCell align="center">
+                      <CustomerStatusChip status={customer.status} />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelectedCustomer(customer);
+                        }}
+                        sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
+                      >
+                        View
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {totalCount === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={9} sx={{ textAlign: "center", py: 5, color: "text.secondary" }}>
+                      No customers yet. Accounts appear here after Google/email sign-up or guest checkout.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  <InfiniteScrollTableSentinel
+                    sentinelRef={sentinelRef}
+                    hasMore={hasMore}
+                    visibleCount={visibleCount}
+                    totalCount={totalCount}
+                    colSpan={9}
+                  />
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
       </Box>
 
       <CustomerDetailDialog

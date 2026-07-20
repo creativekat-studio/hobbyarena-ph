@@ -50,12 +50,14 @@ import {
 import {
   AdminTableHeaderCell,
   AdminTableSortHeader,
+  ADMIN_LIST_FILTER_BAR_SX,
+  ADMIN_LIST_FILTER_ROW_SX,
   ADMIN_LIST_PAGE_SX,
   ADMIN_LIST_PANEL_SX,
   ADMIN_LIST_SCROLL_SX,
+  ADMIN_LIST_STATS_SX,
   ADMIN_TABLE_SORT_LABEL_SX,
 } from "./adminTableHeader.jsx";
-import { useIsMobileMd } from "../lib/mobileUi.js";
 import AddProductDialog from "./AddProductDialog.jsx";
 import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
 
@@ -218,14 +220,10 @@ function InventoryTableView({
     );
   }
 
-  const isMobile = useIsMobileMd();
-
   return (
-    <TableContainer
-      ref={isMobile ? undefined : scrollRootRef}
-      sx={ADMIN_LIST_SCROLL_SX}
-    >
-      <Table stickyHeader={!isMobile}>
+    <Box ref={scrollRootRef} sx={ADMIN_LIST_SCROLL_SX}>
+      <TableContainer sx={{ overflow: "visible" }}>
+      <Table stickyHeader>
         <TableHead>
           <TableRow>
             <TableCell padding="checkbox">
@@ -386,7 +384,8 @@ function InventoryTableView({
           )}
         </TableBody>
       </Table>
-    </TableContainer>
+      </TableContainer>
+    </Box>
   );
 }
 
@@ -798,10 +797,9 @@ export default function InventoryPage() {
   const deleteCount = deleteTargetIds.length;
   const deleteDialogOpen = deleteCount > 0;
   const viewingArchived = statusFilter === "archived";
-  const isMobile = useIsMobileMd();
 
   return (
-    <Box sx={{ ...ADMIN_LIST_PAGE_SX, gap: (t) => t.spacing(ADMIN_PAGE_SPACING) }}>
+    <Box sx={{ ...ADMIN_LIST_PAGE_SX, gap: { xs: 1, md: ADMIN_PAGE_SPACING } }}>
       <AdminPageHeader
         eyebrow="Inventory"
         title="Products & stock"
@@ -811,17 +809,26 @@ export default function InventoryPage() {
             <Button
               variant="outlined"
               color="inherit"
+              size="small"
               onClick={openCopyForm}
               disabled={activeItems.length === 0}
-              sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.78rem" }}
+              sx={{
+                borderColor: surfaceBorderColor,
+                fontFamily: MONO_FONT,
+                letterSpacing: 0.5,
+                textTransform: "uppercase",
+                fontSize: "0.72rem",
+                display: { xs: "none", sm: "inline-flex" },
+              }}
             >
               Copy from product
             </Button>
             <Button
               variant="contained"
               color="primary"
+              size="small"
               onClick={openAddForm}
-              sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.78rem" }}
+              sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
             >
               + Add product
             </Button>
@@ -829,143 +836,139 @@ export default function InventoryPage() {
         )}
       />
 
-      <Stack spacing={ADMIN_PAGE_SPACING} sx={{ flexShrink: 0 }}>
-        <Grid container spacing={2}>
+      <Stack spacing={{ xs: 1, md: ADMIN_PAGE_SPACING }} sx={{ flexShrink: 0 }}>
+        <Grid container spacing={2} sx={ADMIN_LIST_STATS_SX}>
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={InventoryIcon} label="Total SKUs" value={stats.skus} accent={accents[0]} /></Grid>
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={SparkleIcon} label="Published on shop" value={stats.published} accent={accents[1]} /></Grid>
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={ShieldIcon} label="Out of stock" value={stats.outOfStock} accent={accents[2]} /></Grid>
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={BoxIcon} label="On-hand value (cost)" value={PESO.format(stats.value)} accent={accents[3]} /></Grid>
         </Grid>
 
-        <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
-          <Stack spacing={1.5}>
-            <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "center" }}>
-              <ToggleButtonGroup
-                exclusive
-                size="small"
-                value={statusFilter}
-                onChange={(_, next) => { if (next) setStatusFilter(next); }}
-                sx={{ flexWrap: "wrap" }}
+        <Box sx={{ ...panelSx, ...ADMIN_LIST_FILTER_BAR_SX }}>
+          <Stack direction="row" alignItems="center" sx={ADMIN_LIST_FILTER_ROW_SX}>
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={statusFilter}
+              onChange={(_, next) => { if (next) setStatusFilter(next); }}
+              sx={{ flexWrap: "nowrap" }}
+            >
+              {STATUS_FILTERS.map((item) => (
+                <ToggleButton
+                  key={item.id}
+                  value={item.id}
+                  sx={{
+                    px: 1.5,
+                    fontFamily: MONO_FONT,
+                    fontSize: "0.68rem",
+                    letterSpacing: 0.4,
+                    textTransform: "uppercase",
+                    fontWeight: 700,
+                  }}
+                >
+                  {item.label}
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+
+            <FormControl size="small" sx={{ minWidth: 130 }}>
+              <InputLabel id="inventory-type-filter">Type</InputLabel>
+              <Select
+                labelId="inventory-type-filter"
+                label="Type"
+                value={typeFilter}
+                onChange={(event) => setTypeFilter(event.target.value)}
               >
-                {STATUS_FILTERS.map((item) => (
-                  <ToggleButton
-                    key={item.id}
-                    value={item.id}
-                    sx={{
-                      px: 1.5,
-                      fontFamily: MONO_FONT,
-                      fontSize: "0.68rem",
-                      letterSpacing: 0.4,
-                      textTransform: "uppercase",
-                      fontWeight: 700,
-                    }}
-                  >
-                    {item.label}
-                  </ToggleButton>
+                {TYPE_FILTERS.map((item) => (
+                  <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
                 ))}
-              </ToggleButtonGroup>
+              </Select>
+            </FormControl>
 
-              <FormControl size="small" sx={{ minWidth: { xs: "100%", md: 170 } }}>
-                <InputLabel id="inventory-type-filter">Type</InputLabel>
-                <Select
-                  labelId="inventory-type-filter"
-                  label="Type"
-                  value={typeFilter}
-                  onChange={(event) => setTypeFilter(event.target.value)}
-                >
-                  {TYPE_FILTERS.map((item) => (
-                    <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+            <FormControl size="small" sx={{ minWidth: 120 }}>
+              <InputLabel id="inventory-catalog-filter">Catalog</InputLabel>
+              <Select
+                labelId="inventory-catalog-filter"
+                label="Catalog"
+                value={catalogFilter}
+                onChange={(event) => setCatalogFilter(event.target.value)}
+              >
+                {CATALOG_FILTERS.map((item) => (
+                  <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
-              <FormControl size="small" sx={{ minWidth: { xs: "100%", md: 160 } }}>
-                <InputLabel id="inventory-catalog-filter">Catalog</InputLabel>
-                <Select
-                  labelId="inventory-catalog-filter"
-                  label="Catalog"
-                  value={catalogFilter}
-                  onChange={(event) => setCatalogFilter(event.target.value)}
-                >
-                  {CATALOG_FILTERS.map((item) => (
-                    <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+            <Box sx={{ flex: 1, minWidth: { md: 8 }, display: { xs: "none", md: "block" } }} />
 
-              <Box sx={{ flex: 1 }} />
-
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: "wrap", gap: 1 }}>
-                {selectedCount > 0 ? (
-                  <>
-                    <Chip
-                      label={`${selectedCount} selected`}
-                      onDelete={() => setSelectedIds(new Set())}
-                      sx={{ fontWeight: 700 }}
-                    />
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      color="inherit"
-                      onClick={(event) => setActionsAnchor(event.currentTarget)}
-                      sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
-                    >
-                      Actions
-                    </Button>
-                    <Menu
-                      anchorEl={actionsAnchor}
-                      open={Boolean(actionsAnchor)}
-                      onClose={() => setActionsAnchor(null)}
-                    >
-                      {viewingArchived ? (
-                        <MenuItem onClick={bulkRestore}>Restore</MenuItem>
-                      ) : (
-                        [
-                          <MenuItem key="publish" onClick={() => bulkPublish(true)}>Publish</MenuItem>,
-                          <MenuItem key="unpublish" onClick={() => bulkPublish(false)}>Unpublish</MenuItem>,
-                          <MenuItem key="archive" onClick={requestBulkDelete} sx={{ color: "error.main" }}>Archive…</MenuItem>,
-                        ]
-                      )}
-                    </Menu>
-                  </>
-                ) : (
-                  <Chip
-                    label={allVisibleSelected ? "Deselect loaded" : "Select loaded"}
-                    onClick={toggleSelectAllVisible}
-                    disabled={!visibleItems.length}
-                    variant="outlined"
-                    sx={{ fontWeight: 700 }}
-                  />
-                )}
-
-                <ToggleButtonGroup
-                  exclusive
-                  size="small"
-                  value={view}
-                  onChange={(_, next) => { if (next) setView(next); }}
-                >
-                  <Tooltip title="Table">
-                    <ToggleButton value="table" aria-label="Table view" sx={{ px: 1.25 }}>
-                      <ViewTableIcon sx={{ fontSize: 20 }} />
-                    </ToggleButton>
-                  </Tooltip>
-                  <Tooltip title="Cards">
-                    <ToggleButton value="cards" aria-label="Cards view" sx={{ px: 1.25 }}>
-                      <ViewGridIcon sx={{ fontSize: 20 }} />
-                    </ToggleButton>
-                  </Tooltip>
-                </ToggleButtonGroup>
-
-                <TextField
-                  size="small"
-                  placeholder="Search SKU or name…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  sx={{ minWidth: { xs: "100%", sm: 220 } }}
-                  InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
+            {selectedCount > 0 ? (
+              <>
+                <Chip
+                  label={`${selectedCount} selected`}
+                  onDelete={() => setSelectedIds(new Set())}
+                  sx={{ fontWeight: 700 }}
                 />
-              </Stack>
-            </Stack>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="inherit"
+                  onClick={(event) => setActionsAnchor(event.currentTarget)}
+                  sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
+                >
+                  Actions
+                </Button>
+                <Menu
+                  anchorEl={actionsAnchor}
+                  open={Boolean(actionsAnchor)}
+                  onClose={() => setActionsAnchor(null)}
+                >
+                  {viewingArchived ? (
+                    <MenuItem onClick={bulkRestore}>Restore</MenuItem>
+                  ) : (
+                    [
+                      <MenuItem key="publish" onClick={() => bulkPublish(true)}>Publish</MenuItem>,
+                      <MenuItem key="unpublish" onClick={() => bulkPublish(false)}>Unpublish</MenuItem>,
+                      <MenuItem key="archive" onClick={requestBulkDelete} sx={{ color: "error.main" }}>Archive…</MenuItem>,
+                    ]
+                  )}
+                </Menu>
+              </>
+            ) : (
+              <Chip
+                label={allVisibleSelected ? "Deselect loaded" : "Select loaded"}
+                onClick={toggleSelectAllVisible}
+                disabled={!visibleItems.length}
+                variant="outlined"
+                sx={{ fontWeight: 700, display: { xs: "none", sm: "inline-flex" } }}
+              />
+            )}
+
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={view}
+              onChange={(_, next) => { if (next) setView(next); }}
+            >
+              <Tooltip title="Table">
+                <ToggleButton value="table" aria-label="Table view" sx={{ px: 1.25 }}>
+                  <ViewTableIcon sx={{ fontSize: 20 }} />
+                </ToggleButton>
+              </Tooltip>
+              <Tooltip title="Cards">
+                <ToggleButton value="cards" aria-label="Cards view" sx={{ px: 1.25 }}>
+                  <ViewGridIcon sx={{ fontSize: 20 }} />
+                </ToggleButton>
+              </Tooltip>
+            </ToggleButtonGroup>
+
+            <TextField
+              size="small"
+              placeholder="Search SKU or name…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              sx={{ minWidth: { xs: 160, sm: 220 }, flex: { xs: "1 1 140px", md: "0 0 auto" } }}
+              InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
+            />
           </Stack>
         </Box>
       </Stack>
@@ -995,28 +998,27 @@ export default function InventoryPage() {
           />
         </Box>
       ) : (
-        <Box
-          ref={isMobile ? undefined : scrollRootRef}
-          sx={{ ...ADMIN_LIST_SCROLL_SX, pb: 0.5 }}
-        >
-          <InventoryCardView
-            rows={visibleItems}
-            panelSx={panelSx}
-            togglePublished={togglePublished}
-            toggleFeatured={toggleFeatured}
-            featuredCountSealed={featuredCountSealed}
-            featuredCountPreorder={featuredCountPreorder}
-            isDarkMode={isDarkMode}
-            selectedIds={selectedIds}
-            onToggleSelect={toggleSelect}
-            onEdit={openEditForm}
-            onDelete={requestDeleteRow}
-            openOrdersByProduct={openOrdersByProduct}
-            sentinelRef={sentinelRef}
-            hasMore={hasMore}
-            visibleCount={visibleCount}
-            totalCount={totalCount}
-          />
+        <Box sx={ADMIN_LIST_PANEL_SX}>
+          <Box ref={scrollRootRef} sx={{ ...ADMIN_LIST_SCROLL_SX, pb: 0.5 }}>
+            <InventoryCardView
+              rows={visibleItems}
+              panelSx={panelSx}
+              togglePublished={togglePublished}
+              toggleFeatured={toggleFeatured}
+              featuredCountSealed={featuredCountSealed}
+              featuredCountPreorder={featuredCountPreorder}
+              isDarkMode={isDarkMode}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              onEdit={openEditForm}
+              onDelete={requestDeleteRow}
+              openOrdersByProduct={openOrdersByProduct}
+              sentinelRef={sentinelRef}
+              hasMore={hasMore}
+              visibleCount={visibleCount}
+              totalCount={totalCount}
+            />
+          </Box>
         </Box>
       )}
 

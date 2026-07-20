@@ -57,12 +57,14 @@ import { useInfiniteScroll } from "../lib/useInfiniteScroll.js";
 import {
   AdminGridHeaderLabel,
   AdminGridSortHeader,
+  ADMIN_LIST_FILTER_BAR_SX,
+  ADMIN_LIST_FILTER_ROW_SX,
   ADMIN_LIST_PAGE_SX,
   ADMIN_LIST_PANEL_SX,
   ADMIN_LIST_SCROLL_SX,
+  ADMIN_LIST_STATS_SX,
   adminStickyHeaderRowSx,
 } from "./adminTableHeader.jsx";
-import { useIsMobileMd } from "../lib/mobileUi.js";
 import AddOrderDialog from "./AddOrderDialog.jsx";
 
 const ORDER_SORT_ACCESSORS = {
@@ -618,30 +620,31 @@ export default function OrdersPage() {
 
   const { surfaceBackground } = surfaces;
   const stickyHeaderBg = theme.palette.mode === "dark" ? "#12204A" : surfaceBackground;
-  const isMobile = useIsMobileMd();
-
   return (
-    /*
-     * Desktop: fill AdminLayout pane; chrome stays put; grid scrolls with sticky headers.
-     * Mobile: natural page height so the whole Orders view scrolls in AdminLayout.
-     */
-    <Box sx={{ ...ADMIN_LIST_PAGE_SX, gap: (t) => t.spacing(ADMIN_PAGE_SPACING) }}>
+    <Box sx={{ ...ADMIN_LIST_PAGE_SX, gap: { xs: 1, md: ADMIN_PAGE_SPACING } }}>
       <AdminPageHeader
         eyebrow="Sales"
         title="Orders"
         subtitle="Work the pre-order pipeline: verify deposits, allocate stock, collect balance, then release for pickup."
         action={(
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "center" }} sx={{ flexShrink: 0 }}>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ flexShrink: 0 }}>
             <Button
               variant="outlined"
               color="primary"
+              size="small"
               disabled={!ordersReady || rows.length === 0}
               onClick={handleExportExcel}
-              sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.78rem" }}
+              sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
             >
-              Export to Excel
+              Export
             </Button>
-            <Button variant="contained" color="primary" onClick={() => setAddOpen(true)} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.78rem" }}>
+            <Button
+              variant="contained"
+              color="primary"
+              size="small"
+              onClick={() => setAddOpen(true)}
+              sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
+            >
               Add order
             </Button>
           </Stack>
@@ -656,23 +659,23 @@ export default function OrdersPage() {
         </Alert>
       ) : null}
 
-      {/* ── Sticky upper chrome: stat cards + filter bar ── */}
-      <Stack spacing={ADMIN_PAGE_SPACING} sx={{ flexShrink: 0 }}>
-        <Grid container spacing={2}>
+      {/* ── Sticky upper chrome: stat cards (md+) + compact filter bar ── */}
+      <Stack spacing={{ xs: 1, md: ADMIN_PAGE_SPACING }} sx={{ flexShrink: 0 }}>
+        <Grid container spacing={2} sx={ADMIN_LIST_STATS_SX}>
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Total orders" value={stats.total} accent={accents[0]} /></Grid>
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={SparkleIcon} label="Needs review" value={stats.review} accent={accents[1]} /></Grid>
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={BoxIcon} label="Balance due" value={stats.balanceDue} accent={accents[2]} /></Grid>
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={TruckIcon} label="Awaiting pickup" value={stats.pickup} accent={theme.palette.success.main} /></Grid>
         </Grid>
 
-        <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
-          <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "center" }}>
+        <Box sx={{ ...panelSx, ...ADMIN_LIST_FILTER_BAR_SX }}>
+          <Stack direction="row" alignItems="center" sx={ADMIN_LIST_FILTER_ROW_SX}>
             <ToggleButtonGroup
               exclusive
               size="small"
               value={queueFilter}
               onChange={(_, next) => { if (next) setQueueFilter(next); }}
-              sx={{ flexWrap: "wrap" }}
+              sx={{ flexWrap: "nowrap" }}
             >
               {QUEUE_FILTERS.map((item) => (
                 <ToggleButton key={item.id} value={item.id} sx={FILTER_TOGGLE_SX}>
@@ -681,7 +684,7 @@ export default function OrdersPage() {
               ))}
             </ToggleButtonGroup>
 
-            <FormControl size="small" sx={{ minWidth: { xs: "100%", md: 140 } }}>
+            <FormControl size="small" sx={{ minWidth: 120 }}>
               <InputLabel id="orders-kind-filter">Kind</InputLabel>
               <Select
                 labelId="orders-kind-filter"
@@ -695,61 +698,59 @@ export default function OrdersPage() {
               </Select>
             </FormControl>
 
-            <Box sx={{ flex: 1 }} />
+            <Box sx={{ flex: 1, minWidth: { md: 8 }, display: { xs: "none", md: "block" } }} />
 
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: "wrap", gap: 1 }}>
-              {selectedCount > 0 ? (
-                <>
-                  <Chip
-                    label={`${selectedCount} selected`}
-                    onDelete={() => setSelectedIds(new Set())}
-                    sx={{ fontWeight: 700 }}
-                  />
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    color="inherit"
-                    onClick={(event) => setActionsAnchor(event.currentTarget)}
-                    sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
-                  >
-                    Actions
-                  </Button>
-                  <Menu
-                    anchorEl={actionsAnchor}
-                    open={Boolean(actionsAnchor)}
-                    onClose={() => setActionsAnchor(null)}
-                  >
-                    {viewingArchived ? (
-                      <MenuItem onClick={bulkRestore}>Restore</MenuItem>
-                    ) : (
-                      <MenuItem onClick={requestBulkArchive} sx={{ color: "error.main" }}>Archive…</MenuItem>
-                    )}
-                  </Menu>
-                </>
-              ) : (
+            {selectedCount > 0 ? (
+              <>
                 <Chip
-                  label={allLoadedSelected ? "Deselect loaded" : "Select loaded"}
-                  onClick={toggleSelectAllLoaded}
-                  disabled={!visibleItems.length}
-                  variant="outlined"
+                  label={`${selectedCount} selected`}
+                  onDelete={() => setSelectedIds(new Set())}
                   sx={{ fontWeight: 700 }}
                 />
-              )}
-
-              <TextField
-                size="small"
-                placeholder="Search order, customer, item…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                sx={{ minWidth: { xs: "100%", sm: 220 } }}
-                InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="inherit"
+                  onClick={(event) => setActionsAnchor(event.currentTarget)}
+                  sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
+                >
+                  Actions
+                </Button>
+                <Menu
+                  anchorEl={actionsAnchor}
+                  open={Boolean(actionsAnchor)}
+                  onClose={() => setActionsAnchor(null)}
+                >
+                  {viewingArchived ? (
+                    <MenuItem onClick={bulkRestore}>Restore</MenuItem>
+                  ) : (
+                    <MenuItem onClick={requestBulkArchive} sx={{ color: "error.main" }}>Archive…</MenuItem>
+                  )}
+                </Menu>
+              </>
+            ) : (
+              <Chip
+                label={allLoadedSelected ? "Deselect loaded" : "Select loaded"}
+                onClick={toggleSelectAllLoaded}
+                disabled={!visibleItems.length}
+                variant="outlined"
+                sx={{ fontWeight: 700, display: { xs: "none", sm: "inline-flex" } }}
               />
-            </Stack>
+            )}
+
+            <TextField
+              size="small"
+              placeholder="Search order, customer, item…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              sx={{ minWidth: { xs: 180, sm: 220 }, flex: { xs: "1 1 140px", md: "0 0 auto" } }}
+              InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} /></InputAdornment>) }}
+            />
           </Stack>
         </Box>
       </Stack>
 
-      {/* ── Grid panel (internal scroll + sticky header on desktop only) ── */}
+      {/* ── Grid panel (internal scroll + sticky header) ── */}
       <Box sx={{ ...ADMIN_LIST_PANEL_SX, ...panelSx }}>
         {!ordersReady ? (
           <Stack spacing={1.5} alignItems="center" sx={{ py: 6, color: "text.secondary" }}>
@@ -761,8 +762,7 @@ export default function OrdersPage() {
             No orders match your filters.
           </Typography>
         ) : (
-          /* Desktop: overflow auto + sticky header. Mobile: page scrolls; X-scroll on wide grid. */
-          <Box ref={isMobile ? undefined : scrollRootRef} sx={ADMIN_LIST_SCROLL_SX}>
+          <Box ref={scrollRootRef} sx={ADMIN_LIST_SCROLL_SX}>
             <Box sx={{ minWidth: ORDER_TABLE_MIN_WIDTH }}>
               <Box
                 sx={{
