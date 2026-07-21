@@ -887,11 +887,9 @@ function PaymentStep({
           <Typography variant="body2" sx={{ fontWeight: 700, mb: 1 }}>
             Quick security check
           </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.25, lineHeight: 1.45 }}>
-            Guests confirm once with “I’m not a robot” before placing an order. Members skip this step.
-          </Typography>
           <RecaptchaV2
             siteKey={recaptchaSiteKey}
+            theme={theme.palette.mode === "dark" ? "dark" : "light"}
             onChange={setRecaptchaToken}
             onReadyError={() => setError("Could not load the security check. Refresh and try again.")}
           />

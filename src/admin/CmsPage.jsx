@@ -717,12 +717,6 @@ function SiteModeTab({ panelSx, surfaceBorderColor }) {
                 ? "Guest reCAPTCHA required"
                 : "Guest reCAPTCHA off"}
             </Typography>
-            <Typography sx={{ color: "text.secondary", fontSize: "0.82rem", mt: 0.25 }}>
-              Needs <Box component="code" sx={{ fontFamily: MONO_FONT, fontSize: "0.78rem" }}>VITE_RECAPTCHA_SITE_KEY</Box>
-              {" "}and{" "}
-              <Box component="code" sx={{ fontFamily: MONO_FONT, fontSize: "0.78rem" }}>RECAPTCHA_SECRET_KEY</Box>
-              {" "}on the server when enabled.
-            </Typography>
           </Box>
         </Stack>
       </Box>
