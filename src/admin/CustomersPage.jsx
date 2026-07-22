@@ -50,6 +50,7 @@ import {
   AdminTableSortHeader,
   ADMIN_LIST_FILTER_BAR_SX,
   ADMIN_LIST_FILTER_ROW_SX,
+  ADMIN_LIST_FILTER_SELECT_SX,
   ADMIN_LIST_PAGE_SX,
   ADMIN_LIST_PANEL_SX,
   ADMIN_LIST_SCROLL_SX,
@@ -590,6 +591,7 @@ export default function CustomersPage() {
   const { orders } = useOrders();
   const { tiers } = useClientTiers();
   const [filter, setFilter] = useState("all");
+  const [tierFilter, setTierFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [sort, setSort] = useState({ key: "joined", dir: "asc" });
@@ -601,6 +603,18 @@ export default function CustomersPage() {
         : { key, dir: "asc" }
     ));
   }
+
+  const tierFilterOptions = useMemo(() => {
+    const active = (tiers || [])
+      .filter((tier) => tier.active !== false)
+      .slice()
+      .sort((a, b) => (a.minSpend ?? 0) - (b.minSpend ?? 0));
+    return [
+      { id: "all", label: "All tiers" },
+      ...active.map((tier) => ({ id: tier.id, label: tier.name || "Member" })),
+      { id: "none", label: "No tier" },
+    ];
+  }, [tiers]);
 
   const enrichedCustomers = useMemo(() => {
     const ordersByEmail = new Map();
@@ -671,6 +685,13 @@ export default function CustomersPage() {
         c.name.toLowerCase().includes(query.toLowerCase()) ||
         c.email.toLowerCase().includes(query.toLowerCase());
       if (!matchesQuery) return false;
+
+      if (tierFilter === "none") {
+        if (c.tier?.id) return false;
+      } else if (tierFilter !== "all") {
+        if (c.tier?.id !== tierFilter) return false;
+      }
+
       switch (filter) {
         case "marketing":
           return c.marketingOptIn;
@@ -685,18 +706,45 @@ export default function CustomersPage() {
 
     const dir = sort.dir === "asc" ? 1 : -1;
     return [...filtered].sort((a, b) => {
+      const byName = () => String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" });
+
       if (sort.key === "name") {
-        const byName = String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" });
-        if (byName) return byName * dir;
+        const nameCmp = byName();
+        if (nameCmp) return nameCmp * dir;
         return String(a.email || "").localeCompare(String(b.email || "")) * dir;
       }
+
+      if (sort.key === "tier") {
+        const spendA = Number(a.tier?.minSpend ?? -1);
+        const spendB = Number(b.tier?.minSpend ?? -1);
+        if (spendA !== spendB) return (spendA - spendB) * dir;
+        const nameA = String(a.tier?.name || "");
+        const nameB = String(b.tier?.name || "");
+        if (nameA !== nameB) return nameA.localeCompare(nameB, undefined, { sensitivity: "base" }) * dir;
+        return byName();
+      }
+
+      if (sort.key === "orders") {
+        const ordersA = Number(a.orders) || 0;
+        const ordersB = Number(b.orders) || 0;
+        if (ordersA !== ordersB) return (ordersA - ordersB) * dir;
+        return byName();
+      }
+
+      if (sort.key === "totalSpent") {
+        const spentA = Number(a.totalSpent) || 0;
+        const spentB = Number(b.totalSpent) || 0;
+        if (spentA !== spentB) return (spentA - spentB) * dir;
+        return byName();
+      }
+
       // joined (default): earliest first when ascending
       const joinedA = String(a.joined || "");
       const joinedB = String(b.joined || "");
       if (joinedA !== joinedB) return joinedA.localeCompare(joinedB) * dir;
-      return String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" });
+      return byName();
     });
-  }, [enrichedCustomers, filter, query, sort]);
+  }, [enrichedCustomers, filter, query, sort, tierFilter]);
 
   const {
     visibleItems,
@@ -775,6 +823,19 @@ export default function CustomersPage() {
                 value={filter}
                 onChange={setFilter}
               />
+              <FormControl size="small" sx={{ ...ADMIN_LIST_FILTER_SELECT_SX, minWidth: { xs: 140, md: 160 } }}>
+                <InputLabel id="customers-tier-filter">Tier</InputLabel>
+                <Select
+                  labelId="customers-tier-filter"
+                  label="Tier"
+                  value={tierFilter}
+                  onChange={(event) => setTierFilter(event.target.value)}
+                >
+                  {tierFilterOptions.map((option) => (
+                    <MenuItem key={option.id} value={option.id}>{option.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
               <Box sx={{ flex: 1, minWidth: 8, display: { xs: "none", md: "block" } }} />
             </Stack>
 
@@ -803,7 +864,12 @@ export default function CustomersPage() {
                     sort={sort}
                     onSort={handleSort}
                   />
-                  <AdminTableHeaderCell>Tier</AdminTableHeaderCell>
+                  <AdminTableSortHeader
+                    id="tier"
+                    label="Tier"
+                    sort={sort}
+                    onSort={handleSort}
+                  />
                   <AdminTableSortHeader
                     id="joined"
                     label="Joined"
@@ -812,8 +878,22 @@ export default function CustomersPage() {
                     sx={{ display: { xs: "none", sm: "table-cell" } }}
                   />
                   <AdminTableHeaderCell sx={{ display: { xs: "none", md: "table-cell" } }}>Sign-in</AdminTableHeaderCell>
-                  <AdminTableHeaderCell align="right" sx={{ display: { xs: "none", sm: "table-cell" } }}>Orders</AdminTableHeaderCell>
-                  <AdminTableHeaderCell align="right" sx={{ display: { xs: "none", md: "table-cell" } }}>Total spent</AdminTableHeaderCell>
+                  <AdminTableSortHeader
+                    id="orders"
+                    label="Orders"
+                    sort={sort}
+                    onSort={handleSort}
+                    align="right"
+                    sx={{ display: { xs: "none", sm: "table-cell" } }}
+                  />
+                  <AdminTableSortHeader
+                    id="totalSpent"
+                    label="Total spent"
+                    sort={sort}
+                    onSort={handleSort}
+                    align="right"
+                    sx={{ display: { xs: "none", md: "table-cell" } }}
+                  />
                   <AdminTableHeaderCell align="center" sx={{ display: { xs: "none", lg: "table-cell" } }}>Marketing</AdminTableHeaderCell>
                   <AdminTableHeaderCell align="center">Status</AdminTableHeaderCell>
                   <AdminTableHeaderCell align="right" />
