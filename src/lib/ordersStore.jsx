@@ -840,16 +840,20 @@ export function OrdersProvider({ children }) {
           const allocationCheck = validateAllocationForStatus(targetItem, status);
           if (!allocationCheck.ok) return o;
 
-          // Release / restore committed stock for in-stock lines when marked Unpaid.
-          // (Only in-stock lines decrement stock at checkout; pre-order lines never do.)
+          // In-stock units are committed at checkout. Keep them off the shelf for every
+          // post-submit status (Pending Verification, Fully Paid, Ready for Pickup, …).
+          // Return to inventory only when the line is cancelled — Unpaid/Rejected —
+          // whether that is set on payment or status.
           if (resolveOrderKindForItem(targetItem) === "In-stock") {
             const wasReleased = Boolean(prevItem.stockReleased);
-            const nowUnpaid = migratePaymentStatus(payment) === "Unpaid";
+            const pay = migratePaymentStatus(payment);
+            const st = migrateOrderStatus(status);
+            const nowCancelled = pay === "Unpaid" || pay === "Rejected" || st === "Unpaid";
             const qty = targetItem.quantity ?? prevItem.quantity ?? 1;
-            if (nowUnpaid && !wasReleased) {
+            if (nowCancelled && !wasReleased) {
               queueMicrotask(() => restockRef.current?.([{ id: targetItem.id, quantity: qty }]));
               targetItem.stockReleased = true;
-            } else if (!nowUnpaid && wasReleased) {
+            } else if (!nowCancelled && wasReleased) {
               queueMicrotask(() => decrementRef.current?.([{ id: targetItem.id, quantity: qty, tag: targetItem.tag }]));
               targetItem.stockReleased = false;
             }

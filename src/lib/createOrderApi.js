@@ -46,6 +46,7 @@ export async function createOrderViaApi(payload) {
           ? {
               initialPayment: payload.initialPayment,
               initialStatus: payload.initialStatus,
+              deductStock: payload.deductStock !== false,
             }
           : {}),
       }),

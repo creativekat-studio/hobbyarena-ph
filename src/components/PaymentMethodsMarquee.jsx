@@ -116,26 +116,64 @@ function PaymentSectionHeader({ bankDetails, showBir, layout }) {
 
   if (beside) {
     return (
-      <Stack spacing={2.5} sx={{ px: { xs: 2, md: 4 }, mb: 3 }}>
+      <Stack spacing={2} sx={{ px: { xs: 2, md: 4 }, mb: 3 }}>
         {chip}
         <Box
           sx={{
             display: "grid",
-            gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) minmax(220px, 360px)" },
-            gap: { xs: 2.5, md: 4 },
-            alignItems: "center",
+            gridTemplateColumns: {
+              xs: "1fr",
+              md: "minmax(0, 1.25fr) minmax(300px, min(480px, 42%))",
+            },
+            columnGap: { xs: 2.5, md: 4 },
+            rowGap: 2.5,
+            // Bottom of seal lines up with “We offer secure…”
+            alignItems: { xs: "center", md: "end" },
           }}
         >
-          <Stack spacing={1.5} textAlign={{ xs: "center", md: "left" }}>
-            <Typography variant="h4" sx={{ fontWeight: 800, maxWidth: { md: 520 }, lineHeight: 1.2, mx: { xs: "auto", md: 0 } }}>
+          <Stack spacing={1.25} textAlign={{ xs: "center", md: "left" }} sx={{ minWidth: 0, pr: { md: 1 } }}>
+            <Typography
+              variant="h4"
+              sx={{
+                fontWeight: 800,
+                lineHeight: 1.2,
+                mx: { xs: "auto", md: 0 },
+                // Keep headline inside its column so it never paints over the seal.
+                maxWidth: { xs: 520, md: "100%" },
+              }}
+            >
               {title}
             </Typography>
-            <Typography color="text.secondary" sx={{ maxWidth: 520, fontSize: "0.95rem", mx: { xs: "auto", md: 0 } }}>
+            <Typography
+              color="text.secondary"
+              sx={{
+                fontSize: "0.95rem",
+                lineHeight: 1.55,
+                mx: { xs: "auto", md: 0 },
+                maxWidth: { xs: 520, md: "36rem" },
+              }}
+            >
               {subtitle}
             </Typography>
           </Stack>
-          <Box sx={{ display: "flex", justifyContent: { xs: "center", md: "flex-end" } }}>
-            <BirSealBadge placement="payment" maxWidth={360} />
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: { xs: "center", md: "flex-end" },
+              alignItems: "flex-end",
+              alignSelf: { xs: "center", md: "end" },
+              width: "100%",
+              minWidth: 0,
+            }}
+          >
+            <BirSealBadge
+              placement="payment"
+              maxWidth={480}
+              sx={{
+                width: "100%",
+                maxWidth: { xs: 400, md: "100%" },
+              }}
+            />
           </Box>
         </Box>
       </Stack>

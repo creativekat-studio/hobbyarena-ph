@@ -5,8 +5,10 @@ import {
   allocateOrderId,
   buildPricedLines,
   buildTrailForCreate,
+  commitInStockForLines,
   incrementOrderId,
   parseProofDataUrl,
+  restockInStockForLines,
   uploadProofWithAdmin,
 } from "./_lib/orderCreate.js";
 import { isGuestCaptchaEnabled } from "./_lib/cmsSettings.js";
@@ -125,6 +127,11 @@ export default async function handler(req, res) {
       status: initialStatus,
     }));
 
+    // Storefront always commits in-stock units on place — they stay off the shelf
+    // for Pending Verification and later success statuses; Unpaid/Rejected restocks.
+    // Manual admin orders honor the deductStock checkbox.
+    const shouldDeductStock = manual ? Boolean(body.deductStock) : true;
+
     let proofUrl = null;
     const proof = manual ? null : parseProofDataUrl(body.proofOfPayment);
     if (!manual && !proof) {
@@ -133,81 +140,96 @@ export default async function handler(req, res) {
 
     let orderId = await allocateOrderId(db);
     let saved = null;
+    let stockCommit = { committed: [] };
 
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      if (proof && bucket) {
-        proofUrl = await uploadProofWithAdmin(bucket, orderId, proof);
-      } else if (proof && !bucket) {
-        return res.status(503).json({ error: "Could not store payment proof right now." });
-      }
-
-      const trail = buildTrailForCreate({
-        lineItems,
-        proofUrl,
-        manual,
-        notes,
-      }).map((entry) => ({
-        ...entry,
-        payment: initialPayment,
-        status: initialStatus,
-      }));
-
-      const rollup = syncRollup(lineItems);
-      const nowIso = new Date().toISOString();
-      const order = {
-        id: orderId,
-        customer,
-        email,
-        phone,
-        type: priced.type,
-        items: priced.items,
-        lineItems,
-        qty: priced.qty,
-        subtotal: priced.subtotal,
-        shippingFee: priced.shippingFee,
-        total: priced.total,
-        fullSubtotal: priced.fullSubtotal,
-        balanceDue: priced.balanceDue,
-        depositPercent: priced.depositPercent,
-        allocatedQty: 0,
-        refundAmount: 0,
-        creditAmount: 0,
-        payment: rollup.payment,
-        status: rollup.status,
-        fulfillment,
-        region: null,
-        address,
-        notes,
-        hasProof: Boolean(proofUrl),
-        guest,
-        userId,
-        date: nowIso.slice(0, 10),
-        createdAt: nowIso,
-        notificationSeen: false,
-        manual,
-        trail,
-        createdVia: "api/create-order",
-        ...(admin ? { createdByAdmin: admin.email } : {}),
-      };
-
-      try {
-        await db.collection("orders").doc(orderId).create({
-          ...order,
-          updatedAt: nowIso,
-        });
-        saved = order;
-        break;
-      } catch (error) {
-        const code = String(error?.code || "");
-        const already = code === 6 || code === "already-exists" || /ALREADY_EXISTS/i.test(String(error?.message || ""));
-        if (!already || attempt === 29) throw error;
-        orderId = incrementOrderId(orderId);
-        proofUrl = null;
-      }
+    if (shouldDeductStock) {
+      stockCommit = await commitInStockForLines(db, lineItems);
     }
 
-    if (!saved) {
-      return res.status(500).json({ error: "Could not allocate a unique order ID." });
+    try {
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        if (proof && bucket) {
+          proofUrl = await uploadProofWithAdmin(bucket, orderId, proof);
+        } else if (proof && !bucket) {
+          throw Object.assign(new Error("Could not store payment proof right now."), { status: 503 });
+        }
+
+        const trail = buildTrailForCreate({
+          lineItems,
+          proofUrl,
+          manual,
+          notes,
+        }).map((entry) => ({
+          ...entry,
+          payment: initialPayment,
+          status: initialStatus,
+        }));
+
+        const rollup = syncRollup(lineItems);
+        const nowIso = new Date().toISOString();
+        const order = {
+          id: orderId,
+          customer,
+          email,
+          phone,
+          type: priced.type,
+          items: priced.items,
+          lineItems,
+          qty: priced.qty,
+          subtotal: priced.subtotal,
+          shippingFee: priced.shippingFee,
+          total: priced.total,
+          fullSubtotal: priced.fullSubtotal,
+          balanceDue: priced.balanceDue,
+          depositPercent: priced.depositPercent,
+          allocatedQty: 0,
+          refundAmount: 0,
+          creditAmount: 0,
+          payment: rollup.payment,
+          status: rollup.status,
+          fulfillment,
+          region: null,
+          address,
+          notes,
+          hasProof: Boolean(proofUrl),
+          guest,
+          userId,
+          date: nowIso.slice(0, 10),
+          createdAt: nowIso,
+          notificationSeen: false,
+          manual,
+          trail,
+          createdVia: "api/create-order",
+          stockCommitted: Boolean(stockCommit.committed?.length),
+          ...(admin ? { createdByAdmin: admin.email } : {}),
+        };
+
+        try {
+          await db.collection("orders").doc(orderId).create({
+            ...order,
+            updatedAt: nowIso,
+          });
+          saved = order;
+          break;
+        } catch (error) {
+          const code = String(error?.code || "");
+          const already = code === 6 || code === "already-exists" || /ALREADY_EXISTS/i.test(String(error?.message || ""));
+          if (!already || attempt === 29) throw error;
+          orderId = incrementOrderId(orderId);
+          proofUrl = null;
+        }
+      }
+
+      if (!saved) {
+        throw Object.assign(new Error("Could not allocate a unique order ID."), { status: 500 });
+      }
+    } catch (error) {
+      if (stockCommit.committed?.length) {
+        await restockInStockForLines(db, stockCommit.committed).catch((restockError) => {
+          console.error("create-order stock rollback failed:", restockError);
+        });
+      }
+      throw error;
     }
 
     if (!manual) {

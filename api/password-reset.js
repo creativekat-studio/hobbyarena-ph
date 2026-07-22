@@ -19,7 +19,8 @@ function readBodyOverride(raw) {
 }
 
 function defaultContinueUrl() {
-  const site = getEmailLinks().siteUrl || "https://hobbyarena.vercel.app";
+  const links = getEmailLinks();
+  const site = links.displaySiteUrl || links.siteUrl || "https://www.hobbyarena.ph";
   return `${String(site).replace(/\/$/, "")}/account`;
 }
 
@@ -101,7 +102,9 @@ export default async function handler(req, res) {
     const email = String(req.body?.email || "").trim().toLowerCase();
     const bodyOverride = readBodyOverride(req.body?.bodyOverride);
     const continueUrl = resolveContinueUrl(req.body?.continueUrl);
-    const placeholderLink = `${String(getEmailLinks().siteUrl || "https://www.hobbyarena.ph").replace(/\/$/, "")}/account/reset-password?mode=resetPassword&test=1`;
+    const links = getEmailLinks();
+    const placeholderBase = String(links.displaySiteUrl || links.siteUrl || "https://www.hobbyarena.ph").replace(/\/$/, "");
+    const placeholderLink = `${placeholderBase}/account/reset-password?mode=resetPassword&test=1`;
 
     // Preview + admin test sends require a signed-in admin.
     if (preview || isTest) {

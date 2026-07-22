@@ -28,6 +28,7 @@ import {
 } from "../data/orderWorkflow.js";
 import { useInventory } from "../lib/inventoryStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
+import { useFirebaseData } from "../lib/firebase/config.js";
 import { isPreorderProduct, preorderBalanceDue, preorderDueNow } from "../lib/preorder.js";
 
 const DEFAULTS_BY_KIND = {
@@ -53,6 +54,7 @@ const EMPTY = {
 };
 
 export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCreated }) {
+  const firebaseEnabled = useFirebaseData();
   const { catalogProducts, decrementStockForCart } = useInventory();
   const { placeOrder } = useOrders();
   const [form, setForm] = useState(EMPTY);
@@ -200,11 +202,14 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
         fullSubtotal: totals.fullSubtotal,
         balanceDue: totals.balanceDue,
         manual: true,
+        deductStock: form.deductStock && form.orderKind === "In-stock",
         initialPayment: form.payment,
         initialStatus: form.status,
       });
 
-      if (order && form.deductStock && form.orderKind === "In-stock") {
+      // Firebase create-order already deducted when deductStock was true.
+      // Local mode still needs the client inventory update.
+      if (order && !firebaseEnabled && form.deductStock && form.orderKind === "In-stock") {
         decrementStockForCart(lineItems);
       }
 

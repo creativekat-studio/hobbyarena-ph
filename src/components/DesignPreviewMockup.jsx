@@ -37,7 +37,7 @@ function MockPaymentBirSection({ layoutId, panelSx, surfaceBorderColor }) {
       alt="BIR registered badge"
       sx={{
         width: "100%",
-        maxWidth: beside ? 148 : 200,
+        maxWidth: beside ? "100%" : 200,
         height: "auto",
         display: "block",
         bgcolor: "#fff",
@@ -51,46 +51,62 @@ function MockPaymentBirSection({ layoutId, panelSx, surfaceBorderColor }) {
 
   return (
     <Box sx={{ ...panelSx, mx: 1, my: 1, p: 1.5, overflow: "visible" }}>
-      <Chip
-        label="Secure checkout"
-        size="small"
-        sx={{
-          mb: 1.25,
-          height: 20,
-          fontFamily: MONO_FONT,
-          fontSize: "0.55rem",
-          fontWeight: 700,
-          letterSpacing: 0.6,
-          border: "1px solid",
-          borderColor: alpha(theme.palette.primary.main, 0.35),
-          bgcolor: "transparent",
-          color: "primary.main",
-          "& .MuiChip-label": { px: 0.85 },
-        }}
-      />
-
       {beside ? (
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) minmax(110px, 148px)",
-            gap: 1.25,
-            alignItems: "center",
-            mb: 1.5,
-          }}
-        >
-          <Box>
-            <Typography sx={{ fontWeight: 800, fontSize: "0.85rem", lineHeight: 1.25 }}>
-              Choose from a wide variety of payment options available
-            </Typography>
-            <Typography sx={{ color: "text.secondary", fontSize: "0.62rem", mt: 0.6, lineHeight: 1.4 }}>
-              Pay your way — Philippine banks and e-wallets accepted.
-            </Typography>
+        <Box sx={{ mb: 1.5 }}>
+          <Chip
+            label="Secure checkout"
+            size="small"
+            sx={{
+              mb: 1,
+              height: 20,
+              fontFamily: MONO_FONT,
+              fontSize: "0.55rem",
+              fontWeight: 700,
+              letterSpacing: 0.6,
+              border: "1px solid",
+              borderColor: alpha(theme.palette.primary.main, 0.35),
+              bgcolor: "transparent",
+              color: "primary.main",
+              "& .MuiChip-label": { px: 0.85 },
+            }}
+          />
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 1.25fr) minmax(120px, 42%)",
+              columnGap: 1.5,
+              alignItems: "center",
+            }}
+          >
+            <Box>
+              <Typography sx={{ fontWeight: 800, fontSize: "0.85rem", lineHeight: 1.25 }}>
+                Choose from a wide variety of payment options available
+              </Typography>
+              <Typography sx={{ color: "text.secondary", fontSize: "0.62rem", mt: 0.6, lineHeight: 1.4 }}>
+                Pay your way — Philippine banks and e-wallets accepted.
+              </Typography>
+            </Box>
+            {badge}
           </Box>
-          {badge}
         </Box>
       ) : (
         <Stack spacing={0.85} alignItems="center" textAlign="center" sx={{ mb: 1.5 }}>
+          <Chip
+            label="Secure checkout"
+            size="small"
+            sx={{
+              height: 20,
+              fontFamily: MONO_FONT,
+              fontSize: "0.55rem",
+              fontWeight: 700,
+              letterSpacing: 0.6,
+              border: "1px solid",
+              borderColor: alpha(theme.palette.primary.main, 0.35),
+              bgcolor: "transparent",
+              color: "primary.main",
+              "& .MuiChip-label": { px: 0.85 },
+            }}
+          />
           <Typography sx={{ fontWeight: 800, fontSize: "0.85rem", lineHeight: 1.25, maxWidth: 280 }}>
             Choose from a wide variety of payment options available
           </Typography>

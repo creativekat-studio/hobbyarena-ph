@@ -331,7 +331,8 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
           sx={{
             px: { xs: 2, md: 3 },
             pb: 2,
-            flexShrink: 1,
+            // Desktop: don't shrink — overflow was painting over the order-history bar.
+            flexShrink: { xs: 1, md: 0 },
             minHeight: 0,
             maxHeight: { xs: "42%", md: "none" },
             overflow: { xs: "auto", md: "visible" },
@@ -429,7 +430,7 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
           spacing={1}
           alignItems="center"
           justifyContent="space-between"
-          sx={{ py: 0.5, flexWrap: "wrap", rowGap: 1 }}
+          sx={{ pt: 1.25, pb: 0.75, flexWrap: "wrap", rowGap: 1 }}
         >
           <Tabs
             value={tab}

@@ -112,7 +112,7 @@ async function getServiceAccountAccessToken(serviceAccount) {
  * the oobCode (and related params) so confirmPasswordReset still works.
  */
 export function toInAppPasswordResetLink(oobLink, siteUrl) {
-  const base = String(siteUrl || "https://hobbyarena.vercel.app").replace(/\/$/, "");
+  const base = String(siteUrl || "https://www.hobbyarena.ph").replace(/\/$/, "");
   try {
     const src = new URL(oobLink);
     const dest = new URL(`${base}/account/reset-password`);
@@ -173,7 +173,8 @@ export async function generatePasswordResetLink(email, continueUrl = "") {
   }
 
   const siteUrl = String(
-    process.env.PUBLIC_SITE_URL
+    process.env.PUBLIC_DISPLAY_SITE_URL
+    || process.env.PUBLIC_SITE_URL
     || process.env.VITE_PUBLIC_SITE_URL
     || "",
   ).trim() || "https://www.hobbyarena.ph";

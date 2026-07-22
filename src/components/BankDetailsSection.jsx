@@ -183,22 +183,30 @@ export default function BankDetailsSection({ bankDetails, panelSx, surfaceBorder
               <Box
                 sx={{
                   display: "grid",
-                  gridTemplateColumns: { xs: "1fr", sm: "minmax(0, 1fr) minmax(180px, 280px)" },
-                  gap: 2,
+                  gridTemplateColumns: {
+                    xs: "1fr",
+                    sm: "minmax(0, 1.25fr) minmax(240px, min(400px, 42%))",
+                  },
+                  columnGap: 3,
+                  rowGap: 2,
                   alignItems: "center",
                 }}
               >
-                <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 800, lineHeight: 1.15, maxWidth: wider(420) }}>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="h4" sx={{ fontWeight: 800, lineHeight: 1.15 }}>
                     {bankDetails.title}
                   </Typography>
                   <Box sx={{ width: 48, height: 3, borderRadius: 1, bgcolor: "primary.main", my: 1.5 }} />
-                  <Typography color="text.secondary" sx={{ fontSize: "0.95rem", maxWidth: wider(360), lineHeight: 1.6 }}>
+                  <Typography color="text.secondary" sx={{ fontSize: "0.95rem", maxWidth: "36rem", lineHeight: 1.6 }}>
                     {bankDetails.subtitle}
                   </Typography>
                 </Box>
-                <Box sx={{ display: "flex", justifyContent: { xs: "flex-start", sm: "flex-end" } }}>
-                  <BirSealBadge placement="payment" maxWidth={280} />
+                <Box sx={{ display: "flex", justifyContent: { xs: "flex-start", sm: "flex-end" }, width: "100%", minWidth: 0 }}>
+                  <BirSealBadge
+                    placement="payment"
+                    maxWidth={400}
+                    sx={{ width: "100%", maxWidth: { xs: 340, sm: "100%" } }}
+                  />
                 </Box>
               </Box>
             ) : (

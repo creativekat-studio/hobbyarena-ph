@@ -18,7 +18,10 @@ export function getSupportEmail() {
 }
 
 export function getEmailLinks() {
-  const siteUrl = String(env("PUBLIC_SITE_URL", "https://hobbyarena.vercel.app")).replace(/\/$/, "");
+  // Asset host (logo URLs). Prefer production; may still point at the Vercel
+  // deployment if that is what PUBLIC_SITE_URL is set to in env.
+  const siteUrl = String(env("PUBLIC_SITE_URL", "https://www.hobbyarena.ph")).replace(/\/$/, "");
+  // Customer-facing shop domain — CTAs and footer links must use this, never the preview host.
   const displaySiteUrl = String(env("PUBLIC_DISPLAY_SITE_URL", "https://www.hobbyarena.ph")).replace(/\/$/, "");
   return {
     siteUrl,
@@ -26,7 +29,7 @@ export function getEmailLinks() {
     supportEmail: getSupportEmail(),
     messengerUrl: env("MESSENGER_URL", "https://m.me/hobbyarena.ph"),
     facebookUrl: env("FACEBOOK_URL", "https://www.facebook.com/hobbyarena.ph"),
-    accountUrl: `${siteUrl}/account`,
+    accountUrl: `${displaySiteUrl}/account`,
   };
 }
 

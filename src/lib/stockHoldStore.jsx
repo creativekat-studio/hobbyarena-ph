@@ -12,9 +12,13 @@ import {
  * When a shopper reaches the "add proof of payment" step of checkout, we place a
  * short-lived hold on the quantity they are buying. The hold reserves that stock
  * for HOLD_DURATION_MS (20 minutes) so a second shopper racing for the same units
- * sees them as unavailable. If the shopper completes payment the hold is consumed
- * (stock is decremented on order placement); if they abandon or time out the hold
- * expires and the stock is released back for everyone.
+ * sees them as unavailable. When the shopper completes checkout, create-order
+ * commits (decrements) product stock server-side — units stay unavailable for
+ * Pending Verification and every later success status (Fully Paid, Ready for
+ * Pickup, Fulfilled, …). Stock returns only if the line is cancelled
+ * (Unpaid / Rejected). The checkout hold is released after commit because
+ * product stock already reflects the sale. If they abandon or time out, the
+ * hold expires and units return for everyone.
  *
  * In pre-prod / prod (Firebase enabled) holds live in a Firestore `stockHolds`
  * collection so races resolve across devices in real time. Expiry is enforced by

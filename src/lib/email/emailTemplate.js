@@ -5,7 +5,7 @@ import { getEmailLinks, getSupportContactHtml } from "./emailUtils.js";
 export const EMAIL_BRAND = {
   name: "Hobby Arena PH",
   tagline: "Your Trusted Source for Premium TCG",
-  siteUrl: "https://hobbyarena.vercel.app",
+  siteUrl: "https://www.hobbyarena.ph",
   logoPath: "/hobby_arena_logo.png",
   logoAspect: 1536 / 1024,
   colors: {

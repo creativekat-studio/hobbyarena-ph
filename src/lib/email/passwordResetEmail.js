@@ -51,7 +51,8 @@ export function buildPasswordResetEmail({
   bodyOverride = "",
 } = {}) {
   const safeEmail = String(email || "").trim() || "trainer@example.com";
-  const link = String(resetLink || "").trim() || `${getEmailLinks().siteUrl}/account`;
+  const links = getEmailLinks();
+  const link = String(resetLink || "").trim() || `${links.displaySiteUrl || links.siteUrl}/account`;
   const body = String(bodyOverride || "").trim() || DEFAULT_PASSWORD_RESET_BODY;
   const c = EMAIL_BRAND.colors;
 
