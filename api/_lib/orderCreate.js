@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { FieldPath } from "firebase-admin/firestore";
 import { DEFAULT_DEPOSIT_PERCENT } from "./preorderPricing.js";
 import { clampLineQuantity } from "../../src/lib/quantityLimits.js";
+import { getCountdownParts } from "../../src/lib/preorder.js";
 
 const SEQ_WIDTH = 6;
 const MAX_PROOF_CHARS = 3_500_000;
@@ -95,8 +96,11 @@ export function serverShippingFee() {
  * Load products and build priced line items from trusted catalog data.
  * @param {import('firebase-admin/firestore').Firestore} db
  * @param {Array<{ id: string, quantity: number }>} lines
+ * @param {{ enforceStorefrontAvailability?: boolean }} [options]
+ *   When true (storefront checkout), reject drafted/removed products and closed pre-orders.
  */
-export async function buildPricedLines(db, lines) {
+export async function buildPricedLines(db, lines, options = {}) {
+  const enforceStorefrontAvailability = options.enforceStorefrontAvailability !== false;
   if (!Array.isArray(lines) || !lines.length) {
     throw Object.assign(new Error("Add at least one product."), { status: 400 });
   }
@@ -124,14 +128,47 @@ export async function buildPricedLines(db, lines) {
       throw Object.assign(new Error(`Product “${id}” is no longer available.`), { status: 400 });
     }
     const product = { id: snap.id, ...snap.data() };
-    if (product.active === false) {
-      throw Object.assign(new Error(`${product.name || id} is not available.`), { status: 400 });
+    const label = String(product.name || id).trim() || id;
+
+    if (product.active === false || product.deletedAt || product.deleted) {
+      throw Object.assign(new Error(`${label} is no longer available.`), { status: 400 });
+    }
+
+    const tag = isPreorderProduct(product) ? "Pre-order" : (product.tag || product.type || "In-stock");
+    const isPreorder = tag === "Pre-order";
+
+    if (enforceStorefrontAvailability) {
+      if (!product.published) {
+        throw Object.assign(
+          new Error(`${label} is no longer available. Remove it from your cart to continue.`),
+          { status: 400 },
+        );
+      }
+      if (isPreorder && getCountdownParts(product.preorderEndsAt)?.expired) {
+        throw Object.assign(
+          new Error(`${label} pre-order window has closed. Remove it from your cart to continue.`),
+          { status: 400 },
+        );
+      }
+      if (!isPreorder) {
+        const stock = Math.max(0, Number(product.stock) || 0);
+        if (stock <= 0) {
+          throw Object.assign(
+            new Error(`${label} is out of stock. Remove it from your cart to continue.`),
+            { status: 409 },
+          );
+        }
+        if (quantity > stock) {
+          throw Object.assign(
+            new Error(`${label} only has ${stock} left. Update your cart to continue.`),
+            { status: 409 },
+          );
+        }
+      }
     }
 
     const price = Math.max(0, Number(product.price) || 0);
     const cost = Math.max(0, Number(product.cost) || 0);
-    const tag = isPreorderProduct(product) ? "Pre-order" : (product.tag || product.type || "In-stock");
-    const isPreorder = tag === "Pre-order";
     if (isPreorder) {
       hasPreorder = true;
       depositPercent = getDepositPercent(product);
@@ -149,7 +186,7 @@ export async function buildPricedLines(db, lines) {
 
     lineItems.push({
       id: product.id,
-      name: String(product.name || id).trim(),
+      name: label,
       quantity,
       price,
       cost,

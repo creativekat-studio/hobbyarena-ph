@@ -113,7 +113,10 @@ export default async function handler(req, res) {
       }
     }
 
-    const priced = await buildPricedLines(db, cartLines);
+    const priced = await buildPricedLines(db, cartLines, {
+      // Admin manual orders may include drafted / closed pre-order SKUs on purpose.
+      enforceStorefrontAvailability: !manual,
+    });
     const initialPayment = manual && body.initialPayment
       ? String(body.initialPayment).slice(0, 80)
       : "Pending Verification";

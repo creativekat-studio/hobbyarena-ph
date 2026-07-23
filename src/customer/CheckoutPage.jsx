@@ -38,6 +38,7 @@ import {
 } from "../data/checkoutSettings.js";
 import { isGuestCaptchaEnabled, useCms } from "../lib/cmsContent.jsx";
 import { useCheckoutConfirmation, writeCheckoutConfirmation } from "../lib/checkoutConfirmation.js";
+import { formatCartAvailabilityError, validateCartAgainstCatalog } from "../lib/cartAvailability.js";
 import { compressProofFile } from "../lib/imageCompression.js";
 import { UPLOAD_PROOF_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLimits.js";
 import { getCustomerCheckoutDefaults, patchCustomerProfileIfEmpty, recordCustomerFromCheckout, useCustomers } from "../lib/customersStore.jsx";
@@ -46,7 +47,6 @@ import { formatPhPhoneInput, isValidPhPhone } from "../lib/phone.js";
 import { isValidEmail } from "../lib/email/emailUtils.js";
 import PasswordField from "../components/PasswordField.jsx";
 import QrCodeTile from "../components/QrCodeTile.jsx";
-import BirSealBadge, { useBirSealVisible } from "../components/BirSealBadge.jsx";
 import RecaptchaV2, { getRecaptchaSiteKey } from "../components/RecaptchaV2.jsx";
 
 const STEPS = ["Account", "Details", "Payment"];
@@ -665,10 +665,10 @@ function PaymentStep({
   guestCheckout,
   recaptchaToken,
   setRecaptchaToken,
+  cartBlocked = false,
 }) {
   const theme = useTheme();
   const { content } = useCms();
-  const showBirBelowPayment = useBirSealVisible("payment");
   const recaptchaSiteKey = getRecaptchaSiteKey();
   const banks = useMemo(
     () => (content.bankDetails?.accounts ?? []).filter((bank) => bank.active !== false),
@@ -803,12 +803,6 @@ function PaymentStep({
         </Box>
       ) : null}
 
-      {showBirBelowPayment ? (
-        <Box sx={{ display: "flex", justifyContent: "center", mb: 2.5 }}>
-          <BirSealBadge placement="payment" maxWidth={360} />
-        </Box>
-      ) : null}
-
       <Box
         sx={{
           p: 2,
@@ -908,6 +902,7 @@ function PaymentStep({
           variant="contained"
           disabled={
             busy
+            || cartBlocked
             || !proofFile
             || !confirmedTransfer
             || hold?.status === "blocked"
@@ -963,6 +958,15 @@ export default function CheckoutPage() {
   const shippingFee = useMemo(() => calcShipping(), []);
   const total = subtotal + shippingFee;
 
+  const cartAvailabilityIssues = useMemo(
+    () => validateCartAgainstCatalog(items, getProduct),
+    [items, getProduct],
+  );
+  const cartAvailabilityError = useMemo(
+    () => formatCartAvailabilityError(cartAvailabilityIssues),
+    [cartAvailabilityIssues],
+  );
+
   // In-stock lines only — pre-orders never reserve stock.
   const inStockLines = useMemo(
     () =>
@@ -990,7 +994,16 @@ export default function CheckoutPage() {
     attemptHoldRef.current = attemptHold;
   }, [attemptHold]);
 
-  // Reserve stock once when the shopper reaches the payment step; release when they leave it.
+  // Keep payment error in sync when cart items become unavailable mid-checkout.
+  useEffect(() => {
+    setPaymentError((prev) => {
+      if (cartAvailabilityError) return cartAvailabilityError;
+      if (prev && /no longer available|pre-order window has closed|out of stock|only has \d+ left/i.test(prev)) {
+        return "";
+      }
+      return prev;
+    });
+  }, [cartAvailabilityError]);
   useEffect(() => {
     if (step !== 2) return undefined;
     attemptHoldRef.current();
@@ -1104,6 +1117,10 @@ export default function CheckoutPage() {
 
   function handlePlaceOrder() {
     setPaymentError("");
+    if (cartAvailabilityError) {
+      setPaymentError(cartAvailabilityError);
+      return;
+    }
     if (!proofFile?.dataUrl) {
       setPaymentError("Please upload proof of payment.");
       return;
@@ -1324,6 +1341,7 @@ export default function CheckoutPage() {
                   guestCheckout={Boolean(isGuest)}
                   recaptchaToken={recaptchaToken}
                   setRecaptchaToken={setRecaptchaToken}
+                  cartBlocked={Boolean(cartAvailabilityError)}
                   hold={{
                     status: holdState.status,
                     remainingMs: holdRemaining,

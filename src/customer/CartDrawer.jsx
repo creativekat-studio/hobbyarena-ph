@@ -1,4 +1,5 @@
 import {
+  Alert,
   Box,
   Button,
   Divider,
@@ -8,7 +9,7 @@ import {
   Typography,
 } from "@mui/material";
 import { keyframes } from "@mui/system";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { CardIcon, PokeballIcon, TrashIcon } from "../components/icons.jsx";
@@ -21,6 +22,7 @@ import { useInventory } from "../lib/inventoryStore.jsx";
 import { useStockHolds } from "../lib/stockHoldStore.jsx";
 import { isPreorderProduct } from "../lib/preorder.js";
 import { maxStorefrontQuantity } from "../lib/quantityLimits.js";
+import { formatCartAvailabilityError, validateCartAgainstCatalog } from "../lib/cartAvailability.js";
 
 const addedFlash = keyframes`
   0% { opacity: 0; transform: translateY(-6px); }
@@ -122,8 +124,13 @@ function CartLineItem({ item, onQuantityChange, onRemove, surfaceBorderColor, is
 
 export default function CartDrawer({ open, onClose, surfaceBorderColor, isDarkMode }) {
   const navigate = useNavigate();
+  const { getProduct } = useInventory();
   const { items, itemCount, subtotal, balanceDue, hasPreorder, setQuantity, removeItem, clearCart, addPulse } = useCart();
   const [showAdded, setShowAdded] = useState(false);
+  const cartAvailabilityError = useMemo(
+    () => formatCartAvailabilityError(validateCartAgainstCatalog(items, getProduct)),
+    [items, getProduct],
+  );
 
   useEffect(() => {
     if (!addPulse || !open) return undefined;
@@ -133,6 +140,7 @@ export default function CartDrawer({ open, onClose, surfaceBorderColor, isDarkMo
   }, [addPulse, open]);
 
   function goToCheckout() {
+    if (cartAvailabilityError) return;
     onClose();
     navigate("/checkout");
   }
@@ -222,11 +230,17 @@ export default function CartDrawer({ open, onClose, surfaceBorderColor, isDarkMo
                 Balance due before release: {PESO.format(balanceDue)}
               </Typography>
             ) : null}
+            {cartAvailabilityError ? (
+              <Alert severity="warning" sx={{ mb: 1.5 }}>
+                {cartAvailabilityError}
+              </Alert>
+            ) : null}
             <Button
               fullWidth
               variant="contained"
               size="large"
               onClick={goToCheckout}
+              disabled={Boolean(cartAvailabilityError)}
               sx={{
                 mb: 1,
                 fontFamily: MONO_FONT,
