@@ -4,7 +4,7 @@ import { Box, Button, Chip, IconButton, Stack, Tooltip, Typography } from "@mui/
 import { alpha, useTheme } from "@mui/material/styles";
 import { keyframes } from "@mui/system";
 import ProductRating from "./ProductRating.jsx";
-import PreorderCountdown from "./PreorderCountdown.jsx";
+import PreorderCountdown, { ComingSoonStatus } from "./PreorderCountdown.jsx";
 import PreorderPricing from "./PreorderPricing.jsx";
 import QtyStepper from "./QtyStepper.jsx";
 import { MONO_FONT, getBrand } from "../theme.js";
@@ -19,6 +19,7 @@ import { CardIcon, HeartIcon, PokeballIcon } from "./icons.jsx";
 import { OFF_WHITE } from "../lib/colors.js";
 import { productMediaSurface } from "../lib/surfaces.js";
 import { getCountdownParts } from "../lib/preorder.js";
+import { isComingSoonProduct } from "../lib/products.js";
 import { maxStorefrontQuantity } from "../lib/quantityLimits.js";
 
 const stockDot = keyframes`
@@ -70,10 +71,13 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
   const effectiveStock = isPreorder ? product.stock : availableStock(product.id, product.stock);
   const soldOut = !isPreorder && effectiveStock <= 0;
   const preorderClosed = isPreorder && getCountdownParts(product.preorderEndsAt)?.expired;
+  const comingSoon = isComingSoonProduct(product);
+  const purchaseBlocked = soldOut || preorderClosed || comingSoon;
   const maxQty = maxStorefrontQuantity(product, isPreorder ? undefined : effectiveStock);
 
   let actionLabel = "Add to cart";
   if (isPreorder) actionLabel = "Pre-order";
+  else if (comingSoon) actionLabel = "Coming soon";
   else if (soldOut) actionLabel = "Out of stock";
 
   useEffect(() => {
@@ -83,13 +87,13 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
   useEffect(() => () => clearTimeout(resetTimer.current), []);
 
   useEffect(() => {
-    if (!cartItem || soldOut || maxQty <= 0) return;
+    if (!cartItem || purchaseBlocked || maxQty <= 0) return;
     if (cartItem.quantity > maxQty) {
       setQuantity(product.id, maxQty, { maxQuantity: maxQty });
     } else if (cartItem.maxQuantity !== maxQty) {
       setQuantity(product.id, cartItem.quantity, { maxQuantity: maxQty });
     }
-  }, [cartItem, maxQty, product.id, setQuantity, soldOut]);
+  }, [cartItem, maxQty, product.id, setQuantity, purchaseBlocked]);
 
   function handleWishlist(event) {
     event.preventDefault();
@@ -110,7 +114,7 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
 
   function handleAction(event) {
     event.stopPropagation();
-    if (soldOut || preorderClosed) return;
+    if (purchaseBlocked) return;
     if (isPreorder) {
       setTermsOpen(true);
       return;
@@ -129,15 +133,17 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
 
   let buttonLabel = actionLabel;
   if (added) buttonLabel = "Added ✓";
-  if (preorderClosed) buttonLabel = "Closed";
+  else if (comingSoon) buttonLabel = "Coming soon";
+  else if (preorderClosed) buttonLabel = "Closed";
 
   let overlayLabel = null;
-  if (preorderClosed) overlayLabel = "Closed";
+  if (comingSoon) overlayLabel = "Coming Soon";
+  else if (preorderClosed) overlayLabel = "Closed";
   else if (soldOut) overlayLabel = "Out of Stock";
 
   return (
     <Box sx={{ ...panelSx, height: "100%", display: "flex", flexDirection: "column", overflow: "hidden", transition: "transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease", "&:hover": { transform: { md: "translateY(-6px)" }, borderColor: alpha(hoverAccent, 0.55) } }}>
-      <Box sx={{ position: "relative", ...productMediaSurface(isDarkMode), aspectRatio: "4 / 3" }}>
+      <Box sx={{ position: "relative", overflow: "hidden", ...productMediaSurface(isDarkMode), aspectRatio: "4 / 3" }}>
         <Box
           component={RouterLink}
           to={`/shop/${product.id}`}
@@ -159,7 +165,9 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
           <Chip label={product.tag} size="small" sx={{ position: "absolute", top: 10, left: 10, bgcolor: "rgba(0,0,0,0.5)", color: OFF_WHITE.textBright, fontFamily: MONO_FONT, fontSize: "0.6rem", letterSpacing: 1 }} />
           {overlayLabel ? (
             <Box sx={{ position: "absolute", inset: 0, bgcolor: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2 }}>
-              <Typography sx={{ color: OFF_WHITE.textBright, fontFamily: MONO_FONT, fontWeight: 700, letterSpacing: 1 }}>{overlayLabel.toUpperCase()}</Typography>
+              <Typography sx={{ color: OFF_WHITE.textBright, fontFamily: MONO_FONT, fontWeight: 700, letterSpacing: 1 }}>
+                {overlayLabel.toUpperCase()}
+              </Typography>
             </Box>
           ) : null}
         </Box>
@@ -193,13 +201,16 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
         <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", color: accent, letterSpacing: 1, fontWeight: 700 }}>{product.line?.toUpperCase()}</Typography>
         <Typography component={RouterLink} to={`/shop/${product.id}`} sx={{ fontWeight: 700, lineHeight: 1.25, flexGrow: 1, fontSize: "0.95rem", color: "inherit", textDecoration: "none", "&:hover": { color: "primary.main" } }}>{product.name}</Typography>
         <ProductRating product={product} />
-        {isPreorder && product.preorderEndsAt ? <PreorderCountdown endsAt={product.preorderEndsAt} compact wrapLabel={false} /> : null}
+        {comingSoon ? <ComingSoonStatus compact /> : null}
+        {isPreorder && !comingSoon && product.preorderEndsAt ? <PreorderCountdown endsAt={product.preorderEndsAt} compact wrapLabel={false} /> : null}
         {isPreorder ? (
           <PreorderPricing product={product} compact />
         ) : (
           <Stack direction="row" alignItems="center" justifyContent="space-between">
             <Typography sx={{ fontWeight: 800, fontSize: "1.15rem", color: "primary.main" }}>{PESO.format(product.price)}</Typography>
-            {soldOut ? (
+            {comingSoon ? (
+              <Typography sx={{ fontSize: "0.7rem", color: "warning.main", fontWeight: 700, fontFamily: MONO_FONT }}>Coming Soon</Typography>
+            ) : soldOut ? (
               <Typography sx={{ fontSize: "0.7rem", color: "error.main", fontWeight: 700, fontFamily: MONO_FONT }}>Out of Stock</Typography>
             ) : (
               <Stack direction="row" alignItems="center" spacing={0.75}>
@@ -210,7 +221,7 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
           </Stack>
         )}
         <Stack direction="row" spacing={1} alignItems="center">
-          {inCart && !soldOut && !preorderClosed ? (
+          {inCart && !purchaseBlocked ? (
             <>
               <Box sx={{ flex: 1, minWidth: 0, mt: 0.5 }}>
                 <QtyStepper
@@ -254,9 +265,9 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
             </>
           ) : (
             <Button
-              variant={soldOut || preorderClosed ? "outlined" : added ? "outlined" : "contained"}
+              variant={purchaseBlocked ? "outlined" : added ? "outlined" : "contained"}
               color={added ? "success" : "primary"}
-              disabled={soldOut || preorderClosed || maxQty < 1}
+              disabled={purchaseBlocked || maxQty < 1}
               onClick={handleAction}
               sx={{
                 flex: 1,

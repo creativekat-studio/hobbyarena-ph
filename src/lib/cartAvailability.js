@@ -1,4 +1,5 @@
 import { getCountdownParts, isPreorderProduct } from "./preorder.js";
+import { isComingSoonProduct } from "./products.js";
 
 /**
  * Why a live catalog product cannot be purchased right now.
@@ -9,6 +10,8 @@ export function productUnavailableReason(product) {
   if (!product) return "is no longer available";
   if (product.deletedAt || product.deleted) return "is no longer available";
   if (!product.published) return "is no longer available";
+
+  if (isComingSoonProduct(product)) return "is coming soon";
 
   if (isPreorderProduct(product)) {
     if (getCountdownParts(product.preorderEndsAt)?.expired) {

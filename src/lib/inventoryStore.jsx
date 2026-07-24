@@ -54,6 +54,7 @@ function rowToProduct(row) {
     category: row.category ?? "tcg",
     featured: Boolean(row.featured),
     published: Boolean(row.published),
+    comingSoon: Boolean(row.comingSoon),
     descriptionSections: row.descriptionSections ?? [
       {
         title: "Product details",
@@ -81,6 +82,7 @@ function loadInventory() {
       reorderAt: 3,
       published: Boolean(row.published),
       featured: Boolean(row.featured),
+      comingSoon: Boolean(row.comingSoon),
       deletedAt: row.deletedAt ?? null,
       image: row.image ?? null,
       ...row,
@@ -227,13 +229,25 @@ export function InventoryProvider({ children }) {
     });
   }, [persistRow]);
 
+  const toggleComingSoon = useCallback((id) => {
+    setItems((prev) => {
+      const current = prev.find((row) => row.id === id);
+      if (!current || isDeletedRow(current)) return prev;
+      const next = prev.map((row) => (
+        row.id === id ? { ...row, comingSoon: !row.comingSoon } : row
+      ));
+      persistRow(next.find((row) => row.id === id));
+      return next;
+    });
+  }, [persistRow]);
+
   const softDeleteMany = useCallback((ids) => {
     const idSet = new Set(ids);
     const deletedAt = new Date().toISOString();
     setItems((prev) => {
       const next = prev.map((row) => (
         idSet.has(row.id)
-          ? { ...row, deletedAt, published: false, featured: false }
+          ? { ...row, deletedAt, published: false, featured: false, comingSoon: false }
           : row
       ));
       persistRows(next.filter((row) => idSet.has(row.id)));
@@ -334,6 +348,7 @@ export function InventoryProvider({ children }) {
         reorderAt,
         published: Boolean(input.published),
         featured,
+        comingSoon: Boolean(input.comingSoon),
         deletedAt: null,
         image: input.image?.trim() || null,
         custom: true,
@@ -397,6 +412,7 @@ export function InventoryProvider({ children }) {
           reorderAt,
           published: typeof input.published === "boolean" ? input.published : row.published,
           featured,
+          comingSoon: typeof input.comingSoon === "boolean" ? input.comingSoon : Boolean(row.comingSoon),
           image: input.image?.trim() || null,
           rating: Math.min(5, Math.max(0, Number(input.rating) ?? row.rating ?? 0)),
           reviews: Math.max(0, Number(input.reviews) ?? row.reviews ?? 0),
@@ -520,6 +536,7 @@ export function InventoryProvider({ children }) {
       setFeatured,
       setFeaturedMany,
       toggleFeatured,
+      toggleComingSoon,
       softDeleteMany,
       restoreMany,
       setStock,
@@ -549,6 +566,7 @@ export function InventoryProvider({ children }) {
       setFeatured,
       setFeaturedMany,
       toggleFeatured,
+      toggleComingSoon,
       softDeleteMany,
       restoreMany,
       setStock,

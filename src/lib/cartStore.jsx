@@ -51,6 +51,7 @@ function loadCart() {
 }
 
 function canAddProduct(product) {
+  if (product?.comingSoon) return false;
   const isPreorder = isPreorderProduct(product);
   if (isPreorder && getCountdownParts(product.preorderEndsAt)?.expired) return false;
   const soldOut = !isPreorder && product.stock <= 0;

@@ -21,12 +21,12 @@ import { Link as RouterLink, Navigate, useNavigate, useOutletContext, useParams 
 import { MONO_FONT, getBrand } from "../theme.js";
 import { OFF_WHITE } from "../lib/colors.js";
 import { productMediaSurface } from "../lib/surfaces.js";
-import { productCategoryLabel, productCategoryPath } from "../lib/products.js";
+import { isComingSoonProduct, productCategoryLabel, productCategoryPath } from "../lib/products.js";
 import { useInventory } from "../lib/inventoryStore.jsx";
 import { useStockHolds } from "../lib/stockHoldStore.jsx";
 import { PESO } from "../components/ProductCard.jsx";
 import ProductDescription from "../components/ProductDescription.jsx";
-import PreorderCountdown from "../components/PreorderCountdown.jsx";
+import PreorderCountdown, { ComingSoonBanner, ComingSoonStatus } from "../components/PreorderCountdown.jsx";
 import PreorderPricing from "../components/PreorderPricing.jsx";
 import ProductTermsSection from "../components/ProductTermsSection.jsx";
 import QtyStepper from "../components/QtyStepper.jsx";
@@ -49,7 +49,7 @@ export const PESO_DETAIL = new Intl.NumberFormat("en-PH", {
   maximumFractionDigits: 2,
 });
 
-function ProductImage({ product, isDarkMode }) {
+function ProductImage({ product, isDarkMode, comingSoon = false }) {
   const isPokemon = product.line?.startsWith("Pokémon");
   const Glyph = isPokemon ? PokeballIcon : CardIcon;
 
@@ -57,6 +57,8 @@ function ProductImage({ product, isDarkMode }) {
     <Box
       sx={{
         ...productMediaSurface(isDarkMode),
+        position: "relative",
+        overflow: "hidden",
         p: { xs: 2, md: 3 },
         display: "flex",
         alignItems: "center",
@@ -69,6 +71,7 @@ function ProductImage({ product, isDarkMode }) {
       ) : (
         <Glyph sx={{ fontSize: 120, color: OFF_WHITE.glyph, position: "relative", zIndex: 1 }} />
       )}
+      {comingSoon ? <ComingSoonBanner size="detail" /> : null}
     </Box>
   );
 }
@@ -99,6 +102,8 @@ export default function ProductPage() {
   const effectiveStock = product && !isPreorder ? availableStock(product.id, product.stock) : (product?.stock ?? 0);
   const soldOut = product && !isPreorder && effectiveStock <= 0;
   const preorderClosed = isPreorder && getCountdownParts(product?.preorderEndsAt)?.expired;
+  const comingSoon = isComingSoonProduct(product);
+  const purchaseBlocked = Boolean(soldOut || preorderClosed || comingSoon);
   const maxQty = maxStorefrontQuantity(product, isPreorder ? undefined : effectiveStock);
 
   useEffect(() => {
@@ -114,13 +119,13 @@ export default function ProductPage() {
   }, [productId]);
 
   useEffect(() => {
-    if (!product || !cartItem || soldOut || maxQty <= 0) return;
+    if (!product || !cartItem || purchaseBlocked || maxQty <= 0) return;
     if (cartItem.quantity > maxQty) {
       setQuantity(product.id, maxQty, { maxQuantity: maxQty });
     } else if (cartItem.maxQuantity !== maxQty) {
       setQuantity(product.id, cartItem.quantity, { maxQuantity: maxQty });
     }
-  }, [cartItem, maxQty, product, setQuantity, soldOut]);
+  }, [cartItem, maxQty, product, setQuantity, purchaseBlocked]);
 
   if (!product || !isPublished(productId)) {
     return <Navigate to="/products" replace />;
@@ -128,11 +133,12 @@ export default function ProductPage() {
 
   let actionLabel = "Add to cart";
   if (isPreorder) actionLabel = "Pre-order";
+  else if (comingSoon) actionLabel = "Coming soon";
   else if (soldOut) actionLabel = "Out of stock";
 
   function addToCart(qty = 1) {
     const nextQty = Math.min(Math.max(Number(qty) || 1, 1), Math.max(maxQty, 1));
-    if (soldOut || maxQty < 1) return;
+    if (purchaseBlocked || maxQty < 1) return;
     if (isPreorder && !termsAccepted) {
       setTermsAlert(true);
       return;
@@ -146,7 +152,7 @@ export default function ProductPage() {
   }
 
   function handleAdd() {
-    if (soldOut || preorderClosed) return;
+    if (purchaseBlocked) return;
     addToCart(1);
   }
 
@@ -233,7 +239,7 @@ export default function ProductPage() {
                 flexDirection: "column",
               }}
             >
-              <ProductImage product={product} isDarkMode={isDarkMode} />
+              <ProductImage product={product} isDarkMode={isDarkMode} comingSoon={comingSoon} />
               <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
                 <ProductDescription sections={product.descriptionSections} surfaceBorderColor={surfaceBorderColor} embedded />
               </Box>
@@ -246,14 +252,15 @@ export default function ProductPage() {
               <Typography variant="h4" sx={{ fontWeight: 800, lineHeight: 1.15, fontSize: { xs: "1.45rem", md: "1.85rem" } }}>{product.name}</Typography>
               <ProductRating product={product} size="small" />
 
-              {isPreorder && product.preorderEndsAt ? <PreorderCountdown endsAt={product.preorderEndsAt} wrapLabel={false} tone="dark" /> : null}
+              {comingSoon ? <ComingSoonStatus /> : null}
+              {isPreorder && !comingSoon && product.preorderEndsAt ? <PreorderCountdown endsAt={product.preorderEndsAt} wrapLabel={false} tone="dark" /> : null}
 
               {isPreorder ? (
                 <PreorderPricing product={product} pesoFormatter={PESO_DETAIL} />
               ) : (
                 <>
                   <Typography sx={{ fontWeight: 800, fontSize: { xs: "1.75rem", md: "2rem" }, color: "primary.main" }}>{PESO_DETAIL.format(product.price)}</Typography>
-                  {soldOut ? (
+                  {comingSoon ? null : soldOut ? (
                     <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.78rem", fontWeight: 700, color: "error.main", letterSpacing: 0.5 }}>
                       OUT OF STOCK
                     </Typography>
@@ -277,9 +284,19 @@ export default function ProductPage() {
                 </>
               )}
 
-              {isPreorder ? (
-                <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", fontWeight: 700, color: preorderClosed ? "error.main" : "warning.main", letterSpacing: 0.5 }}>
-                  {preorderClosed ? "CLOSED" : `${getDepositPercent(product)}% deposit due at checkout — balance before release`}
+              {isPreorder && !comingSoon ? (
+                <Typography
+                  sx={{
+                    fontFamily: MONO_FONT,
+                    fontSize: "0.72rem",
+                    fontWeight: 700,
+                    color: preorderClosed ? "error.main" : "warning.main",
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  {preorderClosed
+                    ? "CLOSED"
+                    : `${getDepositPercent(product)}% deposit due at checkout — balance before release`}
                 </Typography>
               ) : null}
 
@@ -298,7 +315,7 @@ export default function ProductPage() {
               {termsAlert ? <Alert severity="warning">Please read and accept the pre-order terms before continuing.</Alert> : null}
 
               <Stack spacing={1.5} sx={{ pt: 0.5 }}>
-                {inCart && !soldOut && !preorderClosed ? (
+                {inCart && !purchaseBlocked ? (
                   <>
                     <Stack direction="row" spacing={1.5} alignItems="center">
                       <Box sx={{ width: { xs: 140, sm: 160 }, flexShrink: 0 }}>
@@ -341,14 +358,14 @@ export default function ProductPage() {
                 ) : (
                   <Stack direction="row" spacing={1.5} alignItems="center">
                     <Button
-                      variant={soldOut ? "outlined" : added ? "outlined" : "contained"}
+                      variant={purchaseBlocked ? "outlined" : added ? "outlined" : "contained"}
                       color={added ? "success" : "primary"}
-                      disabled={soldOut || (preorderClosed && isPreorder) || maxQty < 1}
+                      disabled={purchaseBlocked || maxQty < 1}
                       onClick={handleAdd}
                       size="large"
                       sx={{ flex: 1, py: 1.35, fontFamily: MONO_FONT, letterSpacing: 0.8, textTransform: "uppercase" }}
                     >
-                      {preorderClosed && isPreorder ? "Closed" : buttonLabel}
+                      {comingSoon ? "Coming soon" : preorderClosed && isPreorder ? "Closed" : buttonLabel}
                     </Button>
                     {isCustomer && canWishlist ? (
                       <Tooltip title={wishlisted ? "Remove from wishlist" : "Add to wishlist"}>

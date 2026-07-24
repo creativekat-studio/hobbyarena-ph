@@ -998,7 +998,7 @@ export default function CheckoutPage() {
   useEffect(() => {
     setPaymentError((prev) => {
       if (cartAvailabilityError) return cartAvailabilityError;
-      if (prev && /no longer available|pre-order window has closed|out of stock|only has \d+ left/i.test(prev)) {
+      if (prev && /no longer available|pre-order window has closed|coming soon|out of stock|only has \d+ left/i.test(prev)) {
         return "";
       }
       return prev;

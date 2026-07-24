@@ -59,6 +59,7 @@ const EMPTY = {
   image: "",
   published: false,
   featured: false,
+  comingSoon: false,
   rating: "",
   reviews: "0",
   preorderEndsAt: "",
@@ -143,6 +144,7 @@ function formFromProduct(product) {
     image: product.image ?? "",
     published: Boolean(product.published),
     featured: Boolean(product.featured),
+    comingSoon: Boolean(product.comingSoon),
     rating: product.rating != null ? String(product.rating) : "",
     reviews: String(product.reviews ?? 0),
     preorderEndsAt: toDatetimeLocalValue(product.preorderEndsAt),
@@ -338,6 +340,7 @@ export default function AddProductDialog({
       image: form.image,
       published: form.published,
       featured: form.featured,
+      comingSoon: Boolean(form.comingSoon),
       rating: form.rating === "" ? 0 : Number(form.rating),
       reviews: Number(form.reviews),
       descriptionSections: serializeDescriptionSections(form.descriptionSections),
@@ -396,7 +399,100 @@ export default function AddProductDialog({
       }}
     >
       <DialogTitle sx={{ fontWeight: 800, pb: isEdit ? 1 : 2 }}>
-        {isEdit ? "Edit product" : copyMode ? "Add product from copy" : "Add product"}
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <Typography component="span" sx={{ fontWeight: 800, fontSize: "inherit", flex: 1, minWidth: 0 }}>
+            {isEdit ? "Edit product" : copyMode ? "Add product from copy" : "Add product"}
+          </Typography>
+          {tab === 0 ? (
+            <>
+              <Tooltip title="Visibility">
+                <IconButton
+                  size="small"
+                  aria-label="Product visibility options"
+                  aria-haspopup="menu"
+                  aria-expanded={Boolean(visibilityMenuAnchor)}
+                  onClick={(event) => setVisibilityMenuAnchor(event.currentTarget)}
+                  sx={{
+                    border: "1px solid",
+                    borderColor: surfaceBorderColor,
+                    borderRadius: 1,
+                    flexShrink: 0,
+                  }}
+                >
+                  <MenuIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Tooltip>
+              <Menu
+                anchorEl={visibilityMenuAnchor}
+                open={Boolean(visibilityMenuAnchor)}
+                onClose={() => setVisibilityMenuAnchor(null)}
+                anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                transformOrigin={{ vertical: "top", horizontal: "right" }}
+                slotProps={{
+                  paper: {
+                    sx: {
+                      minWidth: 280,
+                      border: "1px solid",
+                      borderColor: surfaceBorderColor,
+                    },
+                  },
+                }}
+              >
+                <Box sx={{ px: 2, py: 1.5 }} onClick={(event) => event.stopPropagation()}>
+                  <Stack spacing={1.25}>
+                    <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 800, letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>
+                      Visibility
+                    </Typography>
+                    <FormControlLabel
+                      control={(
+                        <Switch
+                          checked={form.published}
+                          onChange={(e) => update("published", e.target.checked)}
+                          color="primary"
+                        />
+                      )}
+                      label={form.published ? "Published on storefront" : "Draft — hidden from shop"}
+                      sx={{ mx: 0, alignItems: "center" }}
+                    />
+                    <FormControlLabel
+                      control={(
+                        <Switch
+                          checked={form.comingSoon}
+                          onChange={(e) => update("comingSoon", e.target.checked)}
+                          color="warning"
+                        />
+                      )}
+                      label={form.comingSoon
+                        ? "Coming soon — visible, not for sale"
+                        : "Coming soon"}
+                      sx={{ mx: 0, alignItems: "center" }}
+                    />
+                    <FormControlLabel
+                      control={(
+                        <Switch
+                          checked={form.featured && !outOfStock}
+                          onChange={(e) => update("featured", e.target.checked)}
+                          color="secondary"
+                          disabled={featuredDisabled}
+                        />
+                      )}
+                      label={
+                        outOfStock
+                          ? "Out of stock — can’t feature"
+                          : featuredAtLimit
+                            ? `${featuredKindLabel} featured full (${featuredCount}/${maxFeatured})`
+                            : form.featured
+                              ? `Featured on homepage (${featuredCount}/${maxFeatured} ${featuredKindLabel})`
+                              : `Feature on homepage (${featuredCount}/${maxFeatured} ${featuredKindLabel})`
+                      }
+                      sx={{ mx: 0, alignItems: "center" }}
+                    />
+                  </Stack>
+                </Box>
+              </Menu>
+            </>
+          ) : null}
+        </Stack>
         {isEdit ? (
           <Tabs
             value={tab}
@@ -756,81 +852,6 @@ export default function AddProductDialog({
               </IconButton>
             </span>
           </Tooltip>
-        ) : null}
-        {tab === 0 ? (
-          <>
-            <Tooltip title="Visibility">
-              <IconButton
-                size="small"
-                aria-label="Product visibility options"
-                aria-haspopup="menu"
-                aria-expanded={Boolean(visibilityMenuAnchor)}
-                onClick={(event) => setVisibilityMenuAnchor(event.currentTarget)}
-                sx={{
-                  border: "1px solid",
-                  borderColor: surfaceBorderColor,
-                  borderRadius: 1,
-                }}
-              >
-                <MenuIcon sx={{ fontSize: 18 }} />
-              </IconButton>
-            </Tooltip>
-            <Menu
-              anchorEl={visibilityMenuAnchor}
-              open={Boolean(visibilityMenuAnchor)}
-              onClose={() => setVisibilityMenuAnchor(null)}
-              anchorOrigin={{ vertical: "top", horizontal: "left" }}
-              transformOrigin={{ vertical: "bottom", horizontal: "left" }}
-              slotProps={{
-                paper: {
-                  sx: {
-                    minWidth: 280,
-                    border: "1px solid",
-                    borderColor: surfaceBorderColor,
-                  },
-                },
-              }}
-            >
-              <Box sx={{ px: 2, py: 1.5 }} onClick={(event) => event.stopPropagation()}>
-                <Stack spacing={1.25}>
-                  <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 800, letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>
-                    Visibility
-                  </Typography>
-                  <FormControlLabel
-                    control={(
-                      <Switch
-                        checked={form.published}
-                        onChange={(e) => update("published", e.target.checked)}
-                        color="primary"
-                      />
-                    )}
-                    label={form.published ? "Published on storefront" : "Draft — hidden from shop"}
-                    sx={{ mx: 0, alignItems: "center" }}
-                  />
-                  <FormControlLabel
-                    control={(
-                      <Switch
-                        checked={form.featured && !outOfStock}
-                        onChange={(e) => update("featured", e.target.checked)}
-                        color="secondary"
-                        disabled={featuredDisabled}
-                      />
-                    )}
-                    label={
-                      outOfStock
-                        ? "Out of stock — can’t feature"
-                        : featuredAtLimit
-                          ? `${featuredKindLabel} featured full (${featuredCount}/${maxFeatured})`
-                          : form.featured
-                            ? `Featured on homepage (${featuredCount}/${maxFeatured} ${featuredKindLabel})`
-                            : `Feature on homepage (${featuredCount}/${maxFeatured} ${featuredKindLabel})`
-                    }
-                    sx={{ mx: 0, alignItems: "center" }}
-                  />
-                </Stack>
-              </Box>
-            </Menu>
-          </>
         ) : null}
         <Box sx={{ flex: 1 }} />
         <Button onClick={handleClose} color="inherit">Cancel</Button>

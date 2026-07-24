@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Box, Chip, Stack, Typography, useMediaQuery } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { MONO_FONT } from "../theme.js";
+import { OFF_WHITE } from "../lib/colors.js";
 import { formatCountdownUnit, getCountdownParts } from "../lib/preorder.js";
 import { usePreorderDisplay } from "../lib/preorderDisplayLayout.jsx";
 
@@ -198,6 +199,59 @@ function ExpiredCountdown({ compact, accent, panelSx, dark }) {
     >
       <Typography sx={{ fontFamily: MONO_FONT, fontSize: compact ? "0.68rem" : "0.75rem", fontWeight: 800, color: accent, letterSpacing: 0.6 }}>
         CLOSED
+      </Typography>
+    </Box>
+  );
+}
+
+/** Yellow-border status bar (same chrome as Closed’s red outline). */
+export function ComingSoonStatus({ compact = false, panelSx, tone = "light" }) {
+  const theme = useTheme();
+  const accent = theme.palette.warning.main;
+  const dark = tone === "dark";
+  return (
+    <Box
+      sx={{
+        ...panelStyles(accent, compact, panelSx, dark),
+        justifyContent: "center",
+      }}
+    >
+      <Typography
+        sx={{
+          fontFamily: MONO_FONT,
+          fontSize: compact ? "0.68rem" : "0.75rem",
+          fontWeight: 800,
+          color: accent,
+          letterSpacing: 0.6,
+        }}
+      >
+        COMING SOON
+      </Typography>
+    </Box>
+  );
+}
+
+/**
+ * Thumbnail overlay — same as Closed: dark veil + plain white label.
+ * @param {{ size?: "card" | "hero" | "detail" }} [_props]
+ */
+export function ComingSoonBanner(_props = {}) {
+  return (
+    <Box
+      aria-hidden
+      sx={{
+        position: "absolute",
+        inset: 0,
+        zIndex: 2,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        bgcolor: "rgba(0,0,0,0.5)",
+        pointerEvents: "none",
+      }}
+    >
+      <Typography sx={{ color: OFF_WHITE.textBright, fontFamily: MONO_FONT, fontWeight: 700, letterSpacing: 1 }}>
+        COMING SOON
       </Typography>
     </Box>
   );

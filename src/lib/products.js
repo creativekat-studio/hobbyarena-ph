@@ -2,9 +2,18 @@
 
 import { getCountdownParts } from "./preorder.js";
 
-/** True when the product cannot be purchased (out of stock or closed pre-order). */
+/**
+ * Teaser flag: visible on shop, not purchasable.
+ * Takes priority over pre-order countdown / Closed.
+ */
+export function isComingSoonProduct(product) {
+  return Boolean(product?.comingSoon);
+}
+
+/** True when the product cannot be purchased (coming soon, closed, or out of stock). */
 export function isUnavailableProduct(product) {
   if (!product) return true;
+  if (isComingSoonProduct(product)) return true;
   if (product.tag === "Pre-order") {
     return Boolean(getCountdownParts(product.preorderEndsAt)?.expired);
   }

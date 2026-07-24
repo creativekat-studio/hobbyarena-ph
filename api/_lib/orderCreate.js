@@ -144,6 +144,12 @@ export async function buildPricedLines(db, lines, options = {}) {
           { status: 400 },
         );
       }
+      if (product.comingSoon) {
+        throw Object.assign(
+          new Error(`${label} is coming soon. Remove it from your cart to continue.`),
+          { status: 400 },
+        );
+      }
       if (isPreorder && getCountdownParts(product.preorderEndsAt)?.expired) {
         throw Object.assign(
           new Error(`${label} pre-order window has closed. Remove it from your cart to continue.`),

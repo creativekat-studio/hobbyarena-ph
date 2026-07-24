@@ -24,7 +24,7 @@ import { useCms } from "../lib/cmsContent.jsx";
 import { useInquiries } from "../lib/inquiriesStore.jsx";
 import { sendNewsletterSubscribe } from "../lib/emailService.js";
 import ProductCard, { PESO } from "../components/ProductCard.jsx";
-import PreorderCountdown from "../components/PreorderCountdown.jsx";
+import PreorderCountdown, { ComingSoonBanner } from "../components/PreorderCountdown.jsx";
 import PreorderPricing from "../components/PreorderPricing.jsx";
 import { useInventory } from "../lib/inventoryStore.jsx";
 import BannerMarquee from "../components/BannerMarquee.jsx";
@@ -490,7 +490,11 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
           <Stack direction="row" spacing={1} alignItems="center">
             <Box sx={{ width: 9, height: 9, borderRadius: "50%", bgcolor: brand.liveDot, animation: `${liveDot} 1.6s ease-in-out infinite` }} />
             <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 700, fontSize: "0.7rem", letterSpacing: 1.5 }}>
-              {isPreorder ? "PRE-ORDER ▸ LIVE" : "DROP ▸ LIVE"}
+              {product.comingSoon
+                ? "COMING SOON"
+                : isPreorder
+                  ? "PRE-ORDER ▸ LIVE"
+                  : "DROP ▸ LIVE"}
             </Typography>
           </Stack>
           <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.7rem", color: "text.secondary" }}>{drop.tier || "ULTRA-PREMIUM"}</Typography>
@@ -583,7 +587,9 @@ function HeroShowcase({ panelSx, isDarkMode, featureDrops }) {
               </IconButton>
             </>
           ) : null}
-          {isPreorder && product.preorderEndsAt ? (
+          {product.comingSoon ? (
+            <ComingSoonBanner size="hero" />
+          ) : isPreorder && product.preorderEndsAt ? (
             <Box
               sx={{
                 position: "absolute",

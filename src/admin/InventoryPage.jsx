@@ -86,6 +86,7 @@ function isArchivedRow(row) {
 }
 
 function stockStatus(row) {
+  if (row.comingSoon) return { label: "Coming soon", color: "warning" };
   if (row.stock <= 0) return { label: "Out of stock", color: "error" };
   if (row.stock <= row.reorderAt) return { label: "Low stock", color: "warning" };
   return { label: "In stock", color: "success" };
@@ -107,6 +108,7 @@ const INVENTORY_SORT_ACCESSORS = {
   value: (row) => onHandStockValue(row) ?? -1,
   live: (row) => Boolean(row.published),
   featured: (row) => Boolean(row.featured),
+  comingSoon: (row) => Boolean(row.comingSoon),
   status: (row) => (isArchivedRow(row) ? "Archived" : stockStatus(row).label),
 };
 
@@ -182,12 +184,38 @@ function FeaturedCheckbox({ row, featuredCountSealed, featuredCountPreorder, tog
   );
 }
 
+function ComingSoonCheckbox({ row, toggleComingSoon }) {
+  const archived = isArchivedRow(row);
+  const title = archived
+    ? "Archived products can’t be marked coming soon"
+    : row.comingSoon
+      ? "Remove coming soon — allow purchase / countdown"
+      : "Mark coming soon — visible, not for sale";
+
+  return (
+    <Tooltip title={title}>
+      <span>
+        <Checkbox
+          checked={Boolean(row.comingSoon)}
+          disabled={archived}
+          onClick={(event) => event.stopPropagation()}
+          onChange={() => toggleComingSoon(row.id)}
+          size="small"
+          color="warning"
+          inputProps={{ "aria-label": title }}
+        />
+      </span>
+    </Tooltip>
+  );
+}
+
 function InventoryTableView({
   rows,
   sort,
   onSort,
   togglePublished,
   toggleFeatured,
+  toggleComingSoon,
   featuredCountSealed,
   featuredCountPreorder,
   isDarkMode,
@@ -275,6 +303,37 @@ function InventoryTableView({
                 </Box>
               </TableSortLabel>
             </TableCell>
+            <TableCell
+              align="center"
+              sortDirection={sort.key === "comingSoon" ? sort.dir : false}
+            >
+              <TableSortLabel
+                active={sort.key === "comingSoon"}
+                direction={sort.key === "comingSoon" ? sort.dir : "asc"}
+                onClick={() => onSort("comingSoon")}
+                sx={{ ...ADMIN_TABLE_SORT_LABEL_SX, alignItems: "center" }}
+              >
+                <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                  <Box component="span">Coming soon</Box>
+                  <Tooltip title="Visible on the shop, but not for sale. Overrides pre-order countdown until turned off.">
+                    <Box
+                      component="span"
+                      onClick={(event) => event.stopPropagation()}
+                      sx={{
+                        display: "inline-flex",
+                        color: "text.secondary",
+                        cursor: "help",
+                        lineHeight: 0,
+                        "&:hover": { color: "text.primary" },
+                      }}
+                      aria-label="Coming soon: visible on the shop, but not for sale"
+                    >
+                      <InfoIcon sx={{ fontSize: 14 }} />
+                    </Box>
+                  </Tooltip>
+                </Box>
+              </TableSortLabel>
+            </TableCell>
             <SortHeader id="status" label="Status" align="right" />
             <AdminTableHeaderCell sx={{ width: 96 }} />
           </TableRow>
@@ -332,6 +391,9 @@ function InventoryTableView({
                     toggleFeatured={toggleFeatured}
                   />
                 </TableCell>
+                <TableCell align="center">
+                  <ComingSoonCheckbox row={row} toggleComingSoon={toggleComingSoon} />
+                </TableCell>
                 <TableCell align="right">
                   {archived ? (
                     <Chip label="Archived" size="small" color="error" variant="outlined" />
@@ -368,7 +430,7 @@ function InventoryTableView({
           })}
           {rows.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={13} sx={{ textAlign: "center", py: 5, color: "text.secondary" }}>
+              <TableCell colSpan={14} sx={{ textAlign: "center", py: 5, color: "text.secondary" }}>
                 No products match your filters.
               </TableCell>
             </TableRow>
@@ -378,7 +440,7 @@ function InventoryTableView({
               hasMore={hasMore}
               visibleCount={visibleCount}
               totalCount={totalCount}
-              colSpan={13}
+              colSpan={14}
             />
           )}
         </TableBody>
@@ -393,6 +455,7 @@ function InventoryCardView({
   panelSx,
   togglePublished,
   toggleFeatured,
+  toggleComingSoon,
   featuredCountSealed,
   featuredCountPreorder,
   isDarkMode,
@@ -528,6 +591,7 @@ function InventoryCardView({
                 sx={{ position: "absolute", bottom: 8, right: 8 }}
                 onClick={(event) => event.stopPropagation()}
               >
+                <ComingSoonCheckbox row={row} toggleComingSoon={toggleComingSoon} />
                 <FeaturedCheckbox
                   row={row}
                   featuredCountSealed={featuredCountSealed}
@@ -560,6 +624,7 @@ export default function InventoryPage() {
     togglePublished,
     setPublishedMany,
     toggleFeatured,
+    toggleComingSoon,
     featuredCountSealed,
     featuredCountPreorder,
     softDeleteMany,
@@ -1041,6 +1106,7 @@ export default function InventoryPage() {
             onSort={handleSort}
             togglePublished={togglePublished}
             toggleFeatured={toggleFeatured}
+            toggleComingSoon={toggleComingSoon}
             featuredCountSealed={featuredCountSealed}
             featuredCountPreorder={featuredCountPreorder}
             isDarkMode={isDarkMode}
@@ -1065,6 +1131,7 @@ export default function InventoryPage() {
               panelSx={panelSx}
               togglePublished={togglePublished}
               toggleFeatured={toggleFeatured}
+              toggleComingSoon={toggleComingSoon}
               featuredCountSealed={featuredCountSealed}
               featuredCountPreorder={featuredCountPreorder}
               isDarkMode={isDarkMode}
