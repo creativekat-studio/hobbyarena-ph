@@ -75,6 +75,7 @@ export function mapAuthError(error) {
     "auth/popup-blocked": "Your browser blocked the Google window. Try again — we’ll use a full-page sign-in.",
     "auth/cancelled-popup-request":
       "Google sign-in is already in progress. Finish or close the Google window, then try again.",
+    "auth/timeout": "Google sign-in timed out. Close any open Google windows and try again.",
     "auth/network-request-failed": "Network issue — check your connection and try again.",
     "auth/internal-error": "Something went wrong with sign-in. Please try again.",
     "auth/account-exists-with-different-credential": EMAIL_IN_USE_PASSWORD_FOR_GOOGLE,
@@ -500,48 +501,47 @@ export async function completeGoogleRedirectResult() {
   return finishGoogleCredential(result.user);
 }
 
+/** True while a Google popup sign-in is in flight — AuthProvider must not publish yet. */
+let googlePopupSignInPending = false;
+
+export function isGooglePopupSignInPending() {
+  return googlePopupSignInPending;
+}
+
 /**
- * Google sign-in via popup (Firebase-recommended for browsers that block
- * third-party storage). Same-origin authDomain + /__/auth proxy makes this
- * work on mobile Safari/Chrome. Redirect is only a last resort if the popup
- * is blocked — never on cancelled-popup-request, which leaves a stuck OAuth
- * window when a second popup/redirect starts while the first is still open.
- *
- * Optional `email` only speeds up a pre-check / login_hint. Conflict detection
- * always runs after Google returns an account (or Firebase reports a conflict).
+ * Google sign-in via popup. Session is not shown in the UI until the popup
+ * flow settles (promise resolves/rejects) — onAuthStateChanged can fire earlier
+ * while /__/auth/handler is still a blank window.
  */
 export async function firebaseSignInWithGoogle({ email } = {}) {
   const auth = getFirebaseAuth();
   if (!auth) throw new Error("Firebase Auth is not configured.");
 
   const emailHint = String(email || "").trim().toLowerCase();
-  // When the form already has an email, refuse Google before the popup if that
-  // address is password-only — avoids the blank/stuck handler and Auth overwrite.
   if (emailHint) {
     await assertEmailAllowsGoogleSignIn(emailHint);
-    // login_hint only — do not force select_account, or Google asks them to
-    // pick an account again after they already typed the email on our form.
     googleProvider.setCustomParameters({ login_hint: emailHint });
   } else {
     googleProvider.setCustomParameters({ prompt: "select_account" });
   }
 
-  // If a prior popup already signed us in with Google, reuse the session instead
-  // of opening another Google window that can spin forever.
-  const existing = auth.currentUser;
-  if (existing && !existing.isAnonymous) {
-    const providers = (existing.providerData || []).map((entry) => entry.providerId);
-    if (providers.includes("google.com")) {
-      return finishGoogleCredential(existing);
+  // Already signed in with Google from a prior completed attempt.
+  if (!googlePopupSignInPending) {
+    const existing = auth.currentUser;
+    if (existing && !existing.isAnonymous) {
+      const providers = (existing.providerData || []).map((entry) => entry.providerId);
+      if (providers.includes("google.com")) {
+        return finishGoogleCredential(existing);
+      }
     }
   }
 
+  googlePopupSignInPending = true;
   try {
-    const credential = await signInWithPopup(
-      auth,
-      googleProvider,
-      browserPopupRedirectResolver,
-    );
+    const credential = await Promise.race([
+      signInWithPopup(auth, googleProvider, browserPopupRedirectResolver),
+      rejectAfterGooglePopupTimeout(90_000),
+    ]);
     return finishGoogleCredential(credential.user);
   } catch (error) {
     const code = error?.code || "";
@@ -549,29 +549,38 @@ export async function firebaseSignInWithGoogle({ email } = {}) {
       error?.customData?.email || error?.email || emailHint || "",
     ).trim().toLowerCase();
 
-    // Password account already owns this Google email — tell the shopper immediately.
     if (code === "auth/account-exists-with-different-credential") {
       throw authError("auth/account-exists-with-different-credential", EMAIL_IN_USE_PASSWORD_FOR_GOOGLE);
     }
 
-    // Some browsers surface the conflict as a closed popup; recover via email on the error.
+    if (code === "auth/timeout") {
+      // Auth may have completed behind a stuck blank popup — do not leave a hidden session.
+      if (auth.currentUser) await signOut(auth);
+      throw error;
+    }
+
     if (code === "auth/popup-closed-by-user" && conflictEmail) {
       try {
         await assertEmailAllowsGoogleSignIn(conflictEmail);
       } catch (conflict) {
+        if (auth.currentUser) await signOut(auth);
         throw conflict;
       }
       throw error;
     }
 
-    if (code === "auth/popup-closed-by-user") throw error;
-
-    // Second click / overlapping popup — do NOT redirect. That was causing
-    // "I'm logged in but the Google popup is still loading."
-    if (code === "auth/cancelled-popup-request") {
+    if (code === "auth/popup-closed-by-user") {
+      // Closing the (possibly blank) popup counts as the popup finishing — then we may log in.
       if (auth.currentUser && !auth.currentUser.isAnonymous) {
-        return finishGoogleCredential(auth.currentUser);
+        const providers = (auth.currentUser.providerData || []).map((entry) => entry.providerId);
+        if (providers.includes("google.com")) {
+          return finishGoogleCredential(auth.currentUser);
+        }
       }
+      throw error;
+    }
+
+    if (code === "auth/cancelled-popup-request") {
       throw authError(
         "auth/cancelled-popup-request",
         "Google sign-in is already in progress. Finish or close the Google window, then try again.",
@@ -582,13 +591,34 @@ export async function firebaseSignInWithGoogle({ email } = {}) {
       if (typeof window !== "undefined") {
         window.sessionStorage.setItem("hobbyarena:googleRedirect", "1");
       }
-      // Works when authDomain is same-origin (Vercel proxies /__/auth).
       await signInWithRedirect(auth, googleProvider, browserPopupRedirectResolver);
       return { redirecting: true };
     }
 
+    if (auth.currentUser && code) {
+      // Failed after Auth wrote a session — clear so the UI does not look signed in later.
+      try {
+        await signOut(auth);
+      } catch {
+        // ignore
+      }
+    }
+
     throw error;
+  } finally {
+    googlePopupSignInPending = false;
   }
+}
+
+function rejectAfterGooglePopupTimeout(ms) {
+  return new Promise((_, reject) => {
+    setTimeout(() => {
+      reject(authError(
+        "auth/timeout",
+        "Google sign-in timed out. Close the Google window and try again.",
+      ));
+    }, ms);
+  });
 }
 
 /**

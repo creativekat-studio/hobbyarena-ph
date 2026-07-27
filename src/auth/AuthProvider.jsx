@@ -16,6 +16,7 @@ import {
   mapPasswordResetError,
   subscribeToAuthChanges,
   useFirebaseAuth,
+  isGooglePopupSignInPending,
 } from "../lib/firebase/auth.js";
 import { getFirebaseAuth } from "../lib/firebase/app.js";
 
@@ -188,6 +189,9 @@ export function AuthProvider({ children }) {
 
       const unsubscribe = subscribeToAuthChanges(
         (nextCustomer) => {
+          // Google popup can establish Auth before the window closes — wait for
+          // signInWithGoogle to finish so the account page does not flip early.
+          if (isGooglePopupSignInPending()) return;
           publishCustomerSession(nextCustomer);
         },
         setAdmin,
