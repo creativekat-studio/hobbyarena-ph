@@ -182,6 +182,75 @@ export async function generatePasswordResetLink(email, continueUrl = "") {
   return toInAppPasswordResetLink(data.oobLink, siteUrl);
 }
 
+/**
+ * Look up Auth providers for an email via Identity Toolkit Admin REST
+ * (avoids firebase-admin/auth ESM issues on Vercel).
+ *
+ * @param {string} email
+ * @returns {Promise<{ exists: boolean, uid: string|null, providers: string[] }>}
+ */
+export async function lookupAuthEmail(email) {
+  const serviceAccount = readServiceAccount();
+  if (!serviceAccount?.project_id) {
+    throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not configured");
+  }
+
+  const normalized = String(email || "").trim().toLowerCase();
+  if (!normalized) {
+    return { exists: false, uid: null, providers: [] };
+  }
+
+  const accessToken = await getServiceAccountAccessToken(serviceAccount);
+  const response = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/projects/${serviceAccount.project_id}/accounts:lookup`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email: [normalized] }),
+    },
+  );
+
+  const data = await response.json().catch(() => ({}));
+  // USER_NOT_FOUND is a normal miss
+  if (!response.ok) {
+    const message = String(data.error?.message || data.error || "");
+    if (/USER_NOT_FOUND/i.test(message)) {
+      return { exists: false, uid: null, providers: [], passwordAccountUid: null };
+    }
+    const error = new Error(message || "AUTH_EMAIL_LOOKUP_FAILED");
+    error.code = message || "AUTH_EMAIL_LOOKUP_FAILED";
+    throw error;
+  }
+
+  const users = Array.isArray(data.users) ? data.users : [];
+  if (!users.length) return { exists: false, uid: null, providers: [], passwordAccountUid: null };
+
+  const providers = new Set();
+  let passwordAccountUid = null;
+  let primaryUid = users[0]?.localId || null;
+
+  for (const user of users) {
+    for (const entry of user.providerUserInfo || []) {
+      const id = String(entry?.providerId || "").trim();
+      if (id) providers.add(id);
+    }
+    if (user.passwordHash) {
+      providers.add("password");
+      if (!passwordAccountUid) passwordAccountUid = user.localId || null;
+    }
+  }
+
+  return {
+    exists: true,
+    uid: primaryUid,
+    providers: [...providers],
+    passwordAccountUid,
+  };
+}
+
 export function getAdminFirestore() {
   if (!ensureFirebaseAdminApp()) return null;
   return getFirestore();

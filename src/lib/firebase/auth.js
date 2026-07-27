@@ -211,10 +211,95 @@ async function tokenClaims(user) {
 }
 
 function resolveAuthProvider(firebaseUser) {
-  const providerId = firebaseUser.providerData?.[0]?.providerId || "";
-  if (providerId === "google.com") return "google";
-  if (providerId === "password") return "password";
-  return providerId || "unknown";
+  const ids = (firebaseUser.providerData || []).map((entry) => entry.providerId);
+  // Check all linked providers — providerData[0] order is unstable after linking.
+  if (ids.includes("google.com")) return "google";
+  if (ids.includes("password")) return "password";
+  return ids[0] || "unknown";
+}
+
+/**
+ * Server-side Auth lookup (Admin). Falls back to { configured: false } when
+ * the API / service account is unavailable so client Auth errors still apply.
+ */
+async function lookupAuthEmailStatus(email) {
+  try {
+    const response = await fetch("/api/auth-email-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: String(email || "").trim().toLowerCase() }),
+    });
+    if (!response.ok) return { configured: false, exists: false, providers: [] };
+    return await response.json();
+  } catch {
+    return { configured: false, exists: false, providers: [] };
+  }
+}
+
+async function assertEmailFreeForPasswordSignup(email) {
+  const auth = getFirebaseAuth();
+  const existing = await signInMethodsForEmail(auth, email);
+  if (existing.includes("google.com")) {
+    throw authError("auth/email-already-in-use-google", EMAIL_IN_USE_GOOGLE);
+  }
+  if (existing.includes("password") || existing.length > 0) {
+    throw authError("auth/email-already-in-use", EMAIL_IN_USE_PASSWORD);
+  }
+
+  const status = await lookupAuthEmailStatus(email);
+  if (!status?.configured || !status.exists) return;
+  const providers = status.providers || [];
+  if (providers.includes("google.com")) {
+    throw authError("auth/email-already-in-use-google", EMAIL_IN_USE_GOOGLE);
+  }
+  if (providers.includes("password") || providers.length > 0) {
+    throw authError("auth/email-already-in-use", EMAIL_IN_USE_PASSWORD);
+  }
+}
+
+/**
+ * After Google returns a credential: reject when a password Auth account
+ * already owns this email, so Google cannot create a second Auth user and
+ * overwrite the customer profile's auth type.
+ */
+async function assertGoogleDoesNotReplacePasswordAccount(firebaseUser) {
+  const email = firebaseUser?.email;
+  if (!email) return;
+
+  const ownProviders = (firebaseUser.providerData || []).map((entry) => entry.providerId);
+  // Linked Google+password on the same Auth user — fine; profile lock keeps the original method.
+  if (ownProviders.includes("password")) return;
+
+  const clientMethods = await signInMethodsForEmail(getFirebaseAuth(), email);
+  const status = await lookupAuthEmailStatus(email);
+  const providers = new Set([
+    ...clientMethods,
+    ...((status?.configured && status.providers) || []),
+  ]);
+
+  // Classic one-account case: password-only email, Google should not proceed.
+  if (providers.has("password") && !providers.has("google.com")) {
+    const auth = getFirebaseAuth();
+    if (auth) await signOut(auth);
+    throw authError("auth/account-exists-with-different-credential", EMAIL_IN_USE_PASSWORD_FOR_GOOGLE);
+  }
+
+  // Multiple accounts per email: a separate password user already exists, and this
+  // Google credential is brand-new — sign out so it cannot replace the password account.
+  const passwordUid = status?.passwordAccountUid || null;
+  if (
+    status?.configured
+    && passwordUid
+    && passwordUid !== firebaseUser.uid
+  ) {
+    const createdAt = Date.parse(firebaseUser.metadata?.creationTime || "") || 0;
+    const isBrandNew = createdAt > 0 && (Date.now() - createdAt) < 120_000;
+    if (isBrandNew) {
+      const auth = getFirebaseAuth();
+      if (auth) await signOut(auth);
+      throw authError("auth/account-exists-with-different-credential", EMAIL_IN_USE_PASSWORD_FOR_GOOGLE);
+    }
+  }
 }
 
 export async function buildCustomerUser(firebaseUser) {
@@ -307,6 +392,14 @@ export async function firebaseSignInCustomer(email, password) {
   if (methods.includes("google.com") && !methods.includes("password")) {
     throw authError("auth/use-google-signin", EMAIL_IN_USE_GOOGLE);
   }
+  const status = await lookupAuthEmailStatus(normalized);
+  if (
+    status?.configured
+    && (status.providers || []).includes("google.com")
+    && !(status.providers || []).includes("password")
+  ) {
+    throw authError("auth/use-google-signin", EMAIL_IN_USE_GOOGLE);
+  }
   const credential = await signInWithEmailAndPassword(auth, normalized, password);
   return buildCustomerUser(credential.user);
 }
@@ -316,13 +409,7 @@ export async function firebaseRegisterCustomer({ name, email, password }) {
   const auth = getFirebaseAuth();
   if (!auth) throw new Error("Firebase Auth is not configured.");
   const normalized = email.trim();
-  const methods = await signInMethodsForEmail(auth, normalized);
-  if (methods.includes("google.com")) {
-    throw authError("auth/email-already-in-use-google", EMAIL_IN_USE_GOOGLE);
-  }
-  if (methods.includes("password") || methods.length > 0) {
-    throw authError("auth/email-already-in-use", EMAIL_IN_USE_PASSWORD);
-  }
+  await assertEmailFreeForPasswordSignup(normalized);
   try {
     const credential = await createUserWithEmailAndPassword(auth, normalized, password);
     await updateProfile(credential.user, { displayName: name.trim() });
@@ -333,6 +420,10 @@ export async function firebaseRegisterCustomer({ name, email, password }) {
       if (again.includes("google.com") && !again.includes("password")) {
         throw authError("auth/email-already-in-use-google", EMAIL_IN_USE_GOOGLE);
       }
+      const status = await lookupAuthEmailStatus(normalized);
+      if (status?.configured && (status.providers || []).includes("google.com")) {
+        throw authError("auth/email-already-in-use-google", EMAIL_IN_USE_GOOGLE);
+      }
       throw authError("auth/email-already-in-use", EMAIL_IN_USE_PASSWORD);
     }
     throw error;
@@ -340,6 +431,7 @@ export async function firebaseRegisterCustomer({ name, email, password }) {
 }
 
 async function finishGoogleCredential(firebaseUser) {
+  await assertGoogleDoesNotReplacePasswordAccount(firebaseUser);
   const user = await buildCustomerUser(firebaseUser);
   if (user.isAdmin) {
     const auth = getFirebaseAuth();

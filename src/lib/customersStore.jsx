@@ -28,6 +28,31 @@ function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
 }
 
+/** Normalize Auth provider labels used on customer profiles. */
+export function normalizeAuthProvider(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "google.com") return "google";
+  if (raw === "password" || raw === "google" || raw === "guest" || raw === "newsletter") return raw;
+  return raw || "";
+}
+
+/**
+ * Once a member signs up with Google or password, never flip to the other method
+ * on later auth sync / checkout upserts (profile is keyed by email).
+ */
+export function resolveStableAuthProvider(existingProvider, incomingProvider) {
+  const member = new Set(["google", "password"]);
+  const existing = normalizeAuthProvider(existingProvider);
+  const incoming = normalizeAuthProvider(incomingProvider);
+  if (member.has(existing) && member.has(incoming) && existing !== incoming) {
+    return existing;
+  }
+  if (member.has(existing) && !incoming) return existing;
+  if (member.has(incoming)) return incoming;
+  if (existing) return existing;
+  return incoming || "unknown";
+}
+
 function notifyCacheListeners() {
   cacheListeners.forEach((listener) => listener());
 }
@@ -193,7 +218,7 @@ function mergeProfile(existing, input) {
     marketingOptIn: Object.prototype.hasOwnProperty.call(input, "marketingOptIn")
       ? Boolean(input.marketingOptIn)
       : Boolean(existing?.marketingOptIn),
-    authProvider: input.authProvider || existing?.authProvider || "unknown",
+    authProvider: resolveStableAuthProvider(existing?.authProvider, input.authProvider),
     photoURL: input.photoURL ?? existing?.photoURL ?? "",
     joined: existing?.joined || input.joined || new Date().toISOString().slice(0, 10),
     updatedAt: new Date().toISOString(),
@@ -250,9 +275,12 @@ export function listCustomerProfiles() {
 export function recordCustomerFromAuth(user) {
   if (!user?.email || user.isAdmin) return null;
 
-  const provider = user.authProvider
+  const existing = getCustomerProfile(user.email);
+  const incoming = normalizeAuthProvider(
+    user.authProvider
     || (user.providerId === "google.com" ? "google" : user.authProvider)
-    || "password";
+    || "password",
+  );
 
   return upsertCustomerProfile({
     uid: user.uid,
@@ -260,7 +288,7 @@ export function recordCustomerFromAuth(user) {
     name: user.displayName,
     ...(user.phone ? { phone: user.phone } : {}),
     photoURL: user.photoURL || "",
-    authProvider: provider === "google.com" ? "google" : provider,
+    authProvider: resolveStableAuthProvider(existing?.authProvider, incoming),
   }).catch((error) => {
     console.error("[customers] Failed to record profile from auth:", error);
     return getCustomerProfile(user.email);
@@ -292,7 +320,8 @@ export async function recordCustomerFromCheckout({
     // Don't downgrade a real account if they later checkout without signing in.
     provider = isExistingMember ? existingProvider : "guest";
   } else {
-    provider = authProvider || (isExistingMember ? existingProvider : "password");
+    const incoming = authProvider || (isExistingMember ? existingProvider : "password");
+    provider = resolveStableAuthProvider(existingProvider, incoming);
   }
 
   const uid = guest

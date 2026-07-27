@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { getCustomerProfile, recordCustomerFromAuth, updateCustomerProfile, upsertCustomerProfile } from "../lib/customersStore.jsx";
+import { getCustomerProfile, recordCustomerFromAuth, resolveStableAuthProvider, updateCustomerProfile, upsertCustomerProfile } from "../lib/customersStore.jsx";
 import { isFirebaseConfigured } from "../lib/firebase/config.js";
 import { requestPasswordReset } from "../lib/emailService.js";
 import { getEmailBodyOverride } from "../lib/emailTemplatesStore.js";
@@ -91,7 +91,10 @@ function syncCustomerProfile(user) {
     name: user.displayName,
     phone: saved?.phone || user.phone || "",
     photoURL: user.photoURL || saved?.photoURL || "",
-    authProvider: user.authProvider || saved?.authProvider || "unknown",
+    authProvider: resolveStableAuthProvider(
+      saved?.authProvider,
+      user.authProvider || saved?.authProvider || "unknown",
+    ),
   };
   // Never blank marketingOptIn on auth sync — keep whatever Firebase already has.
   if (Object.prototype.hasOwnProperty.call(user, "marketingOptIn")) {
@@ -308,6 +311,17 @@ export function AuthProvider({ children }) {
         if (isAdminAccount(email.trim())) {
           throw new Error("This email is reserved for admin. Sign in at /admin/login instead.");
         }
+        const existingProfile = getCustomerProfile(email.trim());
+        if (existingProfile?.authProvider === "google") {
+          throw new Error(
+            "This email is already registered with Google. Use Continue with Google instead of creating a password account.",
+          );
+        }
+        if (existingProfile?.authProvider === "password") {
+          throw new Error(
+            "An account with this email already exists. Sign in with your password, or use Continue with Google if you registered that way.",
+          );
+        }
         setAuthSurface("customer");
         const user = await firebaseRegisterCustomer({ name, email, password });
         await upsertCustomerProfile({
@@ -315,7 +329,7 @@ export function AuthProvider({ children }) {
           email: user.email,
           name: name.trim(),
           marketingOptIn: Boolean(marketingOptIn),
-          authProvider: "password",
+          authProvider: resolveStableAuthProvider(existingProfile?.authProvider, "password"),
         });
         return publishCustomerSession({
           ...user,
@@ -328,6 +342,8 @@ export function AuthProvider({ children }) {
       } catch (error) {
         const message = String(error?.message || "");
         if (message.includes("reserved for admin")) throw error;
+        if (message.includes("already registered with Google")) throw error;
+        if (message.includes("already exists")) throw error;
         throw new Error(mapAuthError(error));
       }
     }
@@ -377,6 +393,8 @@ export function AuthProvider({ children }) {
         const nextAdmin = await firebaseSignInAdmin(email, password);
         setAdmin(nextAdmin);
         setCustomer(null);
+        // Keep surface sticky so onAuthStateChanged cannot wipe admin on /admin/login.
+        setAuthSurface("admin");
         return nextAdmin;
       } catch (error) {
         if (error?.message === "This account does not have admin access.") {
