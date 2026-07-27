@@ -20,9 +20,6 @@ import { ROLES } from "../../auth/roles.js";
 import { shouldExposeAdminSession } from "../../auth/authSurface.js";
 
 const googleProvider = new GoogleAuthProvider();
-// Prefer an account chooser so a half-finished Google window is less likely to hang
-// on a cached session while the main tab already signed in.
-googleProvider.setCustomParameters({ prompt: "select_account" });
 
 const EMAIL_IN_USE_PASSWORD =
   "An account with this email already exists. Sign in with your password, or use Continue with Google if you registered that way.";
@@ -229,11 +226,31 @@ async function lookupAuthEmailStatus(email) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: String(email || "").trim().toLowerCase() }),
     });
-    if (!response.ok) return { configured: false, exists: false, providers: [] };
-    return await response.json();
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return {
+        configured: Boolean(data?.configured),
+        exists: false,
+        providers: [],
+        passwordAccountUid: null,
+        error: data?.error || `Email check failed (${response.status})`,
+      };
+    }
+    return data;
   } catch {
-    return { configured: false, exists: false, providers: [] };
+    return { configured: false, exists: false, providers: [], passwordAccountUid: null, error: true };
   }
+}
+
+function isPasswordOnlyStatus(status) {
+  if (!status?.exists) return false;
+  const providers = status.providers || [];
+  const hasGoogle = providers.includes("google.com");
+  if (hasGoogle) return false;
+  if (providers.includes("password")) return true;
+  if (status.passwordAccountUid) return true;
+  // Exists with no federated provider listed — treat as email/password.
+  return providers.length === 0;
 }
 
 async function assertEmailFreeForPasswordSignup(email) {
@@ -252,7 +269,7 @@ async function assertEmailFreeForPasswordSignup(email) {
   if (providers.includes("google.com")) {
     throw authError("auth/email-already-in-use-google", EMAIL_IN_USE_GOOGLE);
   }
-  if (providers.includes("password") || providers.length > 0) {
+  if (providers.includes("password") || providers.length > 0 || status.passwordAccountUid) {
     throw authError("auth/email-already-in-use", EMAIL_IN_USE_PASSWORD);
   }
 }
@@ -267,14 +284,29 @@ export async function assertEmailAllowsGoogleSignIn(email) {
 
   const auth = getFirebaseAuth();
   const clientMethods = await signInMethodsForEmail(auth, normalized);
-  const status = await lookupAuthEmailStatus(normalized);
-  const providers = new Set([
-    ...clientMethods,
-    ...((status?.configured && status.providers) || []),
-  ]);
-
-  if (providers.has("password") && !providers.has("google.com")) {
+  if (clientMethods.includes("password") && !clientMethods.includes("google.com")) {
     throw authError("auth/account-exists-with-different-credential", EMAIL_IN_USE_PASSWORD_FOR_GOOGLE);
+  }
+
+  const status = await lookupAuthEmailStatus(normalized);
+
+  // Client fetchSignInMethodsForEmail is empty under enumeration protection —
+  // Admin lookup is required. If it failed, do not open Google for a typed email.
+  if (status?.error && !status?.exists) {
+    throw authError(
+      "auth/network-request-failed",
+      "We couldn’t verify that email before opening Google. Try again in a moment, or sign in with email & password.",
+    );
+  }
+
+  if (status?.configured && isPasswordOnlyStatus(status)) {
+    throw authError("auth/account-exists-with-different-credential", EMAIL_IN_USE_PASSWORD_FOR_GOOGLE);
+  }
+
+  // When Admin isn’t configured (local without service account), fall back to
+  // whatever the client methods returned (often empty with enumeration protection).
+  if (!status?.configured) {
+    console.warn("[auth] auth-email-status unavailable — Google pre-check may miss password accounts.");
   }
 }
 
@@ -487,7 +519,9 @@ export async function firebaseSignInWithGoogle({ email } = {}) {
   // address is password-only — avoids the blank/stuck handler and Auth overwrite.
   if (emailHint) {
     await assertEmailAllowsGoogleSignIn(emailHint);
-    googleProvider.setCustomParameters({ prompt: "select_account", login_hint: emailHint });
+    // login_hint only — do not force select_account, or Google asks them to
+    // pick an account again after they already typed the email on our form.
+    googleProvider.setCustomParameters({ login_hint: emailHint });
   } else {
     googleProvider.setCustomParameters({ prompt: "select_account" });
   }

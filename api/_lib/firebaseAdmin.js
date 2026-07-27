@@ -187,7 +187,7 @@ export async function generatePasswordResetLink(email, continueUrl = "") {
  * (avoids firebase-admin/auth ESM issues on Vercel).
  *
  * @param {string} email
- * @returns {Promise<{ exists: boolean, uid: string|null, providers: string[] }>}
+ * @returns {Promise<{ exists: boolean, uid: string|null, providers: string[], passwordAccountUid: string|null }>}
  */
 export async function lookupAuthEmail(email) {
   const serviceAccount = readServiceAccount();
@@ -197,7 +197,7 @@ export async function lookupAuthEmail(email) {
 
   const normalized = String(email || "").trim().toLowerCase();
   if (!normalized) {
-    return { exists: false, uid: null, providers: [] };
+    return { exists: false, uid: null, providers: [], passwordAccountUid: null };
   }
 
   const accessToken = await getServiceAccountAccessToken(serviceAccount);
@@ -233,11 +233,23 @@ export async function lookupAuthEmail(email) {
   let primaryUid = users[0]?.localId || null;
 
   for (const user of users) {
-    for (const entry of user.providerUserInfo || []) {
-      const id = String(entry?.providerId || "").trim();
-      if (id) providers.add(id);
-    }
-    if (user.passwordHash) {
+    const providerIds = (user.providerUserInfo || [])
+      .map((entry) => String(entry?.providerId || "").trim())
+      .filter(Boolean);
+    for (const id of providerIds) providers.add(id);
+
+    const hasPasswordProvider = providerIds.includes("password");
+    // Admin lookup often redacts passwordHash but still returns salt / passwordUpdatedAt.
+    const hasPasswordSecret = Boolean(
+      user.passwordHash
+      || user.salt
+      || user.passwordUpdatedAt,
+    );
+    // Email/password users sometimes omit providerUserInfo entirely (no federated IdPs).
+    const federated = providerIds.filter((id) => id !== "password");
+    const looksLikePasswordOnly = providerIds.length === 0 || (federated.length === 0 && hasPasswordProvider);
+
+    if (hasPasswordProvider || hasPasswordSecret || looksLikePasswordOnly) {
       providers.add("password");
       if (!passwordAccountUid) passwordAccountUid = user.localId || null;
     }

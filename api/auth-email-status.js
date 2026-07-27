@@ -47,6 +47,13 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error("[auth-email-status]", error?.code || error?.message || error);
-    return res.status(200).json({ configured: false, exists: false, providers: [] });
+    // Do not pretend "not configured" — client must not open Google when the check failed.
+    return res.status(503).json({
+      configured: true,
+      exists: false,
+      providers: [],
+      passwordAccountUid: null,
+      error: "Could not verify that email right now.",
+    });
   }
 }
