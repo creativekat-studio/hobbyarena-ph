@@ -74,8 +74,7 @@ export function mapAuthError(error) {
     "auth/user-disabled": "This account is disabled. Message Hobby Arena PH for help.",
     "auth/weak-password": "Password must be at least 8 characters.",
     "auth/too-many-requests": "Too many attempts. Try again later.",
-    "auth/popup-closed-by-user":
-      "Sign-in cancelled. If you already created this email with a password, sign in with email and password instead of Google.",
+    "auth/popup-closed-by-user": "Sign-in cancelled.",
     "auth/popup-blocked": "Your browser blocked the Google window. Try again — we’ll use a full-page sign-in.",
     "auth/cancelled-popup-request":
       "Google sign-in is already in progress. Finish or close the Google window, then try again.",
@@ -477,20 +476,21 @@ export async function completeGoogleRedirectResult() {
  * is blocked — never on cancelled-popup-request, which leaves a stuck OAuth
  * window when a second popup/redirect starts while the first is still open.
  *
- * @param {{ email?: string }} [options] When email is provided, we check Auth
- *   first and refuse to open Google if that address already has a password account.
+ * Optional `email` only speeds up a pre-check / login_hint. Conflict detection
+ * always runs after Google returns an account (or Firebase reports a conflict).
  */
 export async function firebaseSignInWithGoogle({ email } = {}) {
   const auth = getFirebaseAuth();
   if (!auth) throw new Error("Firebase Auth is not configured.");
 
   const emailHint = String(email || "").trim().toLowerCase();
-  if (emailHint) {
-    await assertEmailAllowsGoogleSignIn(emailHint);
-    googleProvider.setCustomParameters({ prompt: "select_account", login_hint: emailHint });
-  } else {
-    googleProvider.setCustomParameters({ prompt: "select_account" });
-  }
+  // Never block before the popup — shoppers pick the Google account first, then we
+  // check whether that email already has a password Hobby Arena account.
+  googleProvider.setCustomParameters(
+    emailHint
+      ? { prompt: "select_account", login_hint: emailHint }
+      : { prompt: "select_account" },
+  );
 
   // If a prior popup already signed us in with Google, reuse the session instead
   // of opening another Google window that can spin forever.
@@ -511,6 +511,25 @@ export async function firebaseSignInWithGoogle({ email } = {}) {
     return finishGoogleCredential(credential.user);
   } catch (error) {
     const code = error?.code || "";
+    const conflictEmail = String(
+      error?.customData?.email || error?.email || emailHint || "",
+    ).trim().toLowerCase();
+
+    // Password account already owns this Google email — tell the shopper immediately.
+    if (code === "auth/account-exists-with-different-credential") {
+      throw authError("auth/account-exists-with-different-credential", EMAIL_IN_USE_PASSWORD_FOR_GOOGLE);
+    }
+
+    // Some browsers surface the conflict as a closed popup; recover via email on the error.
+    if (code === "auth/popup-closed-by-user" && conflictEmail) {
+      try {
+        await assertEmailAllowsGoogleSignIn(conflictEmail);
+      } catch (conflict) {
+        throw conflict;
+      }
+      throw error;
+    }
+
     if (code === "auth/popup-closed-by-user") throw error;
 
     // Second click / overlapping popup — do NOT redirect. That was causing
@@ -532,10 +551,6 @@ export async function firebaseSignInWithGoogle({ email } = {}) {
       // Works when authDomain is same-origin (Vercel proxies /__/auth).
       await signInWithRedirect(auth, googleProvider, browserPopupRedirectResolver);
       return { redirecting: true };
-    }
-
-    if (code === "auth/account-exists-with-different-credential") {
-      throw authError("auth/account-exists-with-different-credential", EMAIL_IN_USE_PASSWORD_FOR_GOOGLE);
     }
 
     throw error;

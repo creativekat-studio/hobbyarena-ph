@@ -144,7 +144,6 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
-  const authFormRef = useRef(null);
 
   if (isCustomer && user) {
     return (
@@ -215,12 +214,9 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
     if (busy) return;
     setError("");
     setInfo("");
-    const form = authFormRef.current;
-    const emailField = form?.elements?.namedItem?.("email") || form?.querySelector?.('input[name="email"]');
-    const email = String(emailField?.value || "").trim();
     setBusy(true);
     try {
-      const signedIn = await signInWithGoogle(email ? { email } : {});
+      const signedIn = await signInWithGoogle();
       if (!signedIn) {
         setInfo("Redirecting to Google…");
         return;
@@ -342,7 +338,7 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
           Continue as guest
         </Button>
       ) : (
-        <Box component="form" ref={authFormRef} onSubmit={handleAuthSubmit} sx={{ mt: 3 }} key={mode}>
+        <Box component="form" onSubmit={handleAuthSubmit} sx={{ mt: 3 }} key={mode}>
           {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
           {info ? <Alert severity="success" sx={{ mb: 2 }}>{info}</Alert> : null}
           <Stack spacing={2}>

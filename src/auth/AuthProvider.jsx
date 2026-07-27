@@ -257,14 +257,6 @@ export function AuthProvider({ children }) {
     }
     try {
       const emailHint = String(options.email || "").trim();
-      if (emailHint) {
-        const existing = getCustomerProfile(emailHint);
-        if (existing?.authProvider === "password") {
-          throw new Error(
-            "This email already has a password account. Sign in with email and password instead of Google.",
-          );
-        }
-      }
       setAuthSurface("customer");
       const user = await firebaseSignInWithGoogle({ email: emailHint });
       // Mobile redirect leaves the page; session completes on return via getRedirectResult.

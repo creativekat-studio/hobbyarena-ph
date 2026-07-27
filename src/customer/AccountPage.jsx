@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
@@ -50,7 +50,6 @@ function AuthCard({ panelSx }) {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
-  const formRef = useRef(null);
 
   useEffect(() => {
     try {
@@ -81,13 +80,6 @@ function AuthCard({ panelSx }) {
       // ignore
     }
   }, [isCustomer]);
-
-  function readFormEmail() {
-    const form = formRef.current;
-    if (!form) return "";
-    const field = form.elements?.namedItem?.("email") || form.querySelector?.('input[name="email"]');
-    return String(field?.value || "").trim();
-  }
 
   function switchMode(next) {
     setMode(next);
@@ -144,14 +136,9 @@ function AuthCard({ panelSx }) {
     if (busy) return;
     setError("");
     setInfo("");
-    const email = readFormEmail();
-    if (!email) {
-      setError("Enter your email above first — we’ll check if that account already exists before opening Google.");
-      return;
-    }
     setBusy(true);
     try {
-      const user = await signInWithGoogle({ email });
+      const user = await signInWithGoogle();
       if (!user) {
         setInfo("Redirecting to Google…");
         // Keep busy while the page navigates away for redirect fallback.
@@ -190,7 +177,6 @@ function AuthCard({ panelSx }) {
         },
       }}
       component="form"
-      ref={formRef}
       onSubmit={handleSubmit}
       key={mode}
     >
