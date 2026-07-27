@@ -509,9 +509,47 @@ export function isGooglePopupSignInPending() {
 }
 
 /**
- * Google sign-in via popup. Session is not shown in the UI until the popup
- * flow settles (promise resolves/rejects) — onAuthStateChanged can fire earlier
- * while /__/auth/handler is still a blank window.
+ * Capture the Window opened by Firebase signInWithPopup so we can close it.
+ * The SDK often resolves before /__/auth/handler calls window.close(), leaving
+ * a blank popup while the main tab would otherwise look signed-in.
+ */
+function trackNextAuthPopup() {
+  if (typeof window === "undefined") {
+    return { getPopup: () => null, restore: () => {} };
+  }
+  let popup = null;
+  const originalOpen = window.open.bind(window);
+  window.open = (...args) => {
+    const opened = originalOpen(...args);
+    if (opened) popup = opened;
+    return opened;
+  };
+  return {
+    getPopup: () => popup,
+    restore: () => {
+      window.open = originalOpen;
+    },
+  };
+}
+
+/** Force-close the OAuth window; do not block the UI for long. */
+async function closeAuthPopup(popup) {
+  if (!popup) return;
+  for (let i = 0; i < 5; i += 1) {
+    try {
+      if (popup.closed) return;
+      popup.close();
+    } catch {
+      // ignore
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+/**
+ * Google sign-in via popup. Holds the app session until we close the popup
+ * window (Firebase often returns the credential while /__/auth/handler is
+ * still a blank open window — especially with silent prompt=none).
  */
 export async function firebaseSignInWithGoogle({ email } = {}) {
   const auth = getFirebaseAuth();
@@ -520,12 +558,16 @@ export async function firebaseSignInWithGoogle({ email } = {}) {
   const emailHint = String(email || "").trim().toLowerCase();
   if (emailHint) {
     await assertEmailAllowsGoogleSignIn(emailHint);
-    googleProvider.setCustomParameters({ login_hint: emailHint });
-  } else {
-    googleProvider.setCustomParameters({ prompt: "select_account" });
   }
+  // Always force the account UI. login_hint alone triggers prompt=none, which
+  // hangs on a blank /__/auth/handler for a long time on this proxy setup.
+  googleProvider.setCustomParameters(
+    emailHint
+      ? { prompt: "select_account", login_hint: emailHint }
+      : { prompt: "select_account" },
+  );
 
-  // Already signed in with Google from a prior completed attempt.
+  // Already signed in with Google from a prior completed attempt — no new popup.
   if (!googlePopupSignInPending) {
     const existing = auth.currentUser;
     if (existing && !existing.isAnonymous) {
@@ -537,13 +579,39 @@ export async function firebaseSignInWithGoogle({ email } = {}) {
   }
 
   googlePopupSignInPending = true;
+  const tracker = trackNextAuthPopup();
+
+  // Close the blank handler as soon as Auth has a Google user — don't wait for
+  // signInWithPopup's promise (it can lag while the window spins).
+  const earlyClose = setInterval(() => {
+    const popup = tracker.getPopup();
+    const user = auth.currentUser;
+    if (!popup || popup.closed || !user || user.isAnonymous) return;
+    const providers = (user.providerData || []).map((entry) => entry.providerId);
+    if (providers.includes("google.com")) {
+      closeAuthPopup(popup);
+    }
+  }, 150);
+
   try {
-    const credential = await Promise.race([
-      signInWithPopup(auth, googleProvider, browserPopupRedirectResolver),
-      rejectAfterGooglePopupTimeout(90_000),
-    ]);
+    let credential;
+    try {
+      credential = await Promise.race([
+        signInWithPopup(auth, googleProvider, browserPopupRedirectResolver),
+        rejectAfterGooglePopupTimeout(90_000),
+      ]);
+    } finally {
+      clearInterval(earlyClose);
+      tracker.restore();
+    }
+
+    await closeAuthPopup(tracker.getPopup());
     return finishGoogleCredential(credential.user);
   } catch (error) {
+    clearInterval(earlyClose);
+    tracker.restore();
+    await closeAuthPopup(tracker.getPopup());
+
     const code = error?.code || "";
     const conflictEmail = String(
       error?.customData?.email || error?.email || emailHint || "",
@@ -554,7 +622,6 @@ export async function firebaseSignInWithGoogle({ email } = {}) {
     }
 
     if (code === "auth/timeout") {
-      // Auth may have completed behind a stuck blank popup — do not leave a hidden session.
       if (auth.currentUser) await signOut(auth);
       throw error;
     }
@@ -570,7 +637,6 @@ export async function firebaseSignInWithGoogle({ email } = {}) {
     }
 
     if (code === "auth/popup-closed-by-user") {
-      // Closing the (possibly blank) popup counts as the popup finishing — then we may log in.
       if (auth.currentUser && !auth.currentUser.isAnonymous) {
         const providers = (auth.currentUser.providerData || []).map((entry) => entry.providerId);
         if (providers.includes("google.com")) {
@@ -596,7 +662,6 @@ export async function firebaseSignInWithGoogle({ email } = {}) {
     }
 
     if (auth.currentUser && code) {
-      // Failed after Auth wrote a session — clear so the UI does not look signed in later.
       try {
         await signOut(auth);
       } catch {
@@ -606,6 +671,7 @@ export async function firebaseSignInWithGoogle({ email } = {}) {
 
     throw error;
   } finally {
+    clearInterval(earlyClose);
     googlePopupSignInPending = false;
   }
 }
