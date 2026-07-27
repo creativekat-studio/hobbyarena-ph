@@ -220,13 +220,15 @@ export function AuthProvider({ children }) {
 
     if (firebaseEnabled) {
       try {
-        setAuthSurface("customer");
         if (isAdminAccount(email.trim())) {
           throw new Error("This email is reserved for admin. Sign in at /admin/login instead.");
         }
+        setAuthSurface("customer");
         const user = await firebaseSignInCustomer(email, password);
         return publishCustomerSession(user);
       } catch (error) {
+        const message = String(error?.message || "");
+        if (message.includes("reserved for admin")) throw error;
         throw new Error(mapAuthError(error));
       }
     }
@@ -303,10 +305,10 @@ export function AuthProvider({ children }) {
 
     if (firebaseEnabled) {
       try {
-        setAuthSurface("customer");
         if (isAdminAccount(email.trim())) {
           throw new Error("This email is reserved for admin. Sign in at /admin/login instead.");
         }
+        setAuthSurface("customer");
         const user = await firebaseRegisterCustomer({ name, email, password });
         await upsertCustomerProfile({
           uid: user.uid,
@@ -324,6 +326,8 @@ export function AuthProvider({ children }) {
           },
         });
       } catch (error) {
+        const message = String(error?.message || "");
+        if (message.includes("reserved for admin")) throw error;
         throw new Error(mapAuthError(error));
       }
     }
@@ -340,10 +344,22 @@ export function AuthProvider({ children }) {
         acceptedAt: new Date().toISOString(),
       },
     };
+    const existing = getCustomerProfile(nextUser.email);
+    if (existing?.authProvider === "google") {
+      throw new Error(
+        "This email is already registered with Google. Use Continue with Google instead of creating a password account.",
+      );
+    }
+    if (existing?.authProvider === "password" || (existing && existing.authProvider !== "guest")) {
+      throw new Error(
+        "An account with this email already exists. Sign in with your password, or use Continue with Google if you registered that way.",
+      );
+    }
     upsertCustomerProfile({
       email: nextUser.email,
       name: nextUser.displayName,
       marketingOptIn: Boolean(marketingOptIn),
+      authProvider: "password",
     });
     const { admin: currentAdmin } = readSessions();
     persistMock(nextUser, currentAdmin);

@@ -211,6 +211,7 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
   }
 
   async function handleGoogleSignIn() {
+    if (busy) return;
     setError("");
     setInfo("");
     setBusy(true);
@@ -221,9 +222,9 @@ function AccountStep({ panelSx, surfaceBorderColor, onContinue, isGuest, setIsGu
         return;
       }
       onContinue({ name: signedIn.displayName, email: signedIn.email, guest: false });
+      setBusy(false);
     } catch (err) {
       setError(err.message || "Google sign-in failed.");
-    } finally {
       setBusy(false);
     }
   }

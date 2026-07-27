@@ -43,7 +43,7 @@ import { formatPhPhoneInput, isValidPhPhone } from "../lib/phone.js";
 import PasswordField from "../components/PasswordField.jsx";
 
 function AuthCard({ panelSx }) {
-  const { signInCustomer, signInWithGoogle, registerCustomer, sendPasswordReset, authMode } = useAuth();
+  const { signInCustomer, signInWithGoogle, registerCustomer, sendPasswordReset, authMode, isCustomer } = useAuth();
   const [mode, setMode] = useState("signin");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [marketingOptIn, setMarketingOptIn] = useState(false);
@@ -53,20 +53,33 @@ function AuthCard({ panelSx }) {
 
   useEffect(() => {
     try {
-      const redirectPending = window.sessionStorage.getItem("hobbyarena:googleRedirect");
       const authError = window.sessionStorage.getItem("hobbyarena:authError");
       if (authError) {
         setError(authError);
         window.sessionStorage.removeItem("hobbyarena:authError");
       }
+      const redirectPending = window.sessionStorage.getItem("hobbyarena:googleRedirect") === "1";
       if (redirectPending) {
         setInfo("Finishing Google sign-in…");
-        window.sessionStorage.removeItem("hobbyarena:googleRedirect");
+        setBusy(true);
       }
     } catch {
       // ignore
     }
   }, []);
+
+  // Session landed (popup or redirect) — stop the spinner / finishing copy.
+  useEffect(() => {
+    if (!isCustomer) return;
+    setBusy(false);
+    setInfo("");
+    setError("");
+    try {
+      window.sessionStorage.removeItem("hobbyarena:googleRedirect");
+    } catch {
+      // ignore
+    }
+  }, [isCustomer]);
 
   function switchMode(next) {
     setMode(next);
@@ -120,6 +133,7 @@ function AuthCard({ panelSx }) {
   }
 
   async function handleGoogleSignIn() {
+    if (busy) return;
     setError("");
     setInfo("");
     setBusy(true);
@@ -127,13 +141,15 @@ function AuthCard({ panelSx }) {
       const user = await signInWithGoogle();
       if (!user) {
         setInfo("Redirecting to Google…");
+        // Keep busy while the page navigates away for redirect fallback.
         return;
       }
     } catch (err) {
       setError(err.message || "Google sign-in failed.");
-    } finally {
       setBusy(false);
+      return;
     }
+    setBusy(false);
   }
 
   const heading =
@@ -174,7 +190,11 @@ function AuthCard({ panelSx }) {
         </Stack>
 
         {error ? <Alert severity="error">{error}</Alert> : null}
-        {info ? <Alert severity="success">{info}</Alert> : null}
+        {info ? (
+          <Alert severity={info.includes("Finishing") || info.includes("Redirecting") ? "info" : "success"}>
+            {info}
+          </Alert>
+        ) : null}
 
         {mode === "signup" ? (
           <TextField name="name" label="Full name" fullWidth defaultValue="" autoComplete="name" />

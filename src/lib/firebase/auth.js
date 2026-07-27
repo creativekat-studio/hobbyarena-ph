@@ -2,6 +2,7 @@ import {
   browserPopupRedirectResolver,
   confirmPasswordReset,
   createUserWithEmailAndPassword,
+  fetchSignInMethodsForEmail,
   getRedirectResult,
   GoogleAuthProvider,
   onAuthStateChanged,
@@ -19,6 +20,16 @@ import { ROLES } from "../../auth/roles.js";
 import { shouldExposeAdminSession } from "../../auth/authSurface.js";
 
 const googleProvider = new GoogleAuthProvider();
+// Prefer an account chooser so a half-finished Google window is less likely to hang
+// on a cached session while the main tab already signed in.
+googleProvider.setCustomParameters({ prompt: "select_account" });
+
+const EMAIL_IN_USE_PASSWORD =
+  "An account with this email already exists. Sign in with your password, or use Continue with Google if you registered that way.";
+const EMAIL_IN_USE_GOOGLE =
+  "This email is already registered with Google. Use Continue with Google instead of creating a password account.";
+const EMAIL_IN_USE_PASSWORD_FOR_GOOGLE =
+  "This email already has a password account. Sign in with email and password instead of Google.";
 
 const ADMIN_CUSTOMER_BLOCK =
   "This email is reserved for admin. Sign in at /admin/login instead.";
@@ -56,7 +67,8 @@ export function mapAuthError(error) {
     "auth/user-not-found": "No account found for this email.",
     "auth/invalid-email": "Enter a valid email address.",
     "auth/missing-email": "Enter your email address.",
-    "auth/email-already-in-use": "An account with this email already exists.",
+    "auth/email-already-in-use": EMAIL_IN_USE_PASSWORD,
+    "auth/email-already-in-use-google": EMAIL_IN_USE_GOOGLE,
     "auth/expired-action-code": "This reset link has expired. Request a new one from the sign-in page.",
     "auth/invalid-action-code": "This reset link is invalid or was already used. Request a new one from the sign-in page.",
     "auth/user-disabled": "This account is disabled. Message Hobby Arena PH for help.",
@@ -64,10 +76,12 @@ export function mapAuthError(error) {
     "auth/too-many-requests": "Too many attempts. Try again later.",
     "auth/popup-closed-by-user": "Sign-in cancelled.",
     "auth/popup-blocked": "Your browser blocked the Google window. Try again — we’ll use a full-page sign-in.",
+    "auth/cancelled-popup-request":
+      "Google sign-in is already in progress. Finish or close the Google window, then try again.",
     "auth/network-request-failed": "Network issue — check your connection and try again.",
     "auth/internal-error": "Something went wrong with sign-in. Please try again.",
-    "auth/account-exists-with-different-credential":
-      "This email already uses a different sign-in method. Try Continue with Google, or reset your password if you signed up with email.",
+    "auth/account-exists-with-different-credential": EMAIL_IN_USE_PASSWORD_FOR_GOOGLE,
+    "auth/use-google-signin": EMAIL_IN_USE_GOOGLE,
     "auth/operation-not-allowed":
       "That sign-in method isn’t enabled yet. Check Firebase Console → Authentication → Sign-in method.",
     "auth/admin-restricted-operation":
@@ -269,11 +283,31 @@ export function subscribeToAuthChanges(onCustomer, onAdmin, onReady) {
   });
 }
 
+async function signInMethodsForEmail(auth, email) {
+  try {
+    return await fetchSignInMethodsForEmail(auth, email);
+  } catch {
+    // Enumeration protection / network — callers fall back to Auth create/sign-in errors.
+    return [];
+  }
+}
+
+function authError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
 export async function firebaseSignInCustomer(email, password) {
   assertNotAdminCustomerEmail(email);
   const auth = getFirebaseAuth();
   if (!auth) throw new Error("Firebase Auth is not configured.");
-  const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+  const normalized = email.trim();
+  const methods = await signInMethodsForEmail(auth, normalized);
+  if (methods.includes("google.com") && !methods.includes("password")) {
+    throw authError("auth/use-google-signin", EMAIL_IN_USE_GOOGLE);
+  }
+  const credential = await signInWithEmailAndPassword(auth, normalized, password);
   return buildCustomerUser(credential.user);
 }
 
@@ -281,9 +315,28 @@ export async function firebaseRegisterCustomer({ name, email, password }) {
   assertNotAdminCustomerEmail(email);
   const auth = getFirebaseAuth();
   if (!auth) throw new Error("Firebase Auth is not configured.");
-  const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-  await updateProfile(credential.user, { displayName: name.trim() });
-  return buildCustomerUser(credential.user);
+  const normalized = email.trim();
+  const methods = await signInMethodsForEmail(auth, normalized);
+  if (methods.includes("google.com")) {
+    throw authError("auth/email-already-in-use-google", EMAIL_IN_USE_GOOGLE);
+  }
+  if (methods.includes("password") || methods.length > 0) {
+    throw authError("auth/email-already-in-use", EMAIL_IN_USE_PASSWORD);
+  }
+  try {
+    const credential = await createUserWithEmailAndPassword(auth, normalized, password);
+    await updateProfile(credential.user, { displayName: name.trim() });
+    return buildCustomerUser(credential.user);
+  } catch (error) {
+    if (error?.code === "auth/email-already-in-use") {
+      const again = await signInMethodsForEmail(auth, normalized);
+      if (again.includes("google.com") && !again.includes("password")) {
+        throw authError("auth/email-already-in-use-google", EMAIL_IN_USE_GOOGLE);
+      }
+      throw authError("auth/email-already-in-use", EMAIL_IN_USE_PASSWORD);
+    }
+    throw error;
+  }
 }
 
 async function finishGoogleCredential(firebaseUser) {
@@ -312,11 +365,22 @@ export async function completeGoogleRedirectResult() {
  * Google sign-in via popup (Firebase-recommended for browsers that block
  * third-party storage). Same-origin authDomain + /__/auth proxy makes this
  * work on mobile Safari/Chrome. Redirect is only a last resort if the popup
- * is blocked.
+ * is blocked — never on cancelled-popup-request, which leaves a stuck OAuth
+ * window when a second popup/redirect starts while the first is still open.
  */
 export async function firebaseSignInWithGoogle() {
   const auth = getFirebaseAuth();
   if (!auth) throw new Error("Firebase Auth is not configured.");
+
+  // If a prior popup already signed us in with Google, reuse the session instead
+  // of opening another Google window that can spin forever.
+  const existing = auth.currentUser;
+  if (existing && !existing.isAnonymous) {
+    const providers = (existing.providerData || []).map((entry) => entry.providerId);
+    if (providers.includes("google.com")) {
+      return finishGoogleCredential(existing);
+    }
+  }
 
   try {
     const credential = await signInWithPopup(
@@ -328,7 +392,20 @@ export async function firebaseSignInWithGoogle() {
   } catch (error) {
     const code = error?.code || "";
     if (code === "auth/popup-closed-by-user") throw error;
-    if (code === "auth/popup-blocked" || code === "auth/cancelled-popup-request") {
+
+    // Second click / overlapping popup — do NOT redirect. That was causing
+    // "I'm logged in but the Google popup is still loading."
+    if (code === "auth/cancelled-popup-request") {
+      if (auth.currentUser && !auth.currentUser.isAnonymous) {
+        return finishGoogleCredential(auth.currentUser);
+      }
+      throw authError(
+        "auth/cancelled-popup-request",
+        "Google sign-in is already in progress. Finish or close the Google window, then try again.",
+      );
+    }
+
+    if (code === "auth/popup-blocked") {
       if (typeof window !== "undefined") {
         window.sessionStorage.setItem("hobbyarena:googleRedirect", "1");
       }
@@ -336,6 +413,11 @@ export async function firebaseSignInWithGoogle() {
       await signInWithRedirect(auth, googleProvider, browserPopupRedirectResolver);
       return { redirecting: true };
     }
+
+    if (code === "auth/account-exists-with-different-credential") {
+      throw authError("auth/account-exists-with-different-credential", EMAIL_IN_USE_PASSWORD_FOR_GOOGLE);
+    }
+
     throw error;
   }
 }
