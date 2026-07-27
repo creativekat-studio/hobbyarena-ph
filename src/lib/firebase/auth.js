@@ -280,9 +280,19 @@ export async function assertEmailAllowsGoogleSignIn(email) {
 
 /**
  * After Google returns a credential: reject when a password Auth account
- * already owns this email, so Google cannot create a second Auth user and
- * overwrite the customer profile's auth type.
+ * already owns this email. Deletes the new Google Auth user when possible so
+ * Firebase Console does not keep a second account that "replaced" password.
  */
+async function rejectGoogleForPasswordEmail(firebaseUser) {
+  try {
+    await firebaseUser.delete();
+  } catch {
+    const auth = getFirebaseAuth();
+    if (auth) await signOut(auth);
+  }
+  throw authError("auth/account-exists-with-different-credential", EMAIL_IN_USE_PASSWORD_FOR_GOOGLE);
+}
+
 async function assertGoogleDoesNotReplacePasswordAccount(firebaseUser) {
   const email = firebaseUser?.email;
   if (!email) return;
@@ -291,30 +301,19 @@ async function assertGoogleDoesNotReplacePasswordAccount(firebaseUser) {
   // Linked Google+password on the same Auth user — fine; profile lock keeps the original method.
   if (ownProviders.includes("password")) return;
 
-  try {
-    await assertEmailAllowsGoogleSignIn(email);
-  } catch (error) {
-    const auth = getFirebaseAuth();
-    if (auth) await signOut(auth);
-    throw error;
-  }
-
-  // Multiple accounts per email: a separate password user already exists, and this
-  // Google credential is brand-new — sign out so it cannot replace the password account.
   const status = await lookupAuthEmailStatus(email);
   const passwordUid = status?.passwordAccountUid || null;
-  if (
-    status?.configured
-    && passwordUid
-    && passwordUid !== firebaseUser.uid
-  ) {
-    const createdAt = Date.parse(firebaseUser.metadata?.creationTime || "") || 0;
-    const isBrandNew = createdAt > 0 && (Date.now() - createdAt) < 120_000;
-    if (isBrandNew) {
-      const auth = getFirebaseAuth();
-      if (auth) await signOut(auth);
-      throw authError("auth/account-exists-with-different-credential", EMAIL_IN_USE_PASSWORD_FOR_GOOGLE);
-    }
+
+  // Separate password Auth user already owns this email — always block (do not
+  // rely on creationTime; that race let Google sessions stick and overwrite profiles).
+  if (status?.configured && passwordUid && passwordUid !== firebaseUser.uid) {
+    await rejectGoogleForPasswordEmail(firebaseUser);
+  }
+
+  try {
+    await assertEmailAllowsGoogleSignIn(email);
+  } catch {
+    await rejectGoogleForPasswordEmail(firebaseUser);
   }
 }
 
@@ -484,13 +483,14 @@ export async function firebaseSignInWithGoogle({ email } = {}) {
   if (!auth) throw new Error("Firebase Auth is not configured.");
 
   const emailHint = String(email || "").trim().toLowerCase();
-  // Never block before the popup — shoppers pick the Google account first, then we
-  // check whether that email already has a password Hobby Arena account.
-  googleProvider.setCustomParameters(
-    emailHint
-      ? { prompt: "select_account", login_hint: emailHint }
-      : { prompt: "select_account" },
-  );
+  // When the form already has an email, refuse Google before the popup if that
+  // address is password-only — avoids the blank/stuck handler and Auth overwrite.
+  if (emailHint) {
+    await assertEmailAllowsGoogleSignIn(emailHint);
+    googleProvider.setCustomParameters({ prompt: "select_account", login_hint: emailHint });
+  } else {
+    googleProvider.setCustomParameters({ prompt: "select_account" });
+  }
 
   // If a prior popup already signed us in with Google, reuse the session instead
   // of opening another Google window that can spin forever.

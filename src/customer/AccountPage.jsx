@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -44,12 +44,14 @@ import PasswordField from "../components/PasswordField.jsx";
 
 function AuthCard({ panelSx }) {
   const { signInCustomer, signInWithGoogle, registerCustomer, sendPasswordReset, authMode, isCustomer } = useAuth();
+  // signin = email + Google (primary). password = email + password. signup / reset unchanged.
   const [mode, setMode] = useState("signin");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
+  const formRef = useRef(null);
 
   useEffect(() => {
     try {
@@ -81,6 +83,13 @@ function AuthCard({ panelSx }) {
     }
   }, [isCustomer]);
 
+  function readFormEmail() {
+    const form = formRef.current;
+    if (!form) return "";
+    const field = form.elements?.namedItem?.("email") || form.querySelector?.('input[name="email"]');
+    return String(field?.value || "").trim();
+  }
+
   function switchMode(next) {
     setMode(next);
     setError("");
@@ -97,11 +106,17 @@ function AuthCard({ panelSx }) {
     const nextName = String(formData.get("name") || "").trim();
     const nextEmail = String(formData.get("email") || "").trim();
     const nextPassword = String(formData.get("password") || "");
+
+    if (mode === "signin") {
+      await runGoogleSignIn(nextEmail);
+      return;
+    }
+
     if (!nextEmail) {
       setError("Email is required.");
       return;
     }
-    if ((mode === "signin" || mode === "signup") && !nextPassword) {
+    if ((mode === "password" || mode === "signup") && !nextPassword) {
       setError("Password is required.");
       return;
     }
@@ -114,7 +129,7 @@ function AuthCard({ panelSx }) {
       if (mode === "reset") {
         await sendPasswordReset(nextEmail);
         setInfo("If an email/password account exists for that address, we sent a reset link.");
-      } else if (mode === "signin") {
+      } else if (mode === "password") {
         await signInCustomer(nextEmail, nextPassword);
       } else {
         await registerCustomer({
@@ -132,16 +147,20 @@ function AuthCard({ panelSx }) {
     }
   }
 
-  async function handleGoogleSignIn() {
+  async function runGoogleSignIn(emailOverride) {
     if (busy) return;
     setError("");
     setInfo("");
+    const email = String(emailOverride || readFormEmail() || "").trim();
+    if (!email) {
+      setError("Enter your email first — we’ll check if that account already exists before opening Google.");
+      return;
+    }
     setBusy(true);
     try {
-      const user = await signInWithGoogle();
+      const user = await signInWithGoogle({ email });
       if (!user) {
         setInfo("Redirecting to Google…");
-        // Keep busy while the page navigates away for redirect fallback.
         return;
       }
     } catch (err) {
@@ -152,18 +171,35 @@ function AuthCard({ panelSx }) {
     setBusy(false);
   }
 
+  async function handleGoogleSignIn() {
+    await runGoogleSignIn();
+  }
+
   const heading =
     mode === "reset"
       ? "Reset your password."
-      : mode === "signin"
-        ? "Welcome back, Trainer."
-        : "Join the Arena.";
+      : mode === "password"
+        ? "Sign in with password."
+        : mode === "signin"
+          ? "Welcome back, Trainer."
+          : "Join the Arena.";
   const subheading =
     mode === "reset"
       ? "We’ll email a reset link for email/password accounts. Google sign-in members should use Continue with Google."
-      : mode === "signin"
-        ? "Sign in to track orders, secure pre-orders, and spend store credit."
-        : "Create an account to start collecting, earn points, and lock in drops.";
+      : mode === "password"
+        ? "Use the email and password you created for Hobby Arena."
+        : mode === "signin"
+          ? "Enter your email, then continue with Google to track orders and secure pre-orders."
+          : "Create an account to start collecting, earn points, and lock in drops.";
+
+  const overline =
+    mode === "reset"
+      ? "Password reset"
+      : mode === "password"
+        ? "Email & password"
+        : mode === "signin"
+          ? "Member access"
+          : "Create account";
 
   return (
     <Box
@@ -177,13 +213,14 @@ function AuthCard({ panelSx }) {
         },
       }}
       component="form"
+      ref={formRef}
       onSubmit={handleSubmit}
       key={mode}
     >
       <Stack spacing={2.5} sx={{ "@media (max-height: 820px)": { gap: 1.75 } }}>
         <Stack spacing={0.5}>
           <Typography variant="overline" sx={{ color: "primary.main", fontWeight: 800, letterSpacing: 2, fontFamily: MONO_FONT }}>
-            ▣ {mode === "reset" ? "Password reset" : mode === "signin" ? "Member access" : "Create account"}
+            ▣ {overline}
           </Typography>
           <Typography variant="h4">{heading}</Typography>
           <Typography color="text.secondary">{subheading}</Typography>
@@ -200,7 +237,8 @@ function AuthCard({ panelSx }) {
           <TextField name="name" label="Full name" fullWidth defaultValue="" autoComplete="name" />
         ) : null}
         <TextField name="email" label="Email" type="email" fullWidth defaultValue="" autoComplete="email" inputProps={{ inputMode: "email" }} />
-        {mode === "signin" || mode === "signup" ? (
+
+        {mode === "password" || mode === "signup" ? (
           <Stack spacing={0.75}>
             <PasswordField
               name="password"
@@ -208,7 +246,7 @@ function AuthCard({ panelSx }) {
               helperText={mode === "signup" ? "At least 8 characters." : undefined}
               autoComplete={mode === "signup" ? "new-password" : "current-password"}
             />
-            {mode === "signin" && authMode === "firebase" ? (
+            {mode === "password" && authMode === "firebase" ? (
               <Typography variant="body2" textAlign="right">
                 <Box
                   component="button"
@@ -251,59 +289,130 @@ function AuthCard({ panelSx }) {
           </Stack>
         ) : null}
 
-        <Button type="submit" variant="contained" color="primary" size="large" disabled={busy} sx={{ py: 1.3, fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase" }}>
-          {busy
-            ? "Please wait…"
-            : mode === "reset"
-              ? "▶ Send reset link"
-              : mode === "signin"
-                ? "▶ Sign in"
-                : "▶ Create account"}
-        </Button>
+        {mode === "signin" && authMode === "firebase" ? (
+          <Button
+            type="submit"
+            variant="contained"
+            color="primary"
+            size="large"
+            disabled={busy}
+            sx={{ py: 1.3, fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase" }}
+          >
+            {busy ? "Please wait…" : "Continue with Google"}
+          </Button>
+        ) : (
+          <Button type="submit" variant="contained" color="primary" size="large" disabled={busy} sx={{ py: 1.3, fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase" }}>
+            {busy
+              ? "Please wait…"
+              : mode === "reset"
+                ? "▶ Send reset link"
+                : mode === "password"
+                  ? "▶ Sign in"
+                  : "▶ Create account"}
+          </Button>
+        )}
 
-        {mode !== "reset" ? (
-          <>
-            <Divider sx={{ color: "text.secondary", fontSize: "0.75rem" }}>or</Divider>
-
-            {authMode === "firebase" ? (
-              <Button
-                type="button"
-                variant="outlined"
-                color="inherit"
-                size="large"
-                disabled={busy}
-                onClick={handleGoogleSignIn}
-                sx={{ py: 1.2, borderColor: "divider", fontWeight: 700 }}
-              >
-                Continue with Google
-              </Button>
-            ) : null}
-
+        {mode === "signin" ? (
+          <Stack spacing={1.25} alignItems="center">
             <Typography variant="body2" color="text.secondary" textAlign="center">
-              {mode === "signin" ? "New to Hobby Arena? " : "Already a member? "}
+              New to Hobby Arena?{" "}
               <Box
                 component="button"
                 type="button"
-                onClick={() => switchMode(mode === "signin" ? "signup" : "signin")}
+                onClick={() => switchMode("signup")}
                 sx={{ background: "none", border: "none", p: 0, cursor: "pointer", color: "primary.main", fontWeight: 700, textDecoration: "underline", font: "inherit" }}
               >
-                {mode === "signin" ? "Create an account" : "Sign in"}
+                Create an account
+              </Box>
+            </Typography>
+            <Typography variant="body2" color="text.secondary" textAlign="center">
+              Have a password account?{" "}
+              <Box
+                component="button"
+                type="button"
+                onClick={() => switchMode("password")}
+                sx={{ background: "none", border: "none", p: 0, cursor: "pointer", color: "primary.main", fontWeight: 700, textDecoration: "underline", font: "inherit" }}
+              >
+                Sign in with email &amp; password
+              </Box>
+            </Typography>
+          </Stack>
+        ) : null}
+
+        {mode === "password" ? (
+          <Stack spacing={1.25} alignItems="center">
+            {authMode === "firebase" ? (
+              <Typography variant="body2" color="text.secondary" textAlign="center">
+                Prefer Google?{" "}
+                <Box
+                  component="button"
+                  type="button"
+                  onClick={() => switchMode("signin")}
+                  sx={{ background: "none", border: "none", p: 0, cursor: "pointer", color: "primary.main", fontWeight: 700, textDecoration: "underline", font: "inherit" }}
+                >
+                  Continue with Google
+                </Box>
+              </Typography>
+            ) : null}
+            <Typography variant="body2" color="text.secondary" textAlign="center">
+              New to Hobby Arena?{" "}
+              <Box
+                component="button"
+                type="button"
+                onClick={() => switchMode("signup")}
+                sx={{ background: "none", border: "none", p: 0, cursor: "pointer", color: "primary.main", fontWeight: 700, textDecoration: "underline", font: "inherit" }}
+              >
+                Create an account
+              </Box>
+            </Typography>
+          </Stack>
+        ) : null}
+
+        {mode === "signup" ? (
+          <>
+            {authMode === "firebase" ? (
+              <>
+                <Divider sx={{ color: "text.secondary", fontSize: "0.75rem" }}>or</Divider>
+                <Button
+                  type="button"
+                  variant="outlined"
+                  color="inherit"
+                  size="large"
+                  disabled={busy}
+                  onClick={handleGoogleSignIn}
+                  sx={{ py: 1.2, borderColor: "divider", fontWeight: 700 }}
+                >
+                  Continue with Google
+                </Button>
+              </>
+            ) : null}
+            <Typography variant="body2" color="text.secondary" textAlign="center">
+              Already a member?{" "}
+              <Box
+                component="button"
+                type="button"
+                onClick={() => switchMode("signin")}
+                sx={{ background: "none", border: "none", p: 0, cursor: "pointer", color: "primary.main", fontWeight: 700, textDecoration: "underline", font: "inherit" }}
+              >
+                Sign in
               </Box>
             </Typography>
           </>
-        ) : (
+        ) : null}
+
+        {mode === "reset" ? (
           <Typography variant="body2" color="text.secondary" textAlign="center">
             Remembered it?{" "}
             <Box
               component="button"
               type="button"
-              onClick={() => switchMode("signin")}
+              onClick={() => switchMode("password")}
               sx={{ background: "none", border: "none", p: 0, cursor: "pointer", color: "primary.main", fontWeight: 700, textDecoration: "underline", font: "inherit" }}
             >
-              Back to sign in
+              Back to password sign in
             </Box>
           </Typography>
-        )}
+        ) : null}
       </Stack>
     </Box>
   );

@@ -239,6 +239,31 @@ export async function upsertCustomerProfile(input) {
   if (!key) return null;
 
   const existing = profileCache[key] ?? readLocalProfiles()[key] ?? null;
+  const existingProvider = normalizeAuthProvider(existing?.authProvider);
+  const incomingProvider = normalizeAuthProvider(input.authProvider);
+  const existingUid = String(existing?.uid || "").trim();
+  const incomingUid = String(input.uid || "").trim();
+
+  // Never let a different Auth uid (Google vs password) overwrite the member method.
+  if (
+    existingUid
+    && incomingUid
+    && existingUid !== incomingUid
+    && (
+      (existingProvider === "password" && incomingProvider === "google")
+      || (existingProvider === "google" && incomingProvider === "password")
+    )
+  ) {
+    console.warn(
+      "[customers] Refusing authProvider overwrite for",
+      key,
+      existingProvider,
+      "→",
+      incomingProvider,
+    );
+    return existing;
+  }
+
   const next = mergeProfile(existing, input);
 
   profileCache[key] = next;
