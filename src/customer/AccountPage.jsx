@@ -44,13 +44,14 @@ import PasswordField from "../components/PasswordField.jsx";
 
 function AuthCard({ panelSx }) {
   const { signInCustomer, signInWithGoogle, registerCustomer, sendPasswordReset, authMode, isCustomer } = useAuth();
-  // signin = email + Google (primary). password = email + password. signup / reset unchanged.
+  // signin = email + password (default). google = email-only Google form. signup / reset unchanged.
   const [mode, setMode] = useState("signin");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
+  const [emailDefault, setEmailDefault] = useState("");
   const formRef = useRef(null);
 
   useEffect(() => {
@@ -91,9 +92,14 @@ function AuthCard({ panelSx }) {
   }
 
   function switchMode(next) {
+    setEmailDefault(readFormEmail() || emailDefault);
     setMode(next);
     setError("");
     setInfo("");
+  }
+
+  function openGoogleForm() {
+    switchMode("google");
   }
 
   async function handleSubmit(event) {
@@ -107,7 +113,7 @@ function AuthCard({ panelSx }) {
     const nextEmail = String(formData.get("email") || "").trim();
     const nextPassword = String(formData.get("password") || "");
 
-    if (mode === "signin") {
+    if (mode === "google") {
       await runGoogleSignIn(nextEmail);
       return;
     }
@@ -116,7 +122,7 @@ function AuthCard({ panelSx }) {
       setError("Email is required.");
       return;
     }
-    if ((mode === "password" || mode === "signup") && !nextPassword) {
+    if ((mode === "signin" || mode === "signup") && !nextPassword) {
       setError("Password is required.");
       return;
     }
@@ -129,7 +135,7 @@ function AuthCard({ panelSx }) {
       if (mode === "reset") {
         await sendPasswordReset(nextEmail);
         setInfo("If an email/password account exists for that address, we sent a reset link.");
-      } else if (mode === "password") {
+      } else if (mode === "signin") {
         await signInCustomer(nextEmail, nextPassword);
       } else {
         await registerCustomer({
@@ -171,32 +177,33 @@ function AuthCard({ panelSx }) {
     setBusy(false);
   }
 
-  async function handleGoogleSignIn() {
+  async function handleGoogleSignInFromSignup() {
+    // Signup keeps one-shot Google: require email on the signup form, then go.
     await runGoogleSignIn();
   }
 
   const heading =
     mode === "reset"
       ? "Reset your password."
-      : mode === "password"
-        ? "Sign in with password."
+      : mode === "google"
+        ? "Continue with Google."
         : mode === "signin"
           ? "Welcome back, Trainer."
           : "Join the Arena.";
   const subheading =
     mode === "reset"
       ? "We’ll email a reset link for email/password accounts. Google sign-in members should use Continue with Google."
-      : mode === "password"
-        ? "Use the email and password you created for Hobby Arena."
+      : mode === "google"
+        ? "Confirm your email, then continue — we’ll check if that account already exists before opening Google."
         : mode === "signin"
-          ? "Enter your email, then continue with Google to track orders and secure pre-orders."
+          ? "Sign in to track orders, secure pre-orders, and spend store credit."
           : "Create an account to start collecting, earn points, and lock in drops.";
 
   const overline =
     mode === "reset"
       ? "Password reset"
-      : mode === "password"
-        ? "Email & password"
+      : mode === "google"
+        ? "Google sign-in"
         : mode === "signin"
           ? "Member access"
           : "Create account";
@@ -236,9 +243,17 @@ function AuthCard({ panelSx }) {
         {mode === "signup" ? (
           <TextField name="name" label="Full name" fullWidth defaultValue="" autoComplete="name" />
         ) : null}
-        <TextField name="email" label="Email" type="email" fullWidth defaultValue="" autoComplete="email" inputProps={{ inputMode: "email" }} />
+        <TextField
+          name="email"
+          label="Email"
+          type="email"
+          fullWidth
+          defaultValue={emailDefault}
+          autoComplete="email"
+          inputProps={{ inputMode: "email" }}
+        />
 
-        {mode === "password" || mode === "signup" ? (
+        {mode === "signin" || mode === "signup" ? (
           <Stack spacing={0.75}>
             <PasswordField
               name="password"
@@ -246,7 +261,7 @@ function AuthCard({ panelSx }) {
               helperText={mode === "signup" ? "At least 8 characters." : undefined}
               autoComplete={mode === "signup" ? "new-password" : "current-password"}
             />
-            {mode === "password" && authMode === "firebase" ? (
+            {mode === "signin" && authMode === "firebase" ? (
               <Typography variant="body2" textAlign="right">
                 <Box
                   component="button"
@@ -289,7 +304,7 @@ function AuthCard({ panelSx }) {
           </Stack>
         ) : null}
 
-        {mode === "signin" && authMode === "firebase" ? (
+        {mode === "google" ? (
           <Button
             type="submit"
             variant="contained"
@@ -306,14 +321,30 @@ function AuthCard({ panelSx }) {
               ? "Please wait…"
               : mode === "reset"
                 ? "▶ Send reset link"
-                : mode === "password"
+                : mode === "signin"
                   ? "▶ Sign in"
                   : "▶ Create account"}
           </Button>
         )}
 
         {mode === "signin" ? (
-          <Stack spacing={1.25} alignItems="center">
+          <>
+            {authMode === "firebase" ? (
+              <>
+                <Divider sx={{ color: "text.secondary", fontSize: "0.75rem" }}>or</Divider>
+                <Button
+                  type="button"
+                  variant="outlined"
+                  color="inherit"
+                  size="large"
+                  disabled={busy}
+                  onClick={openGoogleForm}
+                  sx={{ py: 1.2, borderColor: "divider", fontWeight: 700 }}
+                >
+                  Continue with Google
+                </Button>
+              </>
+            ) : null}
             <Typography variant="body2" color="text.secondary" textAlign="center">
               New to Hobby Arena?{" "}
               <Box
@@ -325,35 +356,22 @@ function AuthCard({ panelSx }) {
                 Create an account
               </Box>
             </Typography>
+          </>
+        ) : null}
+
+        {mode === "google" ? (
+          <Stack spacing={1.25} alignItems="center">
             <Typography variant="body2" color="text.secondary" textAlign="center">
-              Have a password account?{" "}
+              Prefer password?{" "}
               <Box
                 component="button"
                 type="button"
-                onClick={() => switchMode("password")}
+                onClick={() => switchMode("signin")}
                 sx={{ background: "none", border: "none", p: 0, cursor: "pointer", color: "primary.main", fontWeight: 700, textDecoration: "underline", font: "inherit" }}
               >
                 Sign in with email &amp; password
               </Box>
             </Typography>
-          </Stack>
-        ) : null}
-
-        {mode === "password" ? (
-          <Stack spacing={1.25} alignItems="center">
-            {authMode === "firebase" ? (
-              <Typography variant="body2" color="text.secondary" textAlign="center">
-                Prefer Google?{" "}
-                <Box
-                  component="button"
-                  type="button"
-                  onClick={() => switchMode("signin")}
-                  sx={{ background: "none", border: "none", p: 0, cursor: "pointer", color: "primary.main", fontWeight: 700, textDecoration: "underline", font: "inherit" }}
-                >
-                  Continue with Google
-                </Box>
-              </Typography>
-            ) : null}
             <Typography variant="body2" color="text.secondary" textAlign="center">
               New to Hobby Arena?{" "}
               <Box
@@ -379,7 +397,7 @@ function AuthCard({ panelSx }) {
                   color="inherit"
                   size="large"
                   disabled={busy}
-                  onClick={handleGoogleSignIn}
+                  onClick={handleGoogleSignInFromSignup}
                   sx={{ py: 1.2, borderColor: "divider", fontWeight: 700 }}
                 >
                   Continue with Google
@@ -406,10 +424,10 @@ function AuthCard({ panelSx }) {
             <Box
               component="button"
               type="button"
-              onClick={() => switchMode("password")}
+              onClick={() => switchMode("signin")}
               sx={{ background: "none", border: "none", p: 0, cursor: "pointer", color: "primary.main", fontWeight: 700, textDecoration: "underline", font: "inherit" }}
             >
-              Back to password sign in
+              Back to sign in
             </Box>
           </Typography>
         ) : null}
