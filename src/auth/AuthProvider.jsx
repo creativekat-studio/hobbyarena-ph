@@ -251,17 +251,28 @@ export function AuthProvider({ children }) {
     return nextUser;
   }, [firebaseEnabled, persistMock, publishCustomerSession]);
 
-  const signInWithGoogle = useCallback(async () => {
+  const signInWithGoogle = useCallback(async (options = {}) => {
     if (!firebaseEnabled) {
       throw new Error("Google sign-in requires Firebase Auth. Add your Firebase config to .env.local.");
     }
     try {
+      const emailHint = String(options.email || "").trim();
+      if (emailHint) {
+        const existing = getCustomerProfile(emailHint);
+        if (existing?.authProvider === "password") {
+          throw new Error(
+            "This email already has a password account. Sign in with email and password instead of Google.",
+          );
+        }
+      }
       setAuthSurface("customer");
-      const user = await firebaseSignInWithGoogle();
+      const user = await firebaseSignInWithGoogle({ email: emailHint });
       // Mobile redirect leaves the page; session completes on return via getRedirectResult.
       if (user?.redirecting) return null;
       return publishCustomerSession(user);
     } catch (error) {
+      const message = String(error?.message || "");
+      if (message.includes("already has a password account")) throw error;
       throw new Error(mapAuthError(error));
     }
   }, [firebaseEnabled, publishCustomerSession]);

@@ -74,7 +74,8 @@ export function mapAuthError(error) {
     "auth/user-disabled": "This account is disabled. Message Hobby Arena PH for help.",
     "auth/weak-password": "Password must be at least 8 characters.",
     "auth/too-many-requests": "Too many attempts. Try again later.",
-    "auth/popup-closed-by-user": "Sign-in cancelled.",
+    "auth/popup-closed-by-user":
+      "Sign-in cancelled. If you already created this email with a password, sign in with email and password instead of Google.",
     "auth/popup-blocked": "Your browser blocked the Google window. Try again — we’ll use a full-page sign-in.",
     "auth/cancelled-popup-request":
       "Google sign-in is already in progress. Finish or close the Google window, then try again.",
@@ -258,6 +259,27 @@ async function assertEmailFreeForPasswordSignup(email) {
 }
 
 /**
+ * Before opening the Google popup: if this email already has a password-only
+ * Auth account, fail immediately so the shopper does not walk through OAuth.
+ */
+export async function assertEmailAllowsGoogleSignIn(email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  if (!normalized) return;
+
+  const auth = getFirebaseAuth();
+  const clientMethods = await signInMethodsForEmail(auth, normalized);
+  const status = await lookupAuthEmailStatus(normalized);
+  const providers = new Set([
+    ...clientMethods,
+    ...((status?.configured && status.providers) || []),
+  ]);
+
+  if (providers.has("password") && !providers.has("google.com")) {
+    throw authError("auth/account-exists-with-different-credential", EMAIL_IN_USE_PASSWORD_FOR_GOOGLE);
+  }
+}
+
+/**
  * After Google returns a credential: reject when a password Auth account
  * already owns this email, so Google cannot create a second Auth user and
  * overwrite the customer profile's auth type.
@@ -270,22 +292,17 @@ async function assertGoogleDoesNotReplacePasswordAccount(firebaseUser) {
   // Linked Google+password on the same Auth user — fine; profile lock keeps the original method.
   if (ownProviders.includes("password")) return;
 
-  const clientMethods = await signInMethodsForEmail(getFirebaseAuth(), email);
-  const status = await lookupAuthEmailStatus(email);
-  const providers = new Set([
-    ...clientMethods,
-    ...((status?.configured && status.providers) || []),
-  ]);
-
-  // Classic one-account case: password-only email, Google should not proceed.
-  if (providers.has("password") && !providers.has("google.com")) {
+  try {
+    await assertEmailAllowsGoogleSignIn(email);
+  } catch (error) {
     const auth = getFirebaseAuth();
     if (auth) await signOut(auth);
-    throw authError("auth/account-exists-with-different-credential", EMAIL_IN_USE_PASSWORD_FOR_GOOGLE);
+    throw error;
   }
 
   // Multiple accounts per email: a separate password user already exists, and this
   // Google credential is brand-new — sign out so it cannot replace the password account.
+  const status = await lookupAuthEmailStatus(email);
   const passwordUid = status?.passwordAccountUid || null;
   if (
     status?.configured
@@ -459,10 +476,21 @@ export async function completeGoogleRedirectResult() {
  * work on mobile Safari/Chrome. Redirect is only a last resort if the popup
  * is blocked — never on cancelled-popup-request, which leaves a stuck OAuth
  * window when a second popup/redirect starts while the first is still open.
+ *
+ * @param {{ email?: string }} [options] When email is provided, we check Auth
+ *   first and refuse to open Google if that address already has a password account.
  */
-export async function firebaseSignInWithGoogle() {
+export async function firebaseSignInWithGoogle({ email } = {}) {
   const auth = getFirebaseAuth();
   if (!auth) throw new Error("Firebase Auth is not configured.");
+
+  const emailHint = String(email || "").trim().toLowerCase();
+  if (emailHint) {
+    await assertEmailAllowsGoogleSignIn(emailHint);
+    googleProvider.setCustomParameters({ prompt: "select_account", login_hint: emailHint });
+  } else {
+    googleProvider.setCustomParameters({ prompt: "select_account" });
+  }
 
   // If a prior popup already signed us in with Google, reuse the session instead
   // of opening another Google window that can spin forever.
