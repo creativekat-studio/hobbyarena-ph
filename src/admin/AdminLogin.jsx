@@ -28,8 +28,6 @@ export default function AdminLogin() {
   const { panelSx } = surfaces;
   const { signInAdmin, isAdmin } = useAuth();
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -40,9 +38,17 @@ export default function AdminLogin() {
   async function handleSubmit(event) {
     event.preventDefault();
     setError("");
+    // FormData so browser/password-manager autofill is not lost (same as storefront).
+    const formData = new FormData(event.currentTarget);
+    const nextEmail = String(formData.get("email") || "").trim();
+    const nextPassword = String(formData.get("password") || "");
+    if (!nextEmail || !nextPassword) {
+      setError("Email and password are required.");
+      return;
+    }
     setBusy(true);
     try {
-      await signInAdmin(email, password);
+      await signInAdmin(nextEmail, nextPassword);
     } catch (err) {
       setError(err.message || "Sign in failed.");
     } finally {
@@ -69,8 +75,16 @@ export default function AdminLogin() {
                 ▣ Secure sign in
               </Typography>
               {error ? <Alert severity="error">{error}</Alert> : null}
-              <TextField label="Admin email" type="email" fullWidth value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="username" />
-              <PasswordField value={password} onChange={(e) => setPassword(e.target.value)} required />
+              <TextField
+                name="email"
+                label="Admin email"
+                type="email"
+                fullWidth
+                defaultValue=""
+                autoComplete="username"
+                inputProps={{ inputMode: "email" }}
+              />
+              <PasswordField name="password" defaultValue="" autoComplete="current-password" />
               <Button type="submit" variant="contained" color="primary" size="large" disabled={busy} sx={{ py: 1.3, fontFamily: MONO_FONT, letterSpacing: 1, textTransform: "uppercase" }}>
                 {busy ? "Verifying…" : "▶ Sign in"}
               </Button>

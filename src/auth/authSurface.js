@@ -21,12 +21,14 @@ export function clearAuthSurface() {
 }
 
 export function isAdminPortalPath(pathname) {
-  return pathname.startsWith("/admin") && pathname !== "/admin/login";
+  // Include /admin/login so a successful sign-in is not cleared by the auth
+  // subscription while still on the login page (race with setAdmin).
+  return String(pathname || "").startsWith("/admin");
 }
 
 /**
- * Admin portal session — only after explicit /admin/login, or when reloading
- * an admin URL with an existing Firebase admin session.
+ * Admin portal session — after /admin/login, or when reloading any /admin URL
+ * with an existing Firebase admin session.
  */
 export function shouldExposeAdminSession(profile) {
   if (!profile?.isAdmin) return false;
