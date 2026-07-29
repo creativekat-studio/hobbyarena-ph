@@ -133,19 +133,37 @@ function aggregateLineItems(orders, basis = "paid") {
   return { byProduct, byLine, total };
 }
 
+/** Largest-remainder rounding so integer percents always sum to 100. */
+function roundPercentages(slices) {
+  const floored = slices.map((slice) => ({
+    ...slice,
+    value: Math.floor(slice.exact),
+  }));
+  let remaining = 100 - floored.reduce((sum, slice) => sum + slice.value, 0);
+  const order = floored
+    .map((slice, index) => ({ index, frac: slice.exact - Math.floor(slice.exact) }))
+    .sort((a, b) => b.frac - a.frac || a.index - b.index);
+  for (let i = 0; i < remaining; i += 1) {
+    floored[order[i % order.length].index].value += 1;
+  }
+  return floored.map(({ exact, ...rest }) => rest);
+}
+
 function toSalesByLineSlices(byLine, emptyLabel) {
   const entries = [...byLine.entries()];
   if (!entries.length) {
-    return [{ name: emptyLabel, value: 100, color: "#94a3b8" }];
+    return [{ name: emptyLabel, value: 100, revenue: 0, color: "#94a3b8" }];
   }
   const lineTotal = entries.reduce((sum, [, revenue]) => sum + revenue, 0) || 1;
-  return entries
+  const slices = entries
     .map(([name, revenue]) => ({
       name: name.replace("One Piece Card Game", "One Piece CG"),
-      value: Math.round((revenue / lineTotal) * 100),
+      revenue,
+      exact: (revenue / lineTotal) * 100,
       color: LINE_COLORS[name] || "#94a3b8",
     }))
-    .sort((a, b) => b.value - a.value);
+    .sort((a, b) => b.revenue - a.revenue);
+  return roundPercentages(slices);
 }
 
 function buildTrendBuckets(orders, period, window, now = new Date(), revenueFn = orderRevenue) {

@@ -85,6 +85,22 @@ const PERIOD_PRESETS = [
   { key: "1Y", label: "1Y" },
 ];
 
+/** Compact Y-axis labels — avoids clipping "2400k" to "400k" in a narrow axis. */
+function formatAxisCompact(value) {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) {
+    const millions = value / 1_000_000;
+    const label = Math.abs(millions - Math.round(millions)) < 0.05
+      ? String(Math.round(millions))
+      : millions.toFixed(1).replace(/\.0$/, "");
+    return `${label}M`;
+  }
+  if (abs >= 1_000) {
+    return `${Math.round(value / 1_000)}k`;
+  }
+  return String(Math.round(value));
+}
+
 const PERIOD_TOGGLE_SX = {
   px: 1.5,
   fontFamily: MONO_FONT,
@@ -538,6 +554,14 @@ function SalesByLineCard({
     ? "Fulfilled lines only"
     : "Real-time sales before product cost";
   const centerLabel = mode === "fulfilled" ? "fulfilled gross" : "real-time gross";
+  // Draw from revenue so tiny lines keep true share; skip empty slices so
+  // paddingAngle does not open a fake gap when one line is ~100%.
+  const hasLineRevenue = salesByLine.some((entry) => (entry.revenue ?? 0) > 0);
+  const pieData = hasLineRevenue
+    ? salesByLine.filter((entry) => entry.revenue > 0)
+    : salesByLine.filter((entry) => entry.value > 0);
+  const pieKey = hasLineRevenue ? "revenue" : "value";
+  const piePadding = pieData.length > 1 ? 3 : 0;
 
   return (
     <DashboardPanel
@@ -550,12 +574,28 @@ function SalesByLineCard({
       <Box sx={{ position: "relative", width: "100%", height: chartHeight, minWidth: 0 }}>
         <ResponsiveContainer width="100%" height={chartHeight}>
           <PieChart>
-            <Pie data={salesByLine} dataKey="value" nameKey="name" innerRadius="64%" outerRadius="94%" paddingAngle={3} stroke="none">
-              {salesByLine.map((entry) => (
+            <Pie
+              data={pieData}
+              dataKey={pieKey}
+              nameKey="name"
+              innerRadius="64%"
+              outerRadius="94%"
+              paddingAngle={piePadding}
+              stroke="none"
+            >
+              {pieData.map((entry) => (
                 <Cell key={entry.name} fill={entry.color} />
               ))}
             </Pie>
-            <RTooltip contentStyle={tooltipStyle} formatter={(value) => `${value}%`} />
+            <RTooltip
+              contentStyle={tooltipStyle}
+              formatter={(value, _name, item) => {
+                const pct = item?.payload?.value;
+                if (!hasLineRevenue) return `${pct ?? value}%`;
+                const amount = PESO.format(value);
+                return pct != null ? `${amount} (${pct}%)` : amount;
+              }}
+            />
           </PieChart>
         </ResponsiveContainer>
         <Box sx={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none", px: 2 }}>
@@ -570,7 +610,9 @@ function SalesByLineCard({
           <Stack key={entry.name} direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0 }}>
             <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: entry.color, flexShrink: 0 }} />
             <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, flexGrow: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.name}</Typography>
-            <Typography sx={{ fontSize: "0.85rem", fontWeight: 800, flexShrink: 0 }}>{entry.value}%</Typography>
+            <Typography sx={{ fontSize: "0.85rem", fontWeight: 800, flexShrink: 0 }}>
+              {entry.value === 0 && entry.revenue > 0 ? "<1%" : `${entry.value}%`}
+            </Typography>
           </Stack>
         ))}
       </Stack>
@@ -842,7 +884,7 @@ export default function DashboardPage() {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
               <XAxis dataKey="month" stroke={axisColor} tickLine={false} axisLine={false} fontSize={11} />
-              <YAxis stroke={axisColor} tickLine={false} axisLine={false} fontSize={11} width={36} tickFormatter={(v) => `${v / 1000}k`} />
+              <YAxis stroke={axisColor} tickLine={false} axisLine={false} fontSize={11} width={48} tickFormatter={formatAxisCompact} />
               <RTooltip contentStyle={tooltipStyle} formatter={(value) => PESO.format(value)} />
               <Area type="monotone" dataKey="revenue" stroke={primary} strokeWidth={3} fill="url(#revFill)" />
             </AreaChart>
