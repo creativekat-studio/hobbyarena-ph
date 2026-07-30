@@ -61,7 +61,8 @@ import {
   ADMIN_LIST_STATS_SX,
 } from "./adminTableHeader.jsx";
 import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
-import { changeCustomerEmail, useCustomers } from "../lib/customersStore.jsx";
+import { changeCustomerEmail, isCustomerEmailTaken, useCustomers } from "../lib/customersStore.jsx";
+import { isValidEmail } from "../lib/email/emailUtils.js";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { useClientTiers } from "../lib/clientTiersStore.jsx";
 import { useInfiniteScroll } from "../lib/useInfiniteScroll.js";
@@ -223,7 +224,16 @@ function DetailField({ label, value }) {
   );
 }
 
-function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderColor, updateOrder, onEmailChanged }) {
+function CustomerDetailDialog({
+  customer,
+  open,
+  onClose,
+  panelSx,
+  surfaceBorderColor,
+  updateOrder,
+  onEmailChanged,
+  customers = [],
+}) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const navigate = useNavigate();
@@ -271,10 +281,42 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
   const addressLine = formatAddress(customer.address);
   const customerKey = String(customer.email || customer.uid || customer.id || "").trim().toLowerCase();
   const currentEmail = String(customer.email || "").trim();
+  const currentUid = String(customer.uid || customer.id || "").trim();
   const nextEmail = String(emailDraft || "").trim();
   const emailDirty = nextEmail.toLowerCase() !== currentEmail.toLowerCase();
   const linkedOrderCount = (orderList || []).length;
   const isAuthMember = customer.authProvider === "google" || customer.authProvider === "password";
+
+  function emailAlreadyTaken(candidate) {
+    const key = String(candidate || "").trim().toLowerCase();
+    if (!key || key === currentEmail.toLowerCase()) return false;
+
+    const listed = (customers || []).some((row) => {
+      const rowEmail = String(row.email || "").trim().toLowerCase();
+      if (rowEmail !== key) return false;
+      const rowUid = String(row.uid || row.id || "").trim();
+      if (currentUid && rowUid && rowUid === currentUid) return false;
+      return true;
+    });
+    if (listed) return true;
+
+    return isCustomerEmailTaken(candidate, {
+      exceptUid: currentUid,
+      exceptEmail: currentEmail,
+    });
+  }
+
+  function validateEmailDraft(value, { requireValue = false } = {}) {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) return requireValue ? "Email is required." : "";
+    if (!isValidEmail(trimmed)) return "Enter a valid email address.";
+    if (emailAlreadyTaken(trimmed)) return "Another customer already uses that email.";
+    return "";
+  }
+
+  const liveEmailError = emailEditing ? validateEmailDraft(emailDraft) : "";
+  const shownEmailError = emailError || liveEmailError;
+  const canSaveEmail = emailDirty && !validateEmailDraft(emailDraft, { requireValue: true }) && !emailSaving;
 
   function openOrderFromHistory(orderId) {
     onClose();
@@ -299,20 +341,19 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
   }
 
   function requestEmailSave() {
-    setEmailError("");
-    if (!nextEmail) {
-      setEmailError("Email is required.");
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail.toLowerCase())) {
-      setEmailError("Enter a valid email address.");
-      return;
-    }
-    if (!emailDirty) return;
+    const error = validateEmailDraft(emailDraft, { requireValue: true });
+    setEmailError(error);
+    if (error || !emailDirty) return;
     setConfirmEmailOpen(true);
   }
 
   async function confirmEmailSave() {
+    const error = validateEmailDraft(emailDraft, { requireValue: true });
+    if (error) {
+      setConfirmEmailOpen(false);
+      setEmailError(error);
+      return;
+    }
     setEmailSaving(true);
     setEmailError("");
     try {
@@ -328,9 +369,9 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
       setEmailEditing(false);
       setEmailNotice("Customer email updated.");
       onEmailChanged?.(updated || { ...customer, email: toKey });
-    } catch (error) {
+    } catch (err) {
       setConfirmEmailOpen(false);
-      setEmailError(error?.message || "Could not update email.");
+      setEmailError(err?.message || "Could not update email.");
     } finally {
       setEmailSaving(false);
     }
@@ -416,8 +457,11 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
                         setEmailDraft(event.target.value);
                         if (emailError) setEmailError("");
                       }}
-                      error={Boolean(emailError)}
-                      helperText={emailError || undefined}
+                      onBlur={() => {
+                        setEmailError(validateEmailDraft(emailDraft, { requireValue: true }));
+                      }}
+                      error={Boolean(shownEmailError)}
+                      helperText={shownEmailError || undefined}
                       inputProps={{ "aria-label": "Customer email" }}
                     />
                     <Stack direction="row" spacing={1}>
@@ -438,7 +482,7 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
                         size="small"
                         variant="contained"
                         color="primary"
-                        disabled={!emailDirty || emailSaving}
+                        disabled={!canSaveEmail}
                         onClick={requestEmailSave}
                         sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase", fontSize: "0.68rem" }}
                       >
@@ -1196,6 +1240,7 @@ export default function CustomersPage() {
         panelSx={panelSx}
         surfaceBorderColor={surfaceBorderColor}
         updateOrder={updateOrder}
+        customers={customers}
         onEmailChanged={(updated) => {
           const nextKey = customerIdentityKey(updated);
           if (nextKey) setSelectedCustomerKey(nextKey);

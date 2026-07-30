@@ -10,6 +10,7 @@ import {
   subscribeCustomerDoc,
   upsertCustomerDocument,
 } from "./firebase/repositories/customers.js";
+import { isValidEmail } from "./email/emailUtils.js";
 
 const STORAGE_KEY = "hobbyarena:customers";
 
@@ -294,9 +295,30 @@ export async function updateCustomerProfile(email, patch) {
 }
 
 function looksLikeEmail(value) {
-  const email = normalizeEmail(value);
-  // Practical check — not a full RFC parser.
-  return Boolean(email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+  return isValidEmail(value);
+}
+
+export function findCustomerProfileByEmail(email) {
+  const key = normalizeEmail(email);
+  if (!key) return null;
+  return getCustomerProfile(key)
+    || Object.values(profileCache).find((row) => normalizeEmail(row?.email) === key)
+    || null;
+}
+
+/** True when another customer profile already owns this email. */
+export function isCustomerEmailTaken(email, { exceptUid = "", exceptEmail = "" } = {}) {
+  const key = normalizeEmail(email);
+  if (!key) return false;
+  if (key === normalizeEmail(exceptEmail)) return false;
+
+  const hit = findCustomerProfileByEmail(key);
+  if (!hit) return false;
+
+  const hitUid = String(hit.uid || "").trim();
+  const skipUid = String(exceptUid || "").trim();
+  if (skipUid && hitUid && hitUid === skipUid) return false;
+  return true;
 }
 
 /**
@@ -311,15 +333,10 @@ export async function changeCustomerEmail(fromEmail, toEmail) {
   if (!looksLikeEmail(toKey)) throw new Error("Enter a valid email address.");
   if (fromKey === toKey) return getCustomerProfile(fromKey);
 
-  const existing = getCustomerProfile(fromKey)
-    || Object.values(profileCache).find((row) => normalizeEmail(row?.email) === fromKey)
-    || null;
+  const existing = findCustomerProfileByEmail(fromKey);
   if (!existing) throw new Error("Customer not found.");
 
-  const collision = getCustomerProfile(toKey);
-  const existingUid = String(existing.uid || "").trim();
-  const collisionUid = String(collision?.uid || "").trim();
-  if (collision && collisionUid && existingUid && collisionUid !== existingUid) {
+  if (isCustomerEmailTaken(toKey, { exceptUid: existing.uid, exceptEmail: fromKey })) {
     throw new Error("Another customer already uses that email.");
   }
 
