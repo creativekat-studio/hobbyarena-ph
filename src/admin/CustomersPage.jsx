@@ -40,6 +40,7 @@ import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHead
 import {
   CardIcon,
   CollapseCornersIcon,
+  EditIcon,
   ExpandCornersIcon,
   SearchIcon,
   SparkleIcon,
@@ -230,6 +231,7 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
   const [statusFilter, setStatusFilter] = useState("all");
   const [tableExpanded, setTableExpanded] = useState(false);
   const [emailDraft, setEmailDraft] = useState("");
+  const [emailEditing, setEmailEditing] = useState(false);
   const [confirmEmailOpen, setConfirmEmailOpen] = useState(false);
   const [emailSaving, setEmailSaving] = useState(false);
   const [emailError, setEmailError] = useState("");
@@ -258,6 +260,7 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
     // Mobile: collapse profile chrome so order history has room to render.
     setTableExpanded(isMobile);
     setEmailDraft(customer?.email || "");
+    setEmailEditing(false);
     setEmailError("");
     setConfirmEmailOpen(false);
   }, [open, customer?.email, customer?.uid, customer?.id, isMobile]);
@@ -322,6 +325,7 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
         }
       });
       setConfirmEmailOpen(false);
+      setEmailEditing(false);
       setEmailNotice("Customer email updated.");
       onEmailChanged?.(updated || { ...customer, email: toKey });
     } catch (error) {
@@ -396,35 +400,73 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
         >
           <Stack spacing={2}>
             <Grid container spacing={2}>
-              <Grid size={{ xs: 12 }}>
+              <Grid size={{ xs: 12, sm: 6 }}>
                 <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", fontWeight: 800, letterSpacing: 1, color: "text.secondary", textTransform: "uppercase", mb: 0.35 }}>
                   Email
                 </Typography>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "flex-start" }}>
-                  <TextField
-                    size="small"
-                    fullWidth
-                    type="email"
-                    value={emailDraft}
-                    onChange={(event) => {
-                      setEmailDraft(event.target.value);
-                      if (emailError) setEmailError("");
-                    }}
-                    error={Boolean(emailError)}
-                    helperText={emailError || undefined}
-                    inputProps={{ "aria-label": "Customer email" }}
-                    sx={{ maxWidth: { sm: 420 } }}
-                  />
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    disabled={!emailDirty || emailSaving}
-                    onClick={requestEmailSave}
-                    sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase", fontSize: "0.72rem", flexShrink: 0, minHeight: 40 }}
-                  >
-                    Save
-                  </Button>
-                </Stack>
+                {emailEditing ? (
+                  <Stack spacing={1}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      autoFocus
+                      type="email"
+                      value={emailDraft}
+                      onChange={(event) => {
+                        setEmailDraft(event.target.value);
+                        if (emailError) setEmailError("");
+                      }}
+                      error={Boolean(emailError)}
+                      helperText={emailError || undefined}
+                      inputProps={{ "aria-label": "Customer email" }}
+                    />
+                    <Stack direction="row" spacing={1}>
+                      <Button
+                        size="small"
+                        color="inherit"
+                        disabled={emailSaving}
+                        onClick={() => {
+                          setEmailDraft(currentEmail);
+                          setEmailError("");
+                          setEmailEditing(false);
+                        }}
+                        sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase", fontSize: "0.68rem" }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        color="primary"
+                        disabled={!emailDirty || emailSaving}
+                        onClick={requestEmailSave}
+                        sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase", fontSize: "0.68rem" }}
+                      >
+                        Save
+                      </Button>
+                    </Stack>
+                  </Stack>
+                ) : (
+                  <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0 }}>
+                    <Typography sx={{ fontWeight: 600, fontSize: "0.9rem", wordBreak: "break-word", minWidth: 0 }}>
+                      {currentEmail || "—"}
+                    </Typography>
+                    <Tooltip title="Edit email">
+                      <IconButton
+                        size="small"
+                        aria-label="Edit email"
+                        onClick={() => {
+                          setEmailDraft(currentEmail);
+                          setEmailError("");
+                          setEmailEditing(true);
+                        }}
+                        sx={{ color: "text.secondary", flexShrink: 0 }}
+                      >
+                        <EditIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                )}
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Phone" value={customer.phone} /></Grid>
               <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Sign-in" value={customer.signInMethod} /></Grid>
