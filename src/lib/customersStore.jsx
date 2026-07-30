@@ -293,6 +293,58 @@ export async function updateCustomerProfile(email, patch) {
   return upsertCustomerProfile({ ...existing, email, ...patch });
 }
 
+function looksLikeEmail(value) {
+  const email = normalizeEmail(value);
+  // Practical check — not a full RFC parser.
+  return Boolean(email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+}
+
+/**
+ * Admin: change the stored customer email (profile key + Firestore field).
+ * Does not change Firebase Auth login email for Google/password accounts.
+ * Caller should also re-point linked orders to the new address.
+ */
+export async function changeCustomerEmail(fromEmail, toEmail) {
+  const fromKey = normalizeEmail(fromEmail);
+  const toKey = normalizeEmail(toEmail);
+  if (!fromKey) throw new Error("Current email is missing.");
+  if (!looksLikeEmail(toKey)) throw new Error("Enter a valid email address.");
+  if (fromKey === toKey) return getCustomerProfile(fromKey);
+
+  const existing = getCustomerProfile(fromKey)
+    || Object.values(profileCache).find((row) => normalizeEmail(row?.email) === fromKey)
+    || null;
+  if (!existing) throw new Error("Customer not found.");
+
+  const collision = getCustomerProfile(toKey);
+  const existingUid = String(existing.uid || "").trim();
+  const collisionUid = String(collision?.uid || "").trim();
+  if (collision && collisionUid && existingUid && collisionUid !== existingUid) {
+    throw new Error("Another customer already uses that email.");
+  }
+
+  const next = {
+    ...existing,
+    email: toKey,
+    updatedAt: new Date().toISOString(),
+  };
+
+  delete profileCache[fromKey];
+  profileCache[toKey] = next;
+  notifyCacheListeners();
+
+  const localProfiles = readLocalProfiles();
+  delete localProfiles[fromKey];
+  localProfiles[toKey] = next;
+  writeLocalProfiles(localProfiles);
+
+  if (getDataSource() === "firebase" && next.uid) {
+    await upsertCustomerDocument(next);
+  }
+
+  return next;
+}
+
 export function listCustomerProfiles() {
   return Object.values(profileCache);
 }

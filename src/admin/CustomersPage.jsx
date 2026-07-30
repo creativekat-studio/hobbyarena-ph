@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -15,6 +16,7 @@ import {
   LinearProgress,
   MenuItem,
   Select,
+  Snackbar,
   Stack,
   Tab,
   Table,
@@ -58,7 +60,7 @@ import {
   ADMIN_LIST_STATS_SX,
 } from "./adminTableHeader.jsx";
 import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
-import { useCustomers } from "../lib/customersStore.jsx";
+import { changeCustomerEmail, useCustomers } from "../lib/customersStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { useClientTiers } from "../lib/clientTiersStore.jsx";
 import { useInfiniteScroll } from "../lib/useInfiniteScroll.js";
@@ -220,13 +222,18 @@ function DetailField({ label, value }) {
   );
 }
 
-function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderColor }) {
+function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderColor, updateOrder, onEmailChanged }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const navigate = useNavigate();
   const [tab, setTab] = useState("history");
   const [statusFilter, setStatusFilter] = useState("all");
   const [tableExpanded, setTableExpanded] = useState(false);
+  const [emailDraft, setEmailDraft] = useState("");
+  const [confirmEmailOpen, setConfirmEmailOpen] = useState(false);
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [emailNotice, setEmailNotice] = useState("");
 
   const orderList = customer?.orderList;
   const statusOptions = useMemo(() => {
@@ -250,6 +257,9 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
     setTab("history");
     // Mobile: collapse profile chrome so order history has room to render.
     setTableExpanded(isMobile);
+    setEmailDraft(customer?.email || "");
+    setEmailError("");
+    setConfirmEmailOpen(false);
   }, [open, customer?.email, customer?.uid, customer?.id, isMobile]);
   if (!customer) return null;
 
@@ -257,6 +267,11 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
   const progressPct = Math.round((customer.tierProgress?.progress || 0) * 100);
   const addressLine = formatAddress(customer.address);
   const customerKey = String(customer.email || customer.uid || customer.id || "").trim().toLowerCase();
+  const currentEmail = String(customer.email || "").trim();
+  const nextEmail = String(emailDraft || "").trim();
+  const emailDirty = nextEmail.toLowerCase() !== currentEmail.toLowerCase();
+  const linkedOrderCount = (orderList || []).length;
+  const isAuthMember = customer.authProvider === "google" || customer.authProvider === "password";
 
   function openOrderFromHistory(orderId) {
     onClose();
@@ -280,7 +295,45 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
     onClose();
   }
 
+  function requestEmailSave() {
+    setEmailError("");
+    if (!nextEmail) {
+      setEmailError("Email is required.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail.toLowerCase())) {
+      setEmailError("Enter a valid email address.");
+      return;
+    }
+    if (!emailDirty) return;
+    setConfirmEmailOpen(true);
+  }
+
+  async function confirmEmailSave() {
+    setEmailSaving(true);
+    setEmailError("");
+    try {
+      const updated = await changeCustomerEmail(currentEmail, nextEmail);
+      const fromKey = currentEmail.toLowerCase();
+      const toKey = String(updated?.email || nextEmail).trim().toLowerCase();
+      (orderList || []).forEach((order) => {
+        if (String(order.email || "").trim().toLowerCase() === fromKey) {
+          updateOrder?.(order.id, { email: toKey });
+        }
+      });
+      setConfirmEmailOpen(false);
+      setEmailNotice("Customer email updated.");
+      onEmailChanged?.(updated || { ...customer, email: toKey });
+    } catch (error) {
+      setConfirmEmailOpen(false);
+      setEmailError(error?.message || "Could not update email.");
+    } finally {
+      setEmailSaving(false);
+    }
+  }
+
   return (
+    <>
     <Dialog
       key={customer.email || customer.uid || customer.id}
       open={open}
@@ -343,6 +396,36 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
         >
           <Stack spacing={2}>
             <Grid container spacing={2}>
+              <Grid size={{ xs: 12 }}>
+                <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", fontWeight: 800, letterSpacing: 1, color: "text.secondary", textTransform: "uppercase", mb: 0.35 }}>
+                  Email
+                </Typography>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "flex-start" }}>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    type="email"
+                    value={emailDraft}
+                    onChange={(event) => {
+                      setEmailDraft(event.target.value);
+                      if (emailError) setEmailError("");
+                    }}
+                    error={Boolean(emailError)}
+                    helperText={emailError || undefined}
+                    inputProps={{ "aria-label": "Customer email" }}
+                    sx={{ maxWidth: { sm: 420 } }}
+                  />
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    disabled={!emailDirty || emailSaving}
+                    onClick={requestEmailSave}
+                    sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase", fontSize: "0.72rem", flexShrink: 0, minHeight: 40 }}
+                  >
+                    Save
+                  </Button>
+                </Stack>
+              </Grid>
               <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Phone" value={customer.phone} /></Grid>
               <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Sign-in" value={customer.signInMethod} /></Grid>
               <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Joined" value={customer.joined} /></Grid>
@@ -577,6 +660,57 @@ function CustomerDetailDialog({ customer, open, onClose, panelSx, surfaceBorderC
         <Button onClick={handleRequestClose} color="inherit">Close</Button>
       </DialogActions>
     </Dialog>
+
+    <Dialog
+      open={confirmEmailOpen}
+      onClose={() => {
+        if (!emailSaving) setConfirmEmailOpen(false);
+      }}
+      maxWidth="sm"
+      fullWidth
+    >
+      <DialogTitle sx={{ fontWeight: 800 }}>Change customer email?</DialogTitle>
+      <DialogContent>
+        <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
+          Are you sure you want to change this customer&apos;s email from{" "}
+          <strong>{currentEmail || "—"}</strong> to <strong>{nextEmail}</strong>?
+        </Typography>
+        <Typography sx={{ mt: 1.5, color: "text.secondary", fontSize: "0.88rem", lineHeight: 1.5 }}>
+          {linkedOrderCount > 0
+            ? `This updates their profile and ${linkedOrderCount} linked order${linkedOrderCount === 1 ? "" : "s"}.`
+            : "This updates their profile."}
+          {isAuthMember
+            ? " Their Google/password sign-in email is not changed from here."
+            : ""}
+        </Typography>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button color="inherit" disabled={emailSaving} onClick={() => setConfirmEmailOpen(false)}>
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          color="primary"
+          disabled={emailSaving}
+          onClick={confirmEmailSave}
+          sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase" }}
+        >
+          {emailSaving ? "Saving…" : "Yes, change email"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+
+    <Snackbar
+      open={Boolean(emailNotice)}
+      autoHideDuration={4000}
+      onClose={() => setEmailNotice("")}
+      anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+    >
+      <Alert severity="success" variant="filled" onClose={() => setEmailNotice("")}>
+        {emailNotice}
+      </Alert>
+    </Snackbar>
+    </>
   );
 }
 
@@ -588,13 +722,28 @@ export default function CustomersPage() {
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
   const { customers } = useCustomers();
-  const { orders } = useOrders();
+  const { orders, updateOrder } = useOrders();
   const { tiers } = useClientTiers();
   const [filter, setFilter] = useState("all");
   const [tierFilter, setTierFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [selectedCustomerKey, setSelectedCustomerKey] = useState("");
   const [sort, setSort] = useState({ key: "joined", dir: "asc" });
+
+  function customerIdentityKey(customer) {
+    return String(customer?.uid || customer?.id || customer?.email || "").trim().toLowerCase();
+  }
+
+  function openCustomer(customer) {
+    setSelectedCustomer(customer);
+    setSelectedCustomerKey(customerIdentityKey(customer));
+  }
+
+  function closeCustomer() {
+    setSelectedCustomer(null);
+    setSelectedCustomerKey("");
+  }
 
   function handleSort(key) {
     setSort((prev) => (
@@ -674,9 +823,23 @@ export default function CustomersPage() {
       const uid = String(customer.uid || customer.id || "").trim().toLowerCase();
       return email === key || uid === key;
     });
-    if (match) setSelectedCustomer(match);
+    if (match) openCustomer(match);
     navigate(location.pathname, { replace: true, state: {} });
   }, [location.state, location.pathname, enrichedCustomers, navigate]);
+
+  // Keep the open dialog attached after an email change (match by uid / prior key).
+  useEffect(() => {
+    if (!selectedCustomerKey || !enrichedCustomers.length) return;
+    const match = enrichedCustomers.find((customer) => {
+      const email = String(customer.email || "").trim().toLowerCase();
+      const uid = String(customer.uid || customer.id || "").trim().toLowerCase();
+      return uid === selectedCustomerKey || email === selectedCustomerKey || customerIdentityKey(customer) === selectedCustomerKey;
+    });
+    if (match) {
+      setSelectedCustomer(match);
+      setSelectedCustomerKey(customerIdentityKey(match));
+    }
+  }, [enrichedCustomers, selectedCustomerKey]);
 
   const rows = useMemo(() => {
     const filtered = enrichedCustomers.filter((c) => {
@@ -904,7 +1067,7 @@ export default function CustomersPage() {
                   <TableRow
                     key={customer.id || customer.uid || customer.email}
                     hover
-                    onClick={() => setSelectedCustomer(customer)}
+                    onClick={() => openCustomer(customer)}
                     sx={{ cursor: "pointer" }}
                   >
                     <TableCell>
@@ -954,7 +1117,7 @@ export default function CustomersPage() {
                         variant="outlined"
                         onClick={(event) => {
                           event.stopPropagation();
-                          setSelectedCustomer(customer);
+                          openCustomer(customer);
                         }}
                         sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
                       >
@@ -987,9 +1150,15 @@ export default function CustomersPage() {
       <CustomerDetailDialog
         customer={selectedCustomer}
         open={Boolean(selectedCustomer)}
-        onClose={() => setSelectedCustomer(null)}
+        onClose={closeCustomer}
         panelSx={panelSx}
         surfaceBorderColor={surfaceBorderColor}
+        updateOrder={updateOrder}
+        onEmailChanged={(updated) => {
+          const nextKey = customerIdentityKey(updated);
+          if (nextKey) setSelectedCustomerKey(nextKey);
+          setSelectedCustomer((prev) => (prev ? { ...prev, email: updated?.email || prev.email } : prev));
+        }}
       />
     </Box>
   );
