@@ -5,6 +5,7 @@ import {
   migratePaymentStatus,
   refundedAmountForLineItem,
 } from "../data/orderWorkflow.js";
+import { roundMoney } from "./money.js";
 
 /**
  * Sample computation (pre-order):
@@ -89,7 +90,7 @@ export function lineItemUnitCost(item, costByProductId = null) {
     }
   }
   if (lineCost != null && !Number.isNaN(lineCost)) return Math.max(0, lineCost);
-  return Math.round(lineItemUnitPrice(item) * 0.72);
+  return roundMoney(lineItemUnitPrice(item) * 0.72);
 }
 
 export function lineItemDepositPaid(item, depositPercent = 30) {
@@ -98,7 +99,7 @@ export function lineItemDepositPaid(item, depositPercent = 30) {
   }
   // Fall back to configured DP% of the original line (ordered qty × price).
   const pct = Number(item?.depositPercent) || depositPercent;
-  return Math.round((lineItemAmount(item) * pct) / 100);
+  return roundMoney((lineItemAmount(item) * pct) / 100);
 }
 
 /** Final price = selling price × actual allocation. */
@@ -225,10 +226,10 @@ export function lineItemNetRevenue(item, depositPercent = 30, costByProductId = 
     const cost = lineItemUnitCost(item, costByProductId);
     const qty = lineItemQty(item);
     const pct = (Number(item?.depositPercent) || depositPercent) / 100;
-    return Math.max(0, (price - cost) * qty * pct);
+    return roundMoney(Math.max(0, (price - cost) * qty * pct));
   }
 
-  return Math.max(0, gross - lineItemCogs(item, costByProductId));
+  return roundMoney(Math.max(0, gross - lineItemCogs(item, costByProductId)));
 }
 
 export function isFulfilledLineItem(item) {

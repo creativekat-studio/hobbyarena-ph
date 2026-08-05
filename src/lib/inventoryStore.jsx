@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { productImage } from "../data/mediaAssets.js";
 import { DEFAULT_DEPOSIT_PERCENT } from "./preorder.js";
+import { roundMoney } from "./money.js";
 import { sortStorefrontProducts } from "./products.js";
 import { useFirebaseData } from "./firebase/config.js";
 import { useAdminFirestoreWrite } from "./firebase/adminWriteAccess.js";
@@ -326,7 +327,7 @@ export function InventoryProvider({ children }) {
     const price = Math.max(0, Number(input.price) || 0);
     const stock = Math.max(0, Number(input.stock) || 0);
     const cost = input.cost === "" || input.cost == null
-      ? Math.round(price * 0.72)
+      ? roundMoney(price * 0.72)
       : Math.max(0, Number(input.cost) || 0);
     const reorderAt = Math.max(0, Number(input.reorderAt) ?? 3);
     const prefix = line.startsWith("Pokémon") ? "PKM" : "OP";
@@ -379,7 +380,7 @@ export function InventoryProvider({ children }) {
     const type = input.type === "Pre-order" ? "Pre-order" : "Sealed";
     const price = Math.max(0, Number(input.price) || 0);
     const cost = input.cost === "" || input.cost == null
-      ? Math.round(price * 0.72)
+      ? roundMoney(price * 0.72)
       : Math.max(0, Number(input.cost) || 0);
     const stock = Math.max(0, Number(input.stock) || 0);
     const reorderAt = Math.max(0, Number(input.reorderAt) ?? 3);

@@ -120,13 +120,7 @@ export function shouldShowPreorderReminder(order, emailType = null, reminder = n
   return isPreorderEmailContext(order) && orderHasOutstandingBalance(order);
 }
 
-export function formatPeso(amount) {
-  return new Intl.NumberFormat("en-PH", {
-    style: "currency",
-    currency: "PHP",
-    maximumFractionDigits: 0,
-  }).format(Number(amount) || 0);
-}
+export { formatPeso } from "../money.js";
 
 export function isValidEmail(value) {
   return typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());

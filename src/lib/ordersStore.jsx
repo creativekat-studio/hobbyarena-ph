@@ -29,6 +29,7 @@ import {
   findLatestAdminTrailAttachment,
   refundedAmountForOrder,
 } from "../data/orderWorkflow.js";
+import { formatPeso } from "./money.js";
 import { preorderBalanceDue, preorderDueNow } from "./preorder.js";
 import { makeOrderId, migrateLegacyOrderId, sortOrdersByOrderNo } from "./orderIds.js";
 import {
@@ -257,7 +258,7 @@ function mockOrderEmail(order, kind) {
     ? `Pre-order acknowledgement — ${order.id}`
     : `Purchase acknowledgement — ${order.id}`;
   const body = kind === "preorder"
-    ? `Hi ${order.customer}, we received your pre-order ${order.id}. We'll confirm once payment is verified. Balance due: ₱${order.balanceDue ?? 0}.`
+    ? `Hi ${order.customer}, we received your pre-order ${order.id}. We'll confirm once payment is verified. Balance due: ${formatPeso(order.balanceDue ?? 0)}.`
     : `Hi ${order.customer}, thank you for your order ${order.id}. We'll confirm once we receive and verify your payment.`;
   return { id: `email-${Date.now()}`, at: new Date().toISOString(), subject, body, kind, status: "pending", provider: "resend" };
 }
@@ -1100,7 +1101,7 @@ export function OrdersProvider({ children }) {
             title: priorCount > 0 ? "Additional balance proof uploaded" : "Balance payment proof uploaded",
             status: item.status,
             payment: "Pending Verification",
-            note: `Customer uploaded proof for the remaining balance of ₱${(item.balanceDue ?? 0).toLocaleString("en-PH")}.`,
+            note: `Customer uploaded proof for the remaining balance of ${formatPeso(item.balanceDue ?? 0)}.`,
             attachment,
             lineItemId,
             lineItemName: lineItemTrailLabel(item),

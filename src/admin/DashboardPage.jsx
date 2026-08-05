@@ -31,6 +31,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { curveBumpX } from "d3-shape";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
@@ -99,6 +100,25 @@ function formatAxisCompact(value) {
     return `${Math.round(value / 1_000)}k`;
   }
   return String(Math.round(value));
+}
+
+/** Ceiling just above the peak (e.g. 4.8M → 5M, not 6M). */
+function niceAxisMax(value) {
+  if (!Number.isFinite(value) || value <= 0) return 1;
+  const padded = value * 1.02;
+  const exp = Math.max(0, Math.floor(Math.log10(padded)));
+  const mag = 10 ** exp;
+  const step = mag >= 1 ? mag / 2 : 1;
+  return Math.ceil(padded / step) * step;
+}
+
+function buildAxisTicks(max, count = 5) {
+  if (!Number.isFinite(max) || max <= 0) return [0, 1];
+  const ticks = [];
+  for (let i = 0; i < count; i += 1) {
+    ticks.push((max * i) / (count - 1));
+  }
+  return ticks;
 }
 
 const PERIOD_TOGGLE_SX = {
@@ -488,7 +508,7 @@ function ChartCard({
   const body = empty ? (
     <CardEmptyState message={emptyMessage} hint={emptyHint} minHeight={minHeight} />
   ) : (
-    <Box sx={{ width: "100%", height: minHeight, minWidth: 0, overflow: "hidden" }}>
+    <Box sx={{ width: "100%", height: minHeight, minWidth: 0, overflow: "visible" }}>
       <ResponsiveContainer width="100%" height={minHeight}>
         {children}
       </ResponsiveContainer>
@@ -694,6 +714,16 @@ export default function DashboardPage() {
     periodLabel,
     periodKey,
   } = analytics;
+
+  const trendAxisMax = useMemo(() => {
+    const peak = Math.max(0, ...revenueTrend.map((point) => Number(point.revenue) || 0));
+    return niceAxisMax(peak);
+  }, [revenueTrend]);
+  const trendAxisTicks = useMemo(
+    () => buildAxisTicks(trendAxisMax),
+    [trendAxisMax],
+  );
+
   const trendSubtitle = revenueBasis === "fulfilled"
     ? (periodKey === "custom"
       ? "Fulfilled lines only in selected range"
@@ -875,7 +905,7 @@ export default function DashboardPage() {
             title="Revenue trend"
             subtitle={trendSubtitle}
           >
-            <AreaChart data={revenueTrend} margin={{ top: 0, right: 4, left: 0, bottom: 0 }}>
+            <AreaChart data={revenueTrend} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={primary} stopOpacity={0.5} />
@@ -883,10 +913,37 @@ export default function DashboardPage() {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-              <XAxis dataKey="month" stroke={axisColor} tickLine={false} axisLine={false} fontSize={11} />
-              <YAxis stroke={axisColor} tickLine={false} axisLine={false} fontSize={11} width={48} tickFormatter={formatAxisCompact} />
+              <XAxis
+                dataKey="month"
+                stroke={axisColor}
+                tickLine={false}
+                axisLine={false}
+                fontSize={11}
+                interval={0}
+                padding={{ left: 8, right: 16 }}
+              />
+              <YAxis
+                stroke={axisColor}
+                tickLine={false}
+                axisLine={false}
+                fontSize={11}
+                width={48}
+                domain={[0, trendAxisMax]}
+                ticks={trendAxisTicks}
+                tickFormatter={formatAxisCompact}
+                allowDataOverflow={false}
+              />
               <RTooltip contentStyle={tooltipStyle} formatter={(value) => PESO.format(value)} />
-              <Area type="monotone" dataKey="revenue" stroke={primary} strokeWidth={3} fill="url(#revFill)" />
+              <Area
+                type={curveBumpX}
+                dataKey="revenue"
+                stroke={primary}
+                strokeWidth={3}
+                fill="url(#revFill)"
+                dot={{ r: 4, strokeWidth: 2, stroke: primary, fill: theme.palette.background.paper }}
+                activeDot={{ r: 5.5, strokeWidth: 2, stroke: primary, fill: theme.palette.background.paper }}
+                isAnimationActive={false}
+              />
             </AreaChart>
           </ChartCard>
         </Grid>

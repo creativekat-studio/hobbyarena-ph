@@ -1,4 +1,4 @@
-import { getEmailLinks, getSupportContactHtml } from "./emailUtils.js";
+import { formatPeso, getEmailLinks, getSupportContactHtml } from "./emailUtils.js";
 
 /** Minimal Hobby Arena email shell — clean, invoice-friendly. */
 
@@ -362,10 +362,10 @@ export function invoiceTable(lineItems, { highlightId = null, useAllocation = fa
             ? unitPrice * orderedQty
             : 0;
       const unitLabel = unitPrice > 0
-        ? `₱${unitPrice.toLocaleString("en-PH")}`
+        ? formatPeso(unitPrice)
         : "—";
       const totalLabel = lineTotal > 0
-        ? `₱${lineTotal.toLocaleString("en-PH")}`
+        ? formatPeso(lineTotal)
         : "—";
       const tag = item.tag
         ? `<span style="display:block;margin-top:2px;font-size:12px;color:${c.muted}">${escapeHtml(item.tag)}</span>`

@@ -21,6 +21,9 @@ import { productMediaSurface } from "../lib/surfaces.js";
 import { getCountdownParts } from "../lib/preorder.js";
 import { isComingSoonProduct } from "../lib/products.js";
 import { maxStorefrontQuantity } from "../lib/quantityLimits.js";
+import { PESO } from "../lib/money.js";
+
+export { PESO };
 
 const stockDot = keyframes`
   0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55); }
@@ -32,12 +35,6 @@ const addedPop = keyframes`
   35% { transform: scale(1.06); }
   100% { transform: scale(1); }
 `;
-
-export const PESO = new Intl.NumberFormat("en-PH", {
-  style: "currency",
-  currency: "PHP",
-  maximumFractionDigits: 0,
-});
 
 export function resolveProductAccent(product, theme) {
   if (theme.ha?.proposalId === 2) {

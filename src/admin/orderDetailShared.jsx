@@ -910,8 +910,8 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
         : 0;
       const receiveNote = draftReceivedForSave != null
         ? [
-          `Amount received ₱${Number(draftReceivedForSave).toLocaleString("en-PH")}.`,
-          overpay > 0 ? `Overpayment credit ₱${overpay.toLocaleString("en-PH")} kept on this order.` : "",
+          `Amount received ${PESO.format(Number(draftReceivedForSave) || 0)}.`,
+          overpay > 0 ? `Overpayment credit ${PESO.format(overpay)} kept on this order.` : "",
         ].filter(Boolean).join(" ")
         : "";
       onSave(

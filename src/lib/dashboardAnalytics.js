@@ -12,6 +12,7 @@ import {
   orderRevenue,
 } from "./orderRevenue.js";
 import { formatOrderTimestamp } from "./orderTimestamps.js";
+import { roundMoney } from "./money.js";
 
 const PERIOD_DAYS = {
   "1D": 1,
@@ -267,7 +268,7 @@ function buildTrendBuckets(orders, period, window, now = new Date(), revenueFn =
 
     return buckets.map(({ label, revenue, orders: orderCount }) => ({
       month: label,
-      revenue: Math.round(revenue),
+      revenue: roundMoney(revenue),
       orders: orderCount,
     }));
   }
@@ -316,17 +317,21 @@ function buildTrendBuckets(orders, period, window, now = new Date(), revenueFn =
       }
     }
   } else {
+    // Equal-width buckets anchored at `end` so the last point is always today
+    // (1M → 6 × 5-day buckets). Label the final bucket with today's date.
     const bucketCount = period === "1W" ? 7 : period === "1M" ? 6 : 12;
     const stepDays = Math.max(1, Math.floor(days / bucketCount));
     for (let i = bucketCount - 1; i >= 0; i -= 1) {
       const bucketEnd = new Date(end);
       bucketEnd.setDate(bucketEnd.getDate() - i * stepDays);
+      if (i > 0) bucketEnd.setHours(23, 59, 59, 999);
       const bucketStart = new Date(bucketEnd);
       bucketStart.setDate(bucketStart.getDate() - stepDays + 1);
       bucketStart.setHours(0, 0, 0, 0);
+      const labelDate = i === 0 ? end : bucketStart;
       buckets.push({
         key: bucketStart.toISOString().slice(0, 10),
-        label: bucketStart.toLocaleString("en-US", { month: "short", day: "numeric" }),
+        label: labelDate.toLocaleString("en-US", { month: "short", day: "numeric" }),
         revenue: 0,
         orders: 0,
         start: bucketStart,
@@ -346,7 +351,7 @@ function buildTrendBuckets(orders, period, window, now = new Date(), revenueFn =
 
   return buckets.map(({ label, revenue, orders: orderCount }) => ({
     month: label,
-    revenue: Math.round(revenue),
+    revenue: roundMoney(revenue),
     orders: orderCount,
   }));
 }
@@ -402,8 +407,8 @@ export function computeDashboardAnalytics(
   const previousNetRevenue = previousAll.reduce((sum, o) => sum + netFn(o), 0);
   const currentCustomers = uniqueCustomers(current);
   const previousCustomers = uniqueCustomers(previous);
-  const avgOrder = current.length ? Math.round(currentRevenue / current.length) : 0;
-  const prevAvgOrder = previous.length ? Math.round(previousRevenue / previous.length) : 0;
+  const avgOrder = current.length ? roundMoney(currentRevenue / current.length) : 0;
+  const prevAvgOrder = previous.length ? roundMoney(previousRevenue / previous.length) : 0;
 
   const { byProduct, byLine, total: periodGross } = aggregateLineItems(currentAll, mode);
   const salesByLine = toSalesByLineSlices(

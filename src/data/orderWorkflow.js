@@ -8,6 +8,7 @@ import {
   shouldCaptureAmountReceived,
   statusClearsCredit,
 } from "../lib/orderCredit.js";
+import { roundMoney } from "../lib/money.js";
 
 /** Case 1: 100% stock allocated — customer must pay remaining balance. */
 export const ALLOCATION_FULFILLED_PAY_BALANCE = "Allocation Fulfilled & Pay Balance";
@@ -269,7 +270,7 @@ function lineDepositPaid(itemOrOrder, depositPercent = 30) {
   if (itemOrOrder?.total != null && (isPreorderOrder(itemOrOrder) || resolveOrderKindForItem(itemOrOrder) === "Pre-order")) {
     return itemOrOrder.total;
   }
-  return Math.round((full * pct) / 100);
+  return roundMoney((full * pct) / 100);
 }
 
 function allocatedFullTotal(itemOrOrder, allocatedQty) {

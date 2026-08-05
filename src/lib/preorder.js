@@ -1,3 +1,5 @@
+import { roundMoney } from "./money.js";
+
 export const DEFAULT_DEPOSIT_PERCENT = 30;
 
 export function isPreorderProduct(product) {
@@ -13,10 +15,10 @@ export function getDepositPercent(product) {
 
 export function calcPreorderPricing(fullPrice, depositPercent = DEFAULT_DEPOSIT_PERCENT) {
   const percent = Math.min(99, Math.max(1, Math.round(depositPercent)));
-  const deposit = Math.round((fullPrice * percent) / 100);
-  const balance = Math.max(0, fullPrice - deposit);
+  const deposit = roundMoney((fullPrice * percent) / 100);
+  const balance = roundMoney(Math.max(0, fullPrice - deposit));
   return {
-    fullPrice,
+    fullPrice: roundMoney(fullPrice),
     depositPercent: percent,
     balancePercent: 100 - percent,
     deposit,

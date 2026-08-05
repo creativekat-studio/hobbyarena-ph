@@ -34,20 +34,16 @@ import { CardIcon, HeartIcon, PokeballIcon } from "../components/icons.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { useCart } from "../lib/cartStore.jsx";
 import { useWishlist } from "../lib/wishlistStore.jsx";
+import { PESO as PESO_DETAIL } from "../lib/money.js";
 import { getCountdownParts, getDepositPercent } from "../lib/preorder.js";
 import { maxStorefrontQuantity } from "../lib/quantityLimits.js";
+
+export { PESO_DETAIL };
 
 const stockDot = keyframes`
   0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55); }
   50% { opacity: 0.85; transform: scale(1.08); box-shadow: 0 0 0 8px rgba(52, 211, 153, 0); }
 `;
-
-export const PESO_DETAIL = new Intl.NumberFormat("en-PH", {
-  style: "currency",
-  currency: "PHP",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
 
 function ProductImage({ product, isDarkMode, comingSoon = false }) {
   const isPokemon = product.line?.startsWith("Pokémon");

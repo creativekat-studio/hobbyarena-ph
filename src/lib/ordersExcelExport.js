@@ -18,6 +18,7 @@ import {
   lineItemUnitPrice,
 } from "./orderRevenue.js";
 import { formatOrderTimestamp } from "./orderTimestamps.js";
+import { MONEY_BACKEND_DECIMALS, roundMoney } from "./money.js";
 
 const DEFAULT_FILENAME = "hobbyarena-orders.xlsx";
 const ALLOCATION_STATUSES = new Set([
@@ -38,6 +39,18 @@ const HEADER_FILLS = {
 function numberOrBlank(value) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : "";
+}
+
+function moneyOrBlank(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? roundMoney(numeric) : "";
+}
+
+/** Net DP = qty × (unit price − unit cost). */
+function netDpAmount(item, context) {
+  const qty = lineQuantity(item);
+  const netPrice = lineItemUnitPrice(item) - lineItemUnitCost(item, context.costByProductId);
+  return moneyOrBlank(qty * netPrice);
 }
 
 function formatOrderNumber(orderId) {
@@ -79,21 +92,21 @@ function lineDepositPaidExport(order, item, context) {
   const rawItem = rawLineItem(order, context.index);
   const depositPercent = getDepositPercent(order);
   if (rawItem?.depositPaid != null || rawItem?.linePaid != null) {
-    return numberOrBlank(item.depositPaid ?? item.linePaid);
+    return moneyOrBlank(item.depositPaid ?? item.linePaid);
   }
-  if (item.depositPaid != null) return numberOrBlank(item.depositPaid);
+  if (item.depositPaid != null) return moneyOrBlank(item.depositPaid);
   const computed = lineItemDepositPaid(item, depositPercent);
-  if (computed > 0) return computed;
+  if (computed > 0) return moneyOrBlank(computed);
   // Legacy/order-level amounts are split by line total so multi-item exports
   // still emit one row per item without duplicating the full order payment.
-  return numberOrBlank(proratedOrderAmount(order.depositPaid ?? order.total, item, context.lineItems));
+  return moneyOrBlank(proratedOrderAmount(order.depositPaid ?? order.total, item, context.lineItems));
 }
 
 /** Original balance before allocation (ordered full − deposit). */
 function initialBalanceAmount(order, item, context) {
   const depositPaid = Number(lineDepositPaidExport(order, item, context)) || 0;
   if (resolveOrderKindForItem(item) !== "Pre-order") return 0;
-  return Math.max(0, lineTotal(item) - depositPaid);
+  return moneyOrBlank(Math.max(0, lineTotal(item) - depositPaid));
 }
 
 function hasFinalAllocation(item) {
@@ -111,7 +124,7 @@ function finalAllocation(item) {
 function finalAmount(item) {
   if (resolveOrderKindForItem(item) === "Pre-order") {
     if (!hasFinalAllocation(item) || !(Number(item.allocatedQty) > 0)) return "";
-    return numberOrBlank(lineItemFinalPrice(item));
+    return moneyOrBlank(lineItemFinalPrice(item));
   }
   // In-stock: ordered line total once paid / completed.
   const payment = migratePaymentStatus(item.payment);
@@ -122,7 +135,7 @@ function finalAmount(item) {
     || status === "Fulfilled"
     || status === "Ready for Pickup"
   ) {
-    return numberOrBlank(lineItemUnitPrice(item) * lineQuantity(item));
+    return moneyOrBlank(lineItemUnitPrice(item) * lineQuantity(item));
   }
   return "";
 }
@@ -136,37 +149,37 @@ function finalBalanceAmount(order, item, context) {
   const final = lineItemFinalPrice(item);
   const deposit = Number(lineDepositPaidExport(order, item, context)) || 0;
   const credit = lineOpenCredit(item);
-  return numberOrBlank(Math.max(0, final - deposit - credit));
+  return moneyOrBlank(Math.max(0, final - deposit - credit));
 }
 
 function orderCreditAmount(item) {
   const credit = lineOpenCredit(item);
-  return credit > 0 ? credit : "";
+  return credit > 0 ? moneyOrBlank(credit) : "";
 }
 
 function refundedAmount(order, item, context) {
   const depositPercent = getDepositPercent(order);
   const rawItem = rawLineItem(order, context.index);
-  if (rawItem?.refundAmount != null) return numberOrBlank(item.refundAmount);
+  if (rawItem?.refundAmount != null) return moneyOrBlank(item.refundAmount);
   if (order.refundAmount != null && !(rawItem && "refundAmount" in (rawItem || {}))) {
-    return numberOrBlank(proratedOrderAmount(order.refundAmount, item, context.lineItems));
+    return moneyOrBlank(proratedOrderAmount(order.refundAmount, item, context.lineItems));
   }
-  return numberOrBlank(refundedAmountForLineItem(
+  return moneyOrBlank(refundedAmountForLineItem(
     { ...item, refundAmount: undefined },
     depositPercent,
   ));
 }
 
 function unitCost(item, context) {
-  return numberOrBlank(lineItemUnitCost(item, context.costByProductId));
+  return moneyOrBlank(lineItemUnitCost(item, context.costByProductId));
 }
 
 function grossRevenue(order, item, context) {
-  return numberOrBlank(lineItemGrossRevenue(item, getDepositPercent(order)));
+  return moneyOrBlank(lineItemGrossRevenue(item, getDepositPercent(order)));
 }
 
 function netIncome(order, item, context) {
-  return numberOrBlank(lineItemNetRevenue(item, getDepositPercent(order), context.costByProductId));
+  return moneyOrBlank(lineItemNetRevenue(item, getDepositPercent(order), context.costByProductId));
 }
 
 function paymentStatus(item) {
@@ -184,17 +197,18 @@ export const ORDER_EXCEL_COLUMNS = [
   { header: "Item", value: (_order, item) => item.name ?? "", width: 32 },
   { header: "Date", value: (order) => formatOrderTimestamp(order), width: 20 },
   { header: "Quantity", value: (_order, item) => numberOrBlank(item.quantity ?? 1), group: "blue", width: 10 },
-  { header: "Unit Price", value: (_order, item) => numberOrBlank(lineItemUnitPrice(item)), group: "blue", width: 12 },
-  { header: "Unit Cost", value: (_order, item, context) => unitCost(item, context), group: "blue", width: 12 },
-  { header: "DP Amount", value: lineDepositPaidExport, group: "blue", width: 14 },
-  { header: "Balance Amount", value: initialBalanceAmount, group: "blue", width: 16 },
+  { header: "Unit Price", value: (_order, item) => moneyOrBlank(lineItemUnitPrice(item)), group: "blue", width: 12, money: true },
+  { header: "Unit Cost", value: (_order, item, context) => unitCost(item, context), group: "blue", width: 12, money: true },
+  { header: "Net DP", value: (_order, item, context) => netDpAmount(item, context), group: "blue", width: 12, money: true },
+  { header: "DP Amount", value: lineDepositPaidExport, group: "blue", width: 14, money: true },
+  { header: "Balance Amount", value: initialBalanceAmount, group: "blue", width: 16, money: true },
   { header: "Final Allocation", value: (_order, item) => finalAllocation(item), group: "orange", width: 16 },
-  { header: "Final Amount", value: (_order, item) => finalAmount(item), group: "orange", width: 14 },
-  { header: "Order Credit", value: (_order, item) => orderCreditAmount(item), group: "orange", width: 14 },
-  { header: "Final Balance", value: finalBalanceAmount, group: "orange", width: 14 },
-  { header: "Refunded Amount", value: refundedAmount, group: "orange", width: 16 },
-  { header: "Gross", value: grossRevenue, group: "purple", width: 12 },
-  { header: "Net Income", value: netIncome, group: "purple", width: 12 },
+  { header: "Final Amount", value: (_order, item) => finalAmount(item), group: "orange", width: 14, money: true },
+  { header: "Order Credit", value: (_order, item) => orderCreditAmount(item), group: "orange", width: 14, money: true },
+  { header: "Final Balance", value: finalBalanceAmount, group: "orange", width: 14, money: true },
+  { header: "Refunded Amount", value: refundedAmount, group: "orange", width: 16, money: true },
+  { header: "Gross", value: grossRevenue, group: "purple", width: 12, money: true },
+  { header: "Net Income", value: netIncome, group: "purple", width: 12, money: true },
   { header: "Payment Status", value: (_order, item) => paymentStatus(item), group: "green", width: 24 },
   { header: "Order Status", value: (_order, item) => orderStatus(item), group: "green", width: 28 },
 ];
@@ -243,6 +257,25 @@ function applyTextColumnFormatting(worksheet, columns, header) {
   }
 }
 
+function applyMoneyColumnFormatting(worksheet, columns) {
+  if (!worksheet["!ref"]) return;
+  const range = XLSX.utils.decode_range(worksheet["!ref"]);
+  const moneyFormat = `0.${"0".repeat(MONEY_BACKEND_DECIMALS)}`;
+  columns.forEach((column, columnIndex) => {
+    if (!column.money) return;
+    for (let rowIndex = 1; rowIndex <= range.e.r; rowIndex += 1) {
+      const cellAddress = XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex });
+      const cell = worksheet[cellAddress];
+      if (!cell || cell.v === "" || cell.v == null) continue;
+      const numeric = Number(cell.v);
+      if (!Number.isFinite(numeric)) continue;
+      cell.t = "n";
+      cell.v = roundMoney(numeric);
+      cell.z = moneyFormat;
+    }
+  });
+}
+
 export function exportOrdersToExcel(
   orders,
   {
@@ -259,6 +292,7 @@ export function exportOrdersToExcel(
   });
   applyWorksheetFormatting(worksheet, columns);
   applyTextColumnFormatting(worksheet, columns, "Order #");
+  applyMoneyColumnFormatting(worksheet, columns);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Orders");
   XLSX.writeFile(workbook, filename);

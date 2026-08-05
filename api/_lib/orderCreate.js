@@ -3,6 +3,7 @@ import { FieldPath } from "firebase-admin/firestore";
 import { DEFAULT_DEPOSIT_PERCENT } from "./preorderPricing.js";
 import { clampLineQuantity } from "../../src/lib/quantityLimits.js";
 import { getCountdownParts } from "../../src/lib/preorder.js";
+import { roundMoney } from "../../src/lib/money.js";
 
 const SEQ_WIDTH = 6;
 const MAX_PROOF_CHARS = 3_500_000;
@@ -70,21 +71,21 @@ function getDepositPercent(product) {
 
 function calcPreorderPricing(fullPrice, depositPercent = DEFAULT_DEPOSIT_PERCENT) {
   const percent = Math.min(99, Math.max(1, Math.round(depositPercent)));
-  const deposit = Math.round((fullPrice * percent) / 100);
-  const balance = Math.max(0, fullPrice - deposit);
+  const deposit = roundMoney((fullPrice * percent) / 100);
+  const balance = roundMoney(Math.max(0, fullPrice - deposit));
   return { deposit, balance, depositPercent: percent };
 }
 
 function preorderDueNow(product, quantity = 1) {
-  if (!isPreorderProduct(product)) return (Number(product?.price) || 0) * quantity;
+  if (!isPreorderProduct(product)) return roundMoney((Number(product?.price) || 0) * quantity);
   const { deposit } = calcPreorderPricing(Number(product.price) || 0, getDepositPercent(product));
-  return deposit * quantity;
+  return roundMoney(deposit * quantity);
 }
 
 function preorderBalanceDue(product, quantity = 1) {
   if (!isPreorderProduct(product)) return 0;
   const { balance } = calcPreorderPricing(Number(product.price) || 0, getDepositPercent(product));
-  return balance * quantity;
+  return roundMoney(balance * quantity);
 }
 
 /** Storefront shipping is currently always 0 (courier paid by buyer). */
@@ -182,13 +183,13 @@ export async function buildPricedLines(db, lines, options = {}) {
       hasStock = true;
     }
 
-    const lineTotal = price * quantity;
+    const lineTotal = roundMoney(price * quantity);
     const depositPaid = isPreorder ? preorderDueNow(product, quantity) : lineTotal;
     const balanceDueLine = isPreorder ? preorderBalanceDue(product, quantity) : 0;
 
-    dueNow += depositPaid;
-    fullSubtotal += lineTotal;
-    balanceDue += balanceDueLine;
+    dueNow = roundMoney(dueNow + depositPaid);
+    fullSubtotal = roundMoney(fullSubtotal + lineTotal);
+    balanceDue = roundMoney(balanceDue + balanceDueLine);
 
     lineItems.push({
       id: product.id,
@@ -223,11 +224,11 @@ export async function buildPricedLines(db, lines, options = {}) {
     type,
     items: itemsLabel,
     qty: lineItems.reduce((sum, item) => sum + item.quantity, 0),
-    subtotal: dueNow,
-    shippingFee,
-    total: dueNow + shippingFee,
-    fullSubtotal,
-    balanceDue,
+    subtotal: roundMoney(dueNow),
+    shippingFee: roundMoney(shippingFee),
+    total: roundMoney(dueNow + shippingFee),
+    fullSubtotal: roundMoney(fullSubtotal),
+    balanceDue: roundMoney(balanceDue),
     depositPercent,
   };
 }
