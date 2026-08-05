@@ -10,6 +10,7 @@ import {
   DialogTitle,
   FormControlLabel,
   IconButton,
+  InputAdornment,
   MenuItem,
   Stack,
   TextField,
@@ -29,6 +30,7 @@ import {
 import { useInventory } from "../lib/inventoryStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { useFirebaseData } from "../lib/firebase/config.js";
+import { roundMoney } from "../lib/money.js";
 import { isPreorderProduct, preorderBalanceDue, preorderDueNow } from "../lib/preorder.js";
 
 const DEFAULTS_BY_KIND = {
@@ -48,6 +50,7 @@ const EMPTY = {
   phone: "",
   orderKind: "In-stock",
   notes: "",
+  discount: "",
   payment: DEFAULTS_BY_KIND["In-stock"].payment,
   status: DEFAULTS_BY_KIND["In-stock"].status,
   deductStock: true,
@@ -78,17 +81,20 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
     let dueNow = 0;
     let balanceDue = 0;
     for (const item of lineItems) {
-      const lineTotal = item.price * item.quantity;
-      fullSubtotal += lineTotal;
+      const lineTotal = roundMoney(item.price * item.quantity);
+      fullSubtotal = roundMoney(fullSubtotal + lineTotal);
       if (form.orderKind === "Pre-order") {
-        dueNow += preorderDueNow(item, item.quantity);
-        balanceDue += preorderBalanceDue(item, item.quantity);
+        dueNow = roundMoney(dueNow + preorderDueNow(item, item.quantity));
+        balanceDue = roundMoney(balanceDue + preorderBalanceDue(item, item.quantity));
       } else {
-        dueNow += lineTotal;
+        dueNow = roundMoney(dueNow + lineTotal);
       }
     }
-    return { fullSubtotal, dueNow, balanceDue, total: dueNow };
-  }, [lineItems, form.orderKind]);
+    const rawDiscount = Math.max(0, Number(form.discount) || 0);
+    const discount = roundMoney(Math.min(rawDiscount, dueNow));
+    const total = roundMoney(Math.max(0, dueNow - discount));
+    return { fullSubtotal, dueNow, balanceDue, discount, total };
+  }, [lineItems, form.orderKind, form.discount]);
 
   useEffect(() => {
     if (!open) return;
@@ -196,11 +202,12 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
         phone: form.phone.trim(),
         notes: form.notes.trim(),
         cartItems: lineItems,
-        subtotal: totals.dueNow,
+        subtotal: totals.total,
         shippingFee: 0,
         total: totals.total,
         fullSubtotal: totals.fullSubtotal,
         balanceDue: totals.balanceDue,
+        discount: totals.discount,
         manual: true,
         deductStock: form.deductStock && form.orderKind === "In-stock",
         initialPayment: form.payment,
@@ -228,11 +235,35 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
   }
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth component="form" onSubmit={handleSubmit}>
-      <DialogTitle sx={{ fontWeight: 800 }}>Add order manually</DialogTitle>
-      <DialogContent dividers>
-        <Stack spacing={2.5} sx={{ pt: 0.5 }}>
-          <Box>
+    <Dialog
+      open={open}
+      onClose={handleClose}
+      maxWidth="md"
+      fullWidth
+      component="form"
+      onSubmit={handleSubmit}
+      PaperProps={{
+        sx: {
+          maxHeight: "calc(100vh - 32px)",
+          display: "flex",
+          flexDirection: "column",
+        },
+      }}
+    >
+      <DialogTitle sx={{ fontWeight: 800, flexShrink: 0 }}>Add order manually</DialogTitle>
+      <DialogContent
+        dividers
+        sx={{
+          flex: "1 1 auto",
+          minHeight: 0,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          pt: 0.5,
+        }}
+      >
+        <Stack spacing={2.5} sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+          <Box sx={{ flexShrink: 0 }}>
             <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", mb: 1 }}>Order type</Typography>
             <ToggleButtonGroup
               exclusive
@@ -255,73 +286,169 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
             </Typography>
           </Box>
 
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <TextField label="Customer name" required fullWidth value={form.customer} onChange={(e) => update("customer", e.target.value)} autoFocus />
-            <TextField label="Email" required fullWidth type="email" value={form.email} onChange={(e) => update("email", e.target.value)} />
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ flexShrink: 0 }}>
+            <TextField
+              label="Customer name"
+              required
+              fullWidth
+              value={form.customer}
+              onChange={(e) => update("customer", e.target.value)}
+              autoFocus
+              sx={{ flex: { sm: "1.1 1 0" } }}
+            />
+            <TextField
+              label="Email"
+              required
+              fullWidth
+              type="email"
+              value={form.email}
+              onChange={(e) => update("email", e.target.value)}
+              sx={{ flex: { sm: "0.9 1 0" }, maxWidth: { sm: 220 } }}
+            />
+            <TextField
+              label="Phone (optional)"
+              fullWidth
+              value={form.phone}
+              onChange={(e) => update("phone", e.target.value)}
+              sx={{ flex: { sm: "1 1 0" }, minWidth: { sm: 180 } }}
+            />
           </Stack>
-          <TextField label="Phone (optional)" fullWidth value={form.phone} onChange={(e) => update("phone", e.target.value)} />
 
-          <Box sx={{ p: 2, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}>
-            <Typography sx={{ fontWeight: 700, mb: 1.5 }}>
-              Line items
-              <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                ({form.orderKind} products only)
-              </Typography>
-            </Typography>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "flex-end" }}>
-              <Autocomplete
-                options={productOptions}
-                getOptionLabel={(option) => `${option.name} — ${PESO.format(option.price)}`}
-                value={picker}
-                onChange={(_, value) => setPicker(value)}
-                renderInput={(params) => <TextField {...params} label="Product" size="small" />}
-                sx={{ flex: 1 }}
-                noOptionsText={`No ${form.orderKind.toLowerCase()} products found`}
-              />
-              <TextField
-                label="Qty"
-                type="number"
-                size="small"
-                inputProps={{ min: 1, step: 1 }}
-                value={pickerQty}
-                onChange={(e) => setPickerQty(e.target.value)}
-                sx={{ width: 90 }}
-              />
-              <Button variant="outlined" onClick={addLineItem} sx={{ whiteSpace: "nowrap" }}>Add item</Button>
+          <Box
+            sx={{
+              flex: "1 1 auto",
+              minHeight: 180,
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+              borderRadius: 1,
+              border: "1px solid",
+              borderColor: surfaceBorderColor,
+            }}
+          >
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={1.5}
+              alignItems={{ sm: "flex-end" }}
+              sx={{ p: 2, pb: 1.5, flexShrink: 0, borderBottom: "1px solid", borderColor: surfaceBorderColor }}
+            >
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography sx={{ fontWeight: 700, mb: 1.25 }}>
+                  Line items
+                  <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                    ({form.orderKind} products only)
+                  </Typography>
+                </Typography>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "flex-end" }}>
+                  <Autocomplete
+                    options={productOptions}
+                    getOptionLabel={(option) => `${option.name} — ${PESO.format(option.price)}`}
+                    value={picker}
+                    onChange={(_, value) => setPicker(value)}
+                    renderInput={(params) => <TextField {...params} label="Product" size="small" />}
+                    sx={{ flex: 1 }}
+                    noOptionsText={`No ${form.orderKind.toLowerCase()} products found`}
+                  />
+                  <TextField
+                    label="Qty"
+                    type="number"
+                    size="small"
+                    inputProps={{ min: 1, step: 1 }}
+                    value={pickerQty}
+                    onChange={(e) => setPickerQty(e.target.value)}
+                    sx={{ width: 90 }}
+                  />
+                  <Button variant="outlined" onClick={addLineItem} sx={{ whiteSpace: "nowrap" }}>
+                    Add item
+                  </Button>
+                </Stack>
+              </Box>
             </Stack>
 
-            {lineItems.length ? (
-              <Stack spacing={1} sx={{ mt: 2 }}>
-                {lineItems.map((item) => (
-                  <Stack key={item.id} direction="row" justifyContent="space-between" alignItems="center">
-                    <Box>
-                      <Typography sx={{ fontWeight: 600, fontSize: "0.88rem" }}>{item.name}</Typography>
-                      <Typography sx={{ color: "text.secondary", fontSize: "0.75rem", fontFamily: MONO_FONT }}>
-                        {item.tag} · Qty {item.quantity} · {PESO.format(item.price)} each
-                      </Typography>
-                    </Box>
-                    <IconButton size="small" color="error" aria-label="Remove item" onClick={() => removeLineItem(item.id)}>
-                      <TrashIcon sx={{ fontSize: 18 }} />
-                    </IconButton>
-                  </Stack>
-                ))}
-                <Stack direction="row" justifyContent="flex-end" spacing={2} sx={{ pt: 1 }}>
-                  <Typography sx={{ fontSize: "0.85rem", color: "text.secondary" }}>
-                    Due now: <Box component="span" sx={{ fontWeight: 800, color: "text.primary" }}>{PESO.format(totals.dueNow)}</Box>
-                  </Typography>
-                  {form.orderKind === "Pre-order" && totals.balanceDue > 0 ? (
-                    <Typography sx={{ fontSize: "0.85rem", color: "text.secondary" }}>
-                      Balance later: {PESO.format(totals.balanceDue)}
-                    </Typography>
-                  ) : null}
+            <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 2, py: 1.25 }}>
+              {lineItems.length ? (
+                <Stack spacing={1}>
+                  {lineItems.map((item) => (
+                    <Stack key={item.id} direction="row" justifyContent="space-between" alignItems="center">
+                      <Box sx={{ minWidth: 0, pr: 1 }}>
+                        <Typography sx={{ fontWeight: 600, fontSize: "0.88rem" }}>{item.name}</Typography>
+                        <Typography sx={{ color: "text.secondary", fontSize: "0.75rem", fontFamily: MONO_FONT }}>
+                          {item.tag} · Qty {item.quantity} · {PESO.format(item.price)} each
+                        </Typography>
+                      </Box>
+                      <IconButton size="small" color="error" aria-label="Remove item" onClick={() => removeLineItem(item.id)}>
+                        <TrashIcon sx={{ fontSize: 18 }} />
+                      </IconButton>
+                    </Stack>
+                  ))}
                 </Stack>
+              ) : (
+                <Typography sx={{ color: "text.secondary", fontSize: "0.82rem", py: 2 }}>
+                  No items yet.
+                </Typography>
+              )}
+            </Box>
+
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={1.5}
+              alignItems={{ sm: "center" }}
+              justifyContent="space-between"
+              sx={{
+                flexShrink: 0,
+                px: 2,
+                py: 1.25,
+                borderTop: "1px solid",
+                borderColor: surfaceBorderColor,
+                bgcolor: "action.hover",
+              }}
+            >
+              <Stack direction="row" alignItems="center" spacing={1.25} flexWrap="wrap" useFlexGap>
+                <TextField
+                  size="small"
+                  type="number"
+                  placeholder="0"
+                  value={form.discount}
+                  onChange={(e) => update("discount", e.target.value)}
+                  inputProps={{ min: 0, step: "0.01", "aria-label": "Discount amount" }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Typography sx={{ fontSize: "0.75rem", color: "text.secondary", whiteSpace: "nowrap" }}>
+                          Discount
+                        </Typography>
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{
+                    width: 160,
+                    "& .MuiOutlinedInput-root": { bgcolor: "background.paper" },
+                    "& .MuiOutlinedInput-input": { textAlign: "right", py: 0.85, fontSize: "0.85rem" },
+                  }}
+                />
+                {form.orderKind === "Pre-order" ? (
+                  <Typography sx={{ fontSize: "0.78rem", color: "text.secondary" }}>
+                    Due later {PESO.format(totals.balanceDue)}
+                  </Typography>
+                ) : null}
               </Stack>
-            ) : (
-              <Typography sx={{ color: "text.secondary", fontSize: "0.82rem", mt: 1.5 }}>No items yet.</Typography>
-            )}
+
+              <Stack alignItems={{ xs: "flex-start", sm: "flex-end" }} spacing={0.2}>
+                <Typography sx={{ fontWeight: 800, fontSize: "1.05rem", lineHeight: 1.2 }}>
+                  Total{" "}
+                  <Box component="span" sx={{ color: "primary.main" }}>
+                    {PESO.format(totals.total)}
+                  </Box>
+                </Typography>
+                <Typography sx={{ fontSize: "0.7rem", color: "text.secondary", lineHeight: 1.35 }}>
+                  Subtotal {PESO.format(totals.dueNow)}
+                  {totals.discount > 0 ? ` · Discount −${PESO.format(totals.discount)}` : ""}
+                </Typography>
+              </Stack>
+            </Stack>
           </Box>
 
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ flexShrink: 0 }}>
             <TextField label="Initial payment status" select fullWidth value={form.payment} onChange={(e) => updatePayment(e.target.value)}>
               {paymentOptions.map((option) => (
                 <MenuItem key={option} value={option}>{option}</MenuItem>
@@ -334,19 +461,28 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
             </TextField>
           </Stack>
 
-          <TextField label="Internal notes (optional)" fullWidth multiline minRows={2} value={form.notes} onChange={(e) => update("notes", e.target.value)} />
+          <TextField
+            label="Internal notes (optional)"
+            fullWidth
+            multiline
+            minRows={2}
+            value={form.notes}
+            onChange={(e) => update("notes", e.target.value)}
+            sx={{ flexShrink: 0 }}
+          />
 
           {form.orderKind === "In-stock" ? (
             <FormControlLabel
+              sx={{ flexShrink: 0 }}
               control={<Checkbox checked={form.deductStock} onChange={(e) => update("deductStock", e.target.checked)} />}
               label="Deduct in-stock quantities from inventory"
             />
           ) : null}
 
-          {error ? <Typography color="error" sx={{ fontSize: "0.85rem" }}>{error}</Typography> : null}
+          {error ? <Typography color="error" sx={{ fontSize: "0.85rem", flexShrink: 0 }}>{error}</Typography> : null}
         </Stack>
       </DialogContent>
-      <DialogActions sx={{ px: 3, py: 2, borderTop: "1px solid", borderColor: surfaceBorderColor }}>
+      <DialogActions sx={{ px: 3, py: 2, borderTop: "1px solid", borderColor: surfaceBorderColor, flexShrink: 0 }}>
         <Button onClick={handleClose} color="inherit">Cancel</Button>
         <Button type="submit" variant="contained" color="primary" sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}>
           Create order

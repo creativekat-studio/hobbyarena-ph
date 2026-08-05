@@ -29,7 +29,7 @@ import {
   findLatestAdminTrailAttachment,
   refundedAmountForOrder,
 } from "../data/orderWorkflow.js";
-import { formatPeso } from "./money.js";
+import { formatPeso, roundMoney } from "./money.js";
 import { preorderBalanceDue, preorderDueNow } from "./preorder.js";
 import { makeOrderId, migrateLegacyOrderId, sortOrdersByOrderNo } from "./orderIds.js";
 import {
@@ -149,6 +149,7 @@ function normalizeOrder(order) {
     allocatedQty,
     fullSubtotal,
     balanceDue,
+    discount: roundMoney(Math.max(0, Number(migrated.discount) || 0)),
     lineItems,
     emails: migrated.emails?.length ? migrated.emails : [],
     manual: migrated.manual ?? false,
@@ -666,10 +667,11 @@ export function OrdersProvider({ children }) {
         ? await normalizeProofDataUrl(payload.proofOfPayment)
         : null;
 
-      const lineItems = payload.cartItems.map((item) => {
+      const discount = roundMoney(Math.max(0, Number(payload.discount) || 0));
+      const rawLineItems = payload.cartItems.map((item) => {
         const isPreorder = item.tag === "Pre-order";
         const quantity = item.quantity ?? 1;
-        const lineTotal = item.price * quantity;
+        const lineTotal = roundMoney(item.price * quantity);
         const depositPaid = isPreorder ? preorderDueNow(item, quantity) : lineTotal;
         const balanceDueLine = isPreorder ? preorderBalanceDue(item, quantity) : 0;
         return normalizeLineItem({
@@ -690,6 +692,23 @@ export function OrdersProvider({ children }) {
         }, { payment: initialPayment, status: initialStatus });
       });
 
+      const dueSum = rawLineItems.reduce((sum, item) => sum + (Number(item.depositPaid) || 0), 0);
+      const cappedDiscount = roundMoney(Math.min(discount, dueSum));
+      let discountRemaining = cappedDiscount;
+      const lineItems = rawLineItems.map((item, index) => {
+        if (cappedDiscount <= 0) return item;
+        const isLast = index === rawLineItems.length - 1;
+        const share = dueSum > 0 ? (Number(item.depositPaid) || 0) / dueSum : 0;
+        const cut = isLast
+          ? discountRemaining
+          : roundMoney(Math.min(discountRemaining, cappedDiscount * share));
+        discountRemaining = roundMoney(Math.max(0, discountRemaining - cut));
+        return {
+          ...item,
+          depositPaid: roundMoney(Math.max(0, (Number(item.depositPaid) || 0) - cut)),
+        };
+      });
+
       const order = {
         id,
         customer: payload.customer,
@@ -703,6 +722,7 @@ export function OrdersProvider({ children }) {
         shippingFee: payload.shippingFee,
         total: payload.total,
         fullSubtotal: payload.fullSubtotal ?? payload.subtotal,
+        discount: cappedDiscount,
         balanceDue: payload.balanceDue ?? 0,
         depositPercent: payload.depositPercent ?? 30,
         allocatedQty: 0,

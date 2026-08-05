@@ -41,6 +41,7 @@ export const SCHEMA = {
     status: "string",
     lineItems: "array",
     total: "number",
+    discount: "number",
     balanceDue: "number",
     refundAmount: "number",
     date: "string",
