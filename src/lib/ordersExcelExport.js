@@ -18,7 +18,7 @@ import {
   lineItemUnitPrice,
 } from "./orderRevenue.js";
 import { formatOrderTimestamp } from "./orderTimestamps.js";
-import { MONEY_BACKEND_DECIMALS, roundMoney } from "./money.js";
+import { MONEY_UI_DECIMALS, roundMoney } from "./money.js";
 
 const DEFAULT_FILENAME = "hobbyarena-orders.xlsx";
 const ALLOCATION_STATUSES = new Set([
@@ -43,14 +43,15 @@ function numberOrBlank(value) {
 
 function moneyOrBlank(value) {
   const numeric = Number(value);
-  return Number.isFinite(numeric) ? roundMoney(numeric) : "";
+  return Number.isFinite(numeric) ? roundMoney(numeric, MONEY_UI_DECIMALS) : "";
 }
 
-/** Net DP = qty × (unit price − unit cost). */
-function netDpAmount(item, context) {
+/** DP Net = (unit cost × quantity) × DP%. */
+function dpNetAmount(order, item, context) {
   const qty = lineQuantity(item);
-  const netPrice = lineItemUnitPrice(item) - lineItemUnitCost(item, context.costByProductId);
-  return moneyOrBlank(qty * netPrice);
+  const cost = lineItemUnitCost(item, context.costByProductId);
+  const pct = (Number(item?.depositPercent) || getDepositPercent(order)) / 100;
+  return moneyOrBlank(cost * qty * pct);
 }
 
 function formatOrderNumber(orderId) {
@@ -199,8 +200,8 @@ export const ORDER_EXCEL_COLUMNS = [
   { header: "Quantity", value: (_order, item) => numberOrBlank(item.quantity ?? 1), group: "blue", width: 10 },
   { header: "Unit Price", value: (_order, item) => moneyOrBlank(lineItemUnitPrice(item)), group: "blue", width: 12, money: true },
   { header: "Unit Cost", value: (_order, item, context) => unitCost(item, context), group: "blue", width: 12, money: true },
-  { header: "Net DP", value: (_order, item, context) => netDpAmount(item, context), group: "blue", width: 12, money: true },
   { header: "DP Amount", value: lineDepositPaidExport, group: "blue", width: 14, money: true },
+  { header: "DP Net", value: (order, item, context) => dpNetAmount(order, item, context), group: "blue", width: 12, money: true },
   { header: "Balance Amount", value: initialBalanceAmount, group: "blue", width: 16, money: true },
   { header: "Final Allocation", value: (_order, item) => finalAllocation(item), group: "orange", width: 16 },
   { header: "Final Amount", value: (_order, item) => finalAmount(item), group: "orange", width: 14, money: true },
@@ -260,7 +261,7 @@ function applyTextColumnFormatting(worksheet, columns, header) {
 function applyMoneyColumnFormatting(worksheet, columns) {
   if (!worksheet["!ref"]) return;
   const range = XLSX.utils.decode_range(worksheet["!ref"]);
-  const moneyFormat = `0.${"0".repeat(MONEY_BACKEND_DECIMALS)}`;
+  const moneyFormat = `0.${"0".repeat(MONEY_UI_DECIMALS)}`;
   columns.forEach((column, columnIndex) => {
     if (!column.money) return;
     for (let rowIndex = 1; rowIndex <= range.e.r; rowIndex += 1) {
@@ -270,7 +271,7 @@ function applyMoneyColumnFormatting(worksheet, columns) {
       const numeric = Number(cell.v);
       if (!Number.isFinite(numeric)) continue;
       cell.t = "n";
-      cell.v = roundMoney(numeric);
+      cell.v = roundMoney(numeric, MONEY_UI_DECIMALS);
       cell.z = moneyFormat;
     }
   });

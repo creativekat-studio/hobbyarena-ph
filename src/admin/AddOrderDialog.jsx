@@ -279,11 +279,6 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
                 Pre-order
               </ToggleButton>
             </ToggleButtonGroup>
-            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
-              {form.orderKind === "Pre-order"
-                ? "Deposit + balance workflow with stock allocation."
-                : "Single payment workflow for items in stock."}
-            </Typography>
           </Box>
 
           <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ flexShrink: 0 }}>
