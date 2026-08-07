@@ -10,7 +10,6 @@ import {
   DialogTitle,
   FormControlLabel,
   IconButton,
-  InputAdornment,
   MenuItem,
   Stack,
   TextField,
@@ -31,7 +30,7 @@ import { useInventory } from "../lib/inventoryStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { useFirebaseData } from "../lib/firebase/config.js";
 import { roundMoney } from "../lib/money.js";
-import { isPreorderProduct, preorderBalanceDue, preorderDueNow } from "../lib/preorder.js";
+import { calcPreorderPricing, getDepositPercent, isPreorderProduct } from "../lib/preorder.js";
 
 const DEFAULTS_BY_KIND = {
   "Pre-order": {
@@ -50,7 +49,6 @@ const EMPTY = {
   phone: "",
   orderKind: "In-stock",
   notes: "",
-  discount: "",
   payment: DEFAULTS_BY_KIND["In-stock"].payment,
   status: DEFAULTS_BY_KIND["In-stock"].status,
   deductStock: true,
@@ -80,21 +78,27 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
     let fullSubtotal = 0;
     let dueNow = 0;
     let balanceDue = 0;
+    let discount = 0;
     for (const item of lineItems) {
-      const lineTotal = roundMoney(item.price * item.quantity);
-      fullSubtotal = roundMoney(fullSubtotal + lineTotal);
+      const price = Math.max(0, Number(item.price) || 0);
+      const qty = Math.max(1, Number(item.quantity) || 1);
+      const rawPct = Number(item.discountPercent);
+      const pct = Number.isFinite(rawPct) && rawPct > 0 ? Math.min(100, rawPct) : 0;
+      const effectiveUnit = pct > 0 ? roundMoney(price * (1 - pct / 100)) : price;
+      const listTotal = roundMoney(price * qty);
+      const payable = roundMoney(effectiveUnit * qty);
+      fullSubtotal = roundMoney(fullSubtotal + listTotal);
+      discount = roundMoney(discount + (listTotal - payable));
       if (form.orderKind === "Pre-order") {
-        dueNow = roundMoney(dueNow + preorderDueNow(item, item.quantity));
-        balanceDue = roundMoney(balanceDue + preorderBalanceDue(item, item.quantity));
+        const priced = calcPreorderPricing(effectiveUnit, getDepositPercent(item));
+        dueNow = roundMoney(dueNow + priced.deposit * qty);
+        balanceDue = roundMoney(balanceDue + priced.balance * qty);
       } else {
-        dueNow = roundMoney(dueNow + lineTotal);
+        dueNow = roundMoney(dueNow + payable);
       }
     }
-    const rawDiscount = Math.max(0, Number(form.discount) || 0);
-    const discount = roundMoney(Math.min(rawDiscount, dueNow));
-    const total = roundMoney(Math.max(0, dueNow - discount));
-    return { fullSubtotal, dueNow, balanceDue, discount, total };
-  }, [lineItems, form.orderKind, form.discount]);
+    return { fullSubtotal, dueNow, balanceDue, discount, total: dueNow };
+  }, [lineItems, form.orderKind]);
 
   useEffect(() => {
     if (!open) return;
@@ -167,6 +171,8 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
           tag: picker.tag,
           line: picker.line,
           image: picker.image || null,
+          depositPercent: picker.depositPercent,
+          discountPercent: "",
         },
       ];
     });
@@ -177,6 +183,13 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
 
   function removeLineItem(id) {
     setLineItems((prev) => prev.filter((item) => item.id !== id));
+  }
+
+  function updateLineDiscount(id, value) {
+    setLineItems((prev) => prev.map((item) => (
+      item.id === id ? { ...item, discountPercent: value } : item
+    )));
+    setError("");
   }
 
   async function handleSubmit(event) {
@@ -207,7 +220,6 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
         total: totals.total,
         fullSubtotal: totals.fullSubtotal,
         balanceDue: totals.balanceDue,
-        discount: totals.discount,
         manual: true,
         deductStock: form.deductStock && form.orderKind === "In-stock",
         initialPayment: form.payment,
@@ -363,19 +375,41 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
             <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 2, py: 1.25 }}>
               {lineItems.length ? (
                 <Stack spacing={1}>
-                  {lineItems.map((item) => (
-                    <Stack key={item.id} direction="row" justifyContent="space-between" alignItems="center">
-                      <Box sx={{ minWidth: 0, pr: 1 }}>
-                        <Typography sx={{ fontWeight: 600, fontSize: "0.88rem" }}>{item.name}</Typography>
-                        <Typography sx={{ color: "text.secondary", fontSize: "0.75rem", fontFamily: MONO_FONT }}>
-                          {item.tag} · Qty {item.quantity} · {PESO.format(item.price)} each
-                        </Typography>
-                      </Box>
-                      <IconButton size="small" color="error" aria-label="Remove item" onClick={() => removeLineItem(item.id)}>
-                        <TrashIcon sx={{ fontSize: 18 }} />
-                      </IconButton>
-                    </Stack>
-                  ))}
+                  {lineItems.map((item) => {
+                    const price = Math.max(0, Number(item.price) || 0);
+                    const qty = Math.max(1, Number(item.quantity) || 1);
+                    const rawPct = Number(item.discountPercent);
+                    const pct = Number.isFinite(rawPct) && rawPct > 0 ? Math.min(100, rawPct) : 0;
+                    const effectiveUnit = pct > 0 ? roundMoney(price * (1 - pct / 100)) : price;
+                    const payable = roundMoney(effectiveUnit * qty);
+                    return (
+                      <Stack key={item.id} direction="row" spacing={1} alignItems="center">
+                        <Box sx={{ minWidth: 0, flex: 1, pr: 0.5 }}>
+                          <Typography sx={{ fontWeight: 600, fontSize: "0.88rem" }}>{item.name}</Typography>
+                          <Typography sx={{ color: "text.secondary", fontSize: "0.75rem", fontFamily: MONO_FONT }}>
+                            {item.tag} · Qty {qty} · {PESO.format(price)} each
+                            {pct > 0 ? ` → ${PESO.format(payable)}` : ""}
+                          </Typography>
+                        </Box>
+                        <TextField
+                          size="small"
+                          type="number"
+                          label="Disc %"
+                          value={item.discountPercent}
+                          onChange={(e) => updateLineDiscount(item.id, e.target.value)}
+                          inputProps={{ min: 0, max: 100, step: "0.01", "aria-label": `Discount percent for ${item.name}` }}
+                          sx={{
+                            width: 88,
+                            flexShrink: 0,
+                            "& .MuiOutlinedInput-input": { py: 0.85, fontSize: "0.85rem" },
+                          }}
+                        />
+                        <IconButton size="small" color="error" aria-label="Remove item" onClick={() => removeLineItem(item.id)}>
+                          <TrashIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                      </Stack>
+                    );
+                  })}
                 </Stack>
               ) : (
                 <Typography sx={{ color: "text.secondary", fontSize: "0.82rem", py: 2 }}>
@@ -398,35 +432,13 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
                 bgcolor: "action.hover",
               }}
             >
-              <Stack direction="row" alignItems="center" spacing={1.25} flexWrap="wrap" useFlexGap>
-                <TextField
-                  size="small"
-                  type="number"
-                  placeholder="0"
-                  value={form.discount}
-                  onChange={(e) => update("discount", e.target.value)}
-                  inputProps={{ min: 0, step: "0.01", "aria-label": "Discount amount" }}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Typography sx={{ fontSize: "0.75rem", color: "text.secondary", whiteSpace: "nowrap" }}>
-                          Discount
-                        </Typography>
-                      </InputAdornment>
-                    ),
-                  }}
-                  sx={{
-                    width: 160,
-                    "& .MuiOutlinedInput-root": { bgcolor: "background.paper" },
-                    "& .MuiOutlinedInput-input": { textAlign: "right", py: 0.85, fontSize: "0.85rem" },
-                  }}
-                />
-                {form.orderKind === "Pre-order" ? (
-                  <Typography sx={{ fontSize: "0.78rem", color: "text.secondary" }}>
-                    Due later {PESO.format(totals.balanceDue)}
-                  </Typography>
-                ) : null}
-              </Stack>
+              {form.orderKind === "Pre-order" ? (
+                <Typography sx={{ fontSize: "0.78rem", color: "text.secondary" }}>
+                  Due later {PESO.format(totals.balanceDue)}
+                </Typography>
+              ) : (
+                <Box />
+              )}
 
               <Stack alignItems={{ xs: "flex-start", sm: "flex-end" }} spacing={0.2}>
                 <Typography sx={{ fontWeight: 800, fontSize: "1.05rem", lineHeight: 1.2 }}>
@@ -436,7 +448,7 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
                   </Box>
                 </Typography>
                 <Typography sx={{ fontSize: "0.7rem", color: "text.secondary", lineHeight: 1.35 }}>
-                  Subtotal {PESO.format(totals.dueNow)}
+                  List {PESO.format(totals.fullSubtotal)}
                   {totals.discount > 0 ? ` · Discount −${PESO.format(totals.discount)}` : ""}
                 </Typography>
               </Stack>

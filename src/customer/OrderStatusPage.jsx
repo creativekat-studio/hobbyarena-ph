@@ -26,7 +26,7 @@ import {
   orderOutstandingBalance,
   orderStatusLabel,
 } from "../data/orderWorkflow.js";
-import { orderCustomerTotal } from "../lib/orderRevenue.js";
+import { lineItemAmount, orderCustomerTotal } from "../lib/orderRevenue.js";
 import { orderOpenCredit } from "../lib/orderCredit.js";
 import { formatOrderTimestamp } from "../lib/orderTimestamps.js";
 import { useAuth } from "../auth/AuthProvider.jsx";
@@ -160,7 +160,7 @@ function OrderLineItem({ order, item, surfaceBorderColor }) {
   const theme = useTheme();
   const payment = migratePaymentStatus(item.payment);
   const status = migrateOrderStatus(item.status);
-  const lineTotal = item.lineTotal ?? (item.price ?? 0) * (item.quantity ?? 1);
+  const lineTotal = lineItemAmount(item);
 
   return (
     <Box sx={{ border: "1px solid", borderColor: surfaceBorderColor, borderRadius: 1.5, p: { xs: 2, md: 2.5 } }}>

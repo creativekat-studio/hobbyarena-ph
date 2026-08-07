@@ -45,7 +45,7 @@ import {
 import { isArchivedOrder, useOrders } from "../lib/ordersStore.jsx";
 import { compareOrdersByOrderNo } from "../lib/orderIds.js";
 import { exportOrdersToExcel } from "../lib/ordersExcelExport.js";
-import { buildCostByProductId } from "../lib/orderRevenue.js";
+import { buildCostByProductId, lineItemAmount } from "../lib/orderRevenue.js";
 import { formatOrderTimestamp, resolveOrderPlacedAt } from "../lib/orderTimestamps.js";
 import { useInventory } from "../lib/inventoryStore.jsx";
 import { sortRowsBy, toggleSortState } from "../lib/tableSort.js";
@@ -396,7 +396,7 @@ function AdminOrderAccordionRow({
                 const itemPayment = migratePaymentStatus(item.payment);
                 const itemStatus = migrateOrderStatus(item.status);
                 const itemStage = getOrderStage({ ...order, payment: item.payment, status: item.status, lineItems: [item] });
-                const lineTotal = item.lineTotal ?? (item.price ?? 0) * (item.quantity ?? 1);
+                const lineTotal = lineItemAmount(item);
                 return (
                   <Box
                     key={item.id}

@@ -53,15 +53,34 @@ export function lineItemAllocatedQty(item) {
   return Math.max(0, Number(item?.allocatedQty) || 0);
 }
 
-export function lineItemAmount(item) {
-  const qty = lineItemQty(item);
-  return Number(item?.lineTotal ?? (item?.price ?? 0) * qty) || 0;
+/** Per-line discount % (0–100). Missing / invalid ⇒ 0 (price unchanged). */
+export function lineItemDiscountPercent(item) {
+  const pct = Number(item?.discountPercent);
+  if (!Number.isFinite(pct) || pct <= 0) return 0;
+  return Math.min(100, pct);
 }
 
 export function lineItemUnitPrice(item) {
   const qty = lineItemQty(item);
   if (item?.price != null && item.price !== "") return Math.max(0, Number(item.price) || 0);
-  return lineItemAmount(item) / qty;
+  const amount = Number(item?.lineTotal) || 0;
+  return amount / qty;
+}
+
+/** Unit price after per-item discount%. Original `price` stays list price. */
+export function lineItemEffectiveUnitPrice(item) {
+  const base = lineItemUnitPrice(item);
+  const pct = lineItemDiscountPercent(item);
+  if (pct <= 0) return base;
+  return roundMoney(base * (1 - pct / 100));
+}
+
+/** Payable line total (uses stored lineTotal when present, else effective × qty). */
+export function lineItemAmount(item) {
+  if (item?.lineTotal != null && item.lineTotal !== "") {
+    return Math.max(0, Number(item.lineTotal) || 0);
+  }
+  return roundMoney(lineItemEffectiveUnitPrice(item) * lineItemQty(item));
 }
 
 /**
@@ -97,17 +116,17 @@ export function lineItemDepositPaid(item, depositPercent = 30) {
   if (item?.depositPaid != null && item.depositPaid !== "") {
     return Math.max(0, Number(item.depositPaid) || 0);
   }
-  // Fall back to configured DP% of the original line (ordered qty × price).
+  // Fall back to configured DP% of the payable (discounted) line total.
   const pct = Number(item?.depositPercent) || depositPercent;
   return roundMoney((lineItemAmount(item) * pct) / 100);
 }
 
-/** Final price = selling price × actual allocation. */
+/** Final price = effective unit price × actual allocation. */
 export function lineItemFinalPrice(item) {
   const qty = lineItemQty(item);
-  const price = lineItemUnitPrice(item);
+  const price = lineItemEffectiveUnitPrice(item);
   const allocated = Math.min(lineItemAllocatedQty(item), qty);
-  return allocated * price;
+  return roundMoney(allocated * price);
 }
 
 /**
@@ -175,8 +194,8 @@ export function lineItemAllocatedRevenue(item) {
   }
   const allocated = lineItemAllocatedQty(item);
   if (allocated > 0) return lineItemFinalPrice(item);
-  // Fulfilled but allocation missing → ordered qty × price
-  return lineItemUnitPrice(item) * lineItemQty(item);
+  // Fulfilled but allocation missing → ordered qty × effective price
+  return lineItemAmount(item);
 }
 
 export function lineItemCogs(item, costByProductId = null) {

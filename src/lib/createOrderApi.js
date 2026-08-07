@@ -30,6 +30,9 @@ export async function createOrderViaApi(payload) {
         cartItems: (payload.cartItems || []).map((item) => ({
           id: item.id,
           quantity: item.quantity ?? 1,
+          ...(payload.manual && Number(item.discountPercent) > 0
+            ? { discountPercent: Math.min(100, Number(item.discountPercent) || 0) }
+            : {}),
         })),
         customer: payload.customer,
         email: payload.email,
@@ -47,7 +50,6 @@ export async function createOrderViaApi(payload) {
               initialPayment: payload.initialPayment,
               initialStatus: payload.initialStatus,
               deductStock: payload.deductStock !== false,
-              discount: Number(payload.discount) || 0,
             }
           : {}),
       }),

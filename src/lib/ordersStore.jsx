@@ -30,7 +30,7 @@ import {
   refundedAmountForOrder,
 } from "../data/orderWorkflow.js";
 import { formatPeso, roundMoney } from "./money.js";
-import { preorderBalanceDue, preorderDueNow } from "./preorder.js";
+import { calcPreorderPricing, getDepositPercent } from "./preorder.js";
 import { makeOrderId, migrateLegacyOrderId, sortOrdersByOrderNo } from "./orderIds.js";
 import {
   migrateInlineOrderProof,
@@ -667,20 +667,42 @@ export function OrdersProvider({ children }) {
         ? await normalizeProofDataUrl(payload.proofOfPayment)
         : null;
 
-      const discount = roundMoney(Math.max(0, Number(payload.discount) || 0));
-      const rawLineItems = payload.cartItems.map((item) => {
+      let orderDiscount = 0;
+      const lineItems = payload.cartItems.map((item) => {
         const isPreorder = item.tag === "Pre-order";
         const quantity = item.quantity ?? 1;
-        const lineTotal = roundMoney(item.price * quantity);
-        const depositPaid = isPreorder ? preorderDueNow(item, quantity) : lineTotal;
-        const balanceDueLine = isPreorder ? preorderBalanceDue(item, quantity) : 0;
+        const price = Math.max(0, Number(item.price) || 0);
+        const rawPct = Number(item.discountPercent);
+        const discountPercent = payload.manual && Number.isFinite(rawPct) && rawPct > 0
+          ? Math.min(100, rawPct)
+          : 0;
+        const effectiveUnit = discountPercent > 0
+          ? roundMoney(price * (1 - discountPercent / 100))
+          : price;
+        const listLineTotal = roundMoney(price * quantity);
+        const lineTotal = roundMoney(effectiveUnit * quantity);
+        orderDiscount = roundMoney(orderDiscount + (listLineTotal - lineTotal));
+        let depositPaid;
+        let balanceDueLine;
+        if (isPreorder) {
+          const { deposit, balance } = calcPreorderPricing(
+            effectiveUnit,
+            getDepositPercent(item),
+          );
+          depositPaid = roundMoney(deposit * quantity);
+          balanceDueLine = roundMoney(balance * quantity);
+        } else {
+          depositPaid = lineTotal;
+          balanceDueLine = 0;
+        }
         return normalizeLineItem({
           id: item.id,
           name: item.name,
           quantity,
-          price: item.price,
+          price,
           cost: item.cost ?? 0,
           lineTotal,
+          ...(discountPercent > 0 ? { discountPercent } : {}),
           tag: item.tag,
           line: item.line,
           image: item.image || null,
@@ -689,24 +711,8 @@ export function OrdersProvider({ children }) {
           allocatedQty: 0,
           depositPaid,
           balanceDue: balanceDueLine,
+          ...(isPreorder ? { depositPercent: getDepositPercent(item) } : {}),
         }, { payment: initialPayment, status: initialStatus });
-      });
-
-      const dueSum = rawLineItems.reduce((sum, item) => sum + (Number(item.depositPaid) || 0), 0);
-      const cappedDiscount = roundMoney(Math.min(discount, dueSum));
-      let discountRemaining = cappedDiscount;
-      const lineItems = rawLineItems.map((item, index) => {
-        if (cappedDiscount <= 0) return item;
-        const isLast = index === rawLineItems.length - 1;
-        const share = dueSum > 0 ? (Number(item.depositPaid) || 0) / dueSum : 0;
-        const cut = isLast
-          ? discountRemaining
-          : roundMoney(Math.min(discountRemaining, cappedDiscount * share));
-        discountRemaining = roundMoney(Math.max(0, discountRemaining - cut));
-        return {
-          ...item,
-          depositPaid: roundMoney(Math.max(0, (Number(item.depositPaid) || 0) - cut)),
-        };
       });
 
       const order = {
@@ -722,7 +728,7 @@ export function OrdersProvider({ children }) {
         shippingFee: payload.shippingFee,
         total: payload.total,
         fullSubtotal: payload.fullSubtotal ?? payload.subtotal,
-        discount: cappedDiscount,
+        discount: orderDiscount,
         balanceDue: payload.balanceDue ?? 0,
         depositPercent: payload.depositPercent ?? 30,
         allocatedQty: 0,

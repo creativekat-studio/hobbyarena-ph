@@ -259,7 +259,11 @@ function lineFullTotal(itemOrOrder) {
   const qty = lineQuantity(itemOrOrder);
   if (itemOrOrder?.fullSubtotal != null) return itemOrOrder.fullSubtotal;
   if (itemOrOrder?.lineTotal != null) return itemOrOrder.lineTotal;
-  return (itemOrOrder?.price ?? 0) * qty;
+  const price = Number(itemOrOrder?.price) || 0;
+  const pct = Number(itemOrOrder?.discountPercent);
+  const discountPct = Number.isFinite(pct) && pct > 0 ? Math.min(100, pct) : 0;
+  const effectiveUnit = discountPct > 0 ? price * (1 - discountPct / 100) : price;
+  return effectiveUnit * qty;
 }
 
 function lineDepositPaid(itemOrOrder, depositPercent = 30) {
@@ -547,7 +551,10 @@ export function normalizeLineItem(item, orderDefaults = {}) {
   const cost = migrated.cost != null && migrated.cost !== ""
     ? Math.max(0, Number(migrated.cost) || 0)
     : undefined;
-  const lineTotal = migrated.lineTotal ?? price * quantity;
+  const rawPct = Number(migrated.discountPercent);
+  const discountPercent = Number.isFinite(rawPct) && rawPct > 0 ? Math.min(100, rawPct) : 0;
+  const effectiveUnit = discountPercent > 0 ? price * (1 - discountPercent / 100) : price;
+  const lineTotal = migrated.lineTotal ?? roundMoney(effectiveUnit * quantity);
 
   return {
     allocatedQty: 0,
@@ -558,6 +565,7 @@ export function normalizeLineItem(item, orderDefaults = {}) {
     quantity,
     price,
     ...(cost != null ? { cost } : {}),
+    ...(discountPercent > 0 ? { discountPercent } : {}),
     lineTotal,
     payment,
     status,
@@ -876,8 +884,7 @@ export function allocationLabelForItem(item) {
 }
 
 export function refundedAmountForLineItem(item, depositPercent = 30) {
-  const qty = Math.max(1, item.quantity ?? 1);
-  const fullLine = item.lineTotal ?? (item.price ?? 0) * qty;
+  const fullLine = lineFullTotal(item);
   const isPreorder = resolveOrderKindForItem(item) === "Pre-order";
   const payment = migratePaymentStatus(item.payment);
   const status = migrateOrderStatus(item.status);
@@ -1013,7 +1020,7 @@ export function applyPaymentStatusToLineItem(
     const receiveOpts = {
       depositDue: lineDepositPaid(item, depositPercent),
       balanceDueNet: Math.max(0, Number(item.balanceDue) || 0),
-      lineTotal: item.lineTotal ?? (item.price ?? 0) * qty,
+      lineTotal: lineFullTotal(item),
       kind,
     };
     const received = draftAmountReceived != null && Number(draftAmountReceived) >= 0
@@ -1030,7 +1037,7 @@ export function applyPaymentStatusToLineItem(
     const stub = {
       type: "Pre-order",
       qty,
-      fullSubtotal: item.lineTotal ?? item.price * qty,
+      fullSubtotal: lineFullTotal(item),
       depositPaid: item.depositPaid,
       depositPercent,
       payment,
@@ -1103,7 +1110,7 @@ export function inferLineItemAfterAllocation(item, allocatedQty) {
   const stubOrder = {
     type: resolveOrderKindForItem(item),
     qty,
-    fullSubtotal: item.lineTotal ?? item.price * qty,
+    fullSubtotal: lineFullTotal(item),
     depositPaid: item.depositPaid,
     depositPercent: 30,
     payment: item.payment,

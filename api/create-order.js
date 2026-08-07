@@ -15,39 +15,6 @@ import { isGuestCaptchaEnabled } from "./_lib/cmsSettings.js";
 import { checkOrderRateLimit, recordOrderRateLimit } from "./_lib/orderRateLimit.js";
 import { requireAdmin } from "./_lib/requireAdmin.js";
 import { verifyRecaptchaToken } from "./_lib/verifyRecaptcha.js";
-import { roundMoney } from "../src/lib/money.js";
-
-/** Apply a manual-order discount to due-now amounts, prorated across lines. */
-function applyManualDiscount(priced, discountInput) {
-  const discount = roundMoney(Math.max(0, Math.min(Number(discountInput) || 0, priced.subtotal)));
-  if (discount <= 0) {
-    return { ...priced, discount: 0, lineItems: priced.lineItems };
-  }
-
-  const dueParts = priced.lineItems.map((item) => Number(item.depositPaid) || 0);
-  const dueSum = dueParts.reduce((sum, value) => sum + value, 0) || 1;
-  let remaining = discount;
-  const lineItems = priced.lineItems.map((item, index) => {
-    const isLast = index === priced.lineItems.length - 1;
-    const share = dueParts[index] / dueSum;
-    const cut = isLast
-      ? remaining
-      : roundMoney(Math.min(remaining, discount * share));
-    remaining = roundMoney(Math.max(0, remaining - cut));
-    const depositPaid = roundMoney(Math.max(0, (Number(item.depositPaid) || 0) - cut));
-    return { ...item, depositPaid };
-  });
-
-  const subtotal = roundMoney(Math.max(0, priced.subtotal - discount));
-  return {
-    ...priced,
-    lineItems,
-    discount,
-    subtotal,
-    total: roundMoney(subtotal + (priced.shippingFee || 0)),
-  };
-}
-
 function readAddress(raw) {
   if (!raw || typeof raw !== "object") return null;
   return {
@@ -111,7 +78,11 @@ export default async function handler(req, res) {
     const fulfillment = body.fulfillment === "pickup" ? "pickup" : "delivery";
     const address = fulfillment === "pickup" ? null : readAddress(body.address);
     const cartLines = Array.isArray(body.cartItems)
-      ? body.cartItems.map((item) => ({ id: item?.id, quantity: item?.quantity }))
+      ? body.cartItems.map((item) => ({
+        id: item?.id,
+        quantity: item?.quantity,
+        ...(manual ? { discountPercent: item?.discountPercent } : {}),
+      }))
       : [];
 
     if (!customer || !isValidEmail(email)) {
@@ -145,13 +116,12 @@ export default async function handler(req, res) {
       }
     }
 
-    const pricedBase = await buildPricedLines(db, cartLines, {
+    const priced = await buildPricedLines(db, cartLines, {
       // Admin manual orders may include drafted / closed pre-order SKUs on purpose.
       enforceStorefrontAvailability: !manual,
+      // Manual orders accept per-item discount %; storefront never does.
+      allowLineDiscount: manual,
     });
-    const priced = manual
-      ? applyManualDiscount(pricedBase, body.discount)
-      : { ...pricedBase, discount: 0 };
     const initialPayment = manual && body.initialPayment
       ? String(body.initialPayment).slice(0, 80)
       : "Pending Verification";

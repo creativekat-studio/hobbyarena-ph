@@ -2038,7 +2038,7 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
 
   const summaryItems = lineItems.map((item) => {
     const isPreorder = resolveOrderKindForItem(item) === "Pre-order";
-    const fullLine = item.lineTotal ?? (item.price ?? 0) * (item.quantity ?? 1);
+    const fullLine = lineItemAmount(item);
     const allocatedQty = Math.max(0, Number(item.allocatedQty) || 0);
 
     return {

@@ -76,18 +76,6 @@ function calcPreorderPricing(fullPrice, depositPercent = DEFAULT_DEPOSIT_PERCENT
   return { deposit, balance, depositPercent: percent };
 }
 
-function preorderDueNow(product, quantity = 1) {
-  if (!isPreorderProduct(product)) return roundMoney((Number(product?.price) || 0) * quantity);
-  const { deposit } = calcPreorderPricing(Number(product.price) || 0, getDepositPercent(product));
-  return roundMoney(deposit * quantity);
-}
-
-function preorderBalanceDue(product, quantity = 1) {
-  if (!isPreorderProduct(product)) return 0;
-  const { balance } = calcPreorderPricing(Number(product.price) || 0, getDepositPercent(product));
-  return roundMoney(balance * quantity);
-}
-
 /** Storefront shipping is currently always 0 (courier paid by buyer). */
 export function serverShippingFee() {
   return 0;
@@ -96,12 +84,14 @@ export function serverShippingFee() {
 /**
  * Load products and build priced line items from trusted catalog data.
  * @param {import('firebase-admin/firestore').Firestore} db
- * @param {Array<{ id: string, quantity: number }>} lines
- * @param {{ enforceStorefrontAvailability?: boolean }} [options]
+ * @param {Array<{ id: string, quantity: number, discountPercent?: number }>} lines
+ * @param {{ enforceStorefrontAvailability?: boolean, allowLineDiscount?: boolean }} [options]
  *   When true (storefront checkout), reject drafted/removed products and closed pre-orders.
+ *   When allowLineDiscount (manual admin orders), accept per-line discountPercent.
  */
 export async function buildPricedLines(db, lines, options = {}) {
   const enforceStorefrontAvailability = options.enforceStorefrontAvailability !== false;
+  const allowLineDiscount = Boolean(options.allowLineDiscount);
   if (!Array.isArray(lines) || !lines.length) {
     throw Object.assign(new Error("Add at least one product."), { status: 400 });
   }
@@ -113,6 +103,7 @@ export async function buildPricedLines(db, lines, options = {}) {
   let dueNow = 0;
   let fullSubtotal = 0;
   let balanceDue = 0;
+  let discount = 0;
   let depositPercent = DEFAULT_DEPOSIT_PERCENT;
   let hasPreorder = false;
   let hasStock = false;
@@ -176,20 +167,43 @@ export async function buildPricedLines(db, lines, options = {}) {
 
     const price = Math.max(0, Number(product.price) || 0);
     const cost = Math.max(0, Number(product.cost) || 0);
+    const lineDpPercent = isPreorder ? getDepositPercent(product) : 0;
     if (isPreorder) {
       hasPreorder = true;
-      depositPercent = getDepositPercent(product);
+      depositPercent = lineDpPercent;
     } else {
       hasStock = true;
     }
 
-    const lineTotal = roundMoney(price * quantity);
-    const depositPaid = isPreorder ? preorderDueNow(product, quantity) : lineTotal;
-    const balanceDueLine = isPreorder ? preorderBalanceDue(product, quantity) : 0;
+    let discountPercent = 0;
+    if (allowLineDiscount) {
+      const raw = Number(line?.discountPercent);
+      if (Number.isFinite(raw) && raw > 0) {
+        discountPercent = Math.min(100, raw);
+      }
+    }
+    const effectiveUnit = discountPercent > 0
+      ? roundMoney(price * (1 - discountPercent / 100))
+      : price;
+    const listLineTotal = roundMoney(price * quantity);
+    const lineTotal = roundMoney(effectiveUnit * quantity);
+    const lineSavings = roundMoney(listLineTotal - lineTotal);
+
+    let depositPaid;
+    let balanceDueLine;
+    if (isPreorder) {
+      const priced = calcPreorderPricing(effectiveUnit, lineDpPercent);
+      depositPaid = roundMoney(priced.deposit * quantity);
+      balanceDueLine = roundMoney(priced.balance * quantity);
+    } else {
+      depositPaid = lineTotal;
+      balanceDueLine = 0;
+    }
 
     dueNow = roundMoney(dueNow + depositPaid);
-    fullSubtotal = roundMoney(fullSubtotal + lineTotal);
+    fullSubtotal = roundMoney(fullSubtotal + listLineTotal);
     balanceDue = roundMoney(balanceDue + balanceDueLine);
+    discount = roundMoney(discount + lineSavings);
 
     lineItems.push({
       id: product.id,
@@ -198,6 +212,7 @@ export async function buildPricedLines(db, lines, options = {}) {
       price,
       cost,
       lineTotal,
+      ...(discountPercent > 0 ? { discountPercent } : {}),
       tag,
       line: product.line || null,
       image: product.image || null,
@@ -207,6 +222,7 @@ export async function buildPricedLines(db, lines, options = {}) {
       depositPaid,
       balanceDue: balanceDueLine,
       creditAmount: 0,
+      ...(isPreorder ? { depositPercent: lineDpPercent } : {}),
     });
   }
 
@@ -228,6 +244,7 @@ export async function buildPricedLines(db, lines, options = {}) {
     shippingFee: roundMoney(shippingFee),
     total: roundMoney(dueNow + shippingFee),
     fullSubtotal: roundMoney(fullSubtotal),
+    discount: roundMoney(discount),
     balanceDue: roundMoney(balanceDue),
     depositPercent,
   };
