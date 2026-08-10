@@ -10,12 +10,13 @@ import {
 } from "../data/orderWorkflow.js";
 import { lineOpenCredit } from "./orderCredit.js";
 import {
+  lineItemAmount,
   lineItemDepositPaid,
+  lineItemEffectiveUnitPrice,
   lineItemFinalPrice,
   lineItemGrossRevenue,
   lineItemNetRevenue,
   lineItemUnitCost,
-  lineItemUnitPrice,
 } from "./orderRevenue.js";
 import { formatOrderTimestamp } from "./orderTimestamps.js";
 import { MONEY_UI_DECIMALS, roundMoney } from "./money.js";
@@ -68,9 +69,9 @@ function lineQuantity(item) {
   return Math.max(1, Number(item.quantity ?? item.qty ?? 1) || 1);
 }
 
+/** Payable line total (honors per-item discount % / stored lineTotal). */
 function lineTotal(item) {
-  const qty = lineQuantity(item);
-  return Number(item.lineTotal ?? (Number(item.price) || 0) * qty) || 0;
+  return lineItemAmount(item);
 }
 
 function orderLineSubtotal(lineItems) {
@@ -127,7 +128,7 @@ function finalAmount(item) {
     if (!hasFinalAllocation(item) || !(Number(item.allocatedQty) > 0)) return "";
     return moneyOrBlank(lineItemFinalPrice(item));
   }
-  // In-stock: ordered line total once paid / completed.
+  // In-stock: payable (discounted) line total once paid / completed.
   const payment = migratePaymentStatus(item.payment);
   const status = migrateOrderStatus(item.status);
   if (
@@ -136,7 +137,7 @@ function finalAmount(item) {
     || status === "Fulfilled"
     || status === "Ready for Pickup"
   ) {
-    return moneyOrBlank(lineItemUnitPrice(item) * lineQuantity(item));
+    return moneyOrBlank(lineItemAmount(item));
   }
   return "";
 }
@@ -198,7 +199,7 @@ export const ORDER_EXCEL_COLUMNS = [
   { header: "Item", value: (_order, item) => item.name ?? "", width: 32 },
   { header: "Date", value: (order) => formatOrderTimestamp(order), width: 20 },
   { header: "Quantity", value: (_order, item) => numberOrBlank(item.quantity ?? 1), group: "blue", width: 10 },
-  { header: "Unit Price", value: (_order, item) => moneyOrBlank(lineItemUnitPrice(item)), group: "blue", width: 12, money: true },
+  { header: "Unit Price", value: (_order, item) => moneyOrBlank(lineItemEffectiveUnitPrice(item)), group: "blue", width: 12, money: true },
   { header: "Unit Cost", value: (_order, item, context) => unitCost(item, context), group: "blue", width: 12, money: true },
   { header: "DP Amount", value: lineDepositPaidExport, group: "blue", width: 14, money: true },
   { header: "DP Net", value: (order, item, context) => dpNetAmount(order, item, context), group: "blue", width: 12, money: true },

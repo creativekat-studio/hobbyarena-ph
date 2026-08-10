@@ -450,6 +450,9 @@ export function OrdersProvider({ children }) {
         quantity: item.quantity ?? 1,
         price: item.price ?? 0,
         lineTotal: item.lineTotal ?? 0,
+        ...(Number(item.discountPercent) > 0
+          ? { discountPercent: Math.min(100, Number(item.discountPercent) || 0) }
+          : {}),
         tag: item.tag ?? "",
         payment: item.payment ?? "",
         status: item.status ?? "",
@@ -499,6 +502,10 @@ export function OrdersProvider({ children }) {
             name: primaryItem.name,
             quantity: primaryItem.quantity ?? 1,
             price: primaryItem.price ?? 0,
+            lineTotal: primaryItem.lineTotal ?? 0,
+            ...(Number(primaryItem.discountPercent) > 0
+              ? { discountPercent: Math.min(100, Number(primaryItem.discountPercent) || 0) }
+              : {}),
             tag: primaryItem.tag,
             payment: primaryItem.payment,
             status: primaryItem.status,
@@ -507,7 +514,6 @@ export function OrdersProvider({ children }) {
             allocatedQty: primaryItem.allocatedQty ?? 0,
             depositPaid: primaryItem.depositPaid ?? 0,
             creditAmount: primaryItem.creditAmount ?? 0,
-            lineTotal: primaryItem.lineTotal ?? 0,
           },
           ...(statusAttachment ? { statusAttachment } : {}),
         },

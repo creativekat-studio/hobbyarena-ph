@@ -31,13 +31,25 @@ function balancePercentOf(order) {
 
 function normalizeLineItems(order) {
   if (Array.isArray(order.lineItems) && order.lineItems.length) {
-    return order.lineItems.map((item) => ({
-      name: String(item.name || "Item").trim(),
-      quantity: Number(item.quantity) || 1,
-      price: Number(item.price) || 0,
-      lineTotal: Number(item.lineTotal) || (Number(item.price) || 0) * (Number(item.quantity) || 1),
-      tag: item.tag ? String(item.tag) : "",
-    }));
+    return order.lineItems.map((item) => {
+      const quantity = Number(item.quantity) || 1;
+      const price = Number(item.price) || 0;
+      const rawPct = Number(item.discountPercent);
+      const discountPercent = Number.isFinite(rawPct) && rawPct > 0 ? Math.min(100, rawPct) : 0;
+      const storedLineTotal = Number(item.lineTotal);
+      const effectiveUnit = discountPercent > 0 ? price * (1 - discountPercent / 100) : price;
+      const lineTotal = Number.isFinite(storedLineTotal) && storedLineTotal > 0
+        ? storedLineTotal
+        : effectiveUnit * quantity;
+      return {
+        name: String(item.name || "Item").trim(),
+        quantity,
+        price,
+        lineTotal,
+        ...(discountPercent > 0 ? { discountPercent } : {}),
+        tag: item.tag ? String(item.tag) : "",
+      };
+    });
   }
 
   if (order.items) {
@@ -133,8 +145,11 @@ export function buildOrderAcknowledgementEmail(order, options = {}) {
     `Payment: ${order.payment || "Pending Verification"}`,
     "",
     ...lineItems.map((item) => {
-      const unit = item.price > 0 ? ` @ ${formatPeso(item.price)}` : "";
-      return `${item.quantity}× ${item.name}${unit}`;
+      const unit = item.lineTotal > 0
+        ? item.lineTotal / Math.max(1, item.quantity)
+        : item.price;
+      const unitLabel = unit > 0 ? ` @ ${formatPeso(unit)}` : "";
+      return `${item.quantity}× ${item.name}${unitLabel}`;
     }),
     "",
     ...totalRows.map((row) => `${row.label}: ${row.value}`),

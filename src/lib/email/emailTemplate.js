@@ -353,11 +353,21 @@ export function invoiceTable(lineItems, { highlightId = null, useAllocation = fa
       const qtyLabel = useAllocation && allocated > 0
         ? `${billQty} of ${orderedQty}`
         : String(orderedQty);
-      const unitPrice = Number(item.price) || (item.lineTotal > 0 ? Number(item.lineTotal) / orderedQty : 0);
+      // Prefer payable unit (lineTotal ÷ qty) so per-item discounts show correctly.
+      // Fall back to discountPercent on list price, then list price.
+      const storedLineTotal = Number(item.lineTotal);
+      const listUnit = Number(item.price) || 0;
+      const rawPct = Number(item.discountPercent);
+      const discountPct = Number.isFinite(rawPct) && rawPct > 0 ? Math.min(100, rawPct) : 0;
+      const unitPrice = Number.isFinite(storedLineTotal) && storedLineTotal > 0
+        ? storedLineTotal / orderedQty
+        : discountPct > 0
+          ? listUnit * (1 - discountPct / 100)
+          : listUnit;
       const lineTotal = useAllocation && allocated > 0
         ? unitPrice * billQty
-        : item.lineTotal > 0
-          ? Number(item.lineTotal)
+        : Number.isFinite(storedLineTotal) && storedLineTotal > 0
+          ? storedLineTotal
           : unitPrice > 0
             ? unitPrice * orderedQty
             : 0;

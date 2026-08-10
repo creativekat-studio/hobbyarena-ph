@@ -12,13 +12,25 @@ function readOrder(body) {
   if (!id || !customer || !isValidEmail(email)) return null;
 
   const parsedLineItems = Array.isArray(lineItems)
-    ? lineItems.map((item) => ({
-        name: String(item.name || "").trim(),
-        quantity: Number(item.quantity) || 1,
-        price: Number(item.price) || 0,
-        lineTotal: Number(item.lineTotal) || 0,
-        tag: item.tag ? String(item.tag) : "",
-      })).filter((item) => item.name)
+    ? lineItems.map((item) => {
+        const quantity = Number(item.quantity) || 1;
+        const price = Number(item.price) || 0;
+        const rawPct = Number(item.discountPercent);
+        const discountPercent = Number.isFinite(rawPct) && rawPct > 0 ? Math.min(100, rawPct) : 0;
+        const storedLineTotal = Number(item.lineTotal);
+        const effectiveUnit = discountPercent > 0 ? price * (1 - discountPercent / 100) : price;
+        const lineTotal = Number.isFinite(storedLineTotal) && storedLineTotal > 0
+          ? storedLineTotal
+          : effectiveUnit * quantity;
+        return {
+          name: String(item.name || "").trim(),
+          quantity,
+          price,
+          lineTotal,
+          ...(discountPercent > 0 ? { discountPercent } : {}),
+          tag: item.tag ? String(item.tag) : "",
+        };
+      }).filter((item) => item.name)
     : [];
 
   const reminderConfig = reminder && typeof reminder === "object"

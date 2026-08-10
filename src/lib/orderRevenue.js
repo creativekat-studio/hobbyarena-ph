@@ -177,9 +177,9 @@ export function lineItemGrossRevenue(item, depositPercent = 30) {
     return depositPaid;
   }
 
-  // Sealed / fully paid with no allocation field → treat ordered qty as final
+  // Sealed / fully paid with no allocation field → treat ordered qty as final (payable)
   if (FULL_PAID_PAYMENTS.has(payment) || COMPLETED_STATUSES.has(status)) {
-    return lineItemUnitPrice(item) * qty;
+    return lineItemAmount(item);
   }
 
   return 0;
@@ -241,7 +241,7 @@ export function lineItemNetRevenue(item, depositPercent = 30, costByProductId = 
 
   if (depositOnly) {
     if (basis === "fulfilled") return 0;
-    const price = lineItemUnitPrice(item);
+    const price = lineItemEffectiveUnitPrice(item);
     const cost = lineItemUnitCost(item, costByProductId);
     const qty = lineItemQty(item);
     const pct = (Number(item?.depositPercent) || depositPercent) / 100;
@@ -284,15 +284,19 @@ function legacyOrderGross(order) {
   const status = migrateOrderStatus(order?.status);
   const allocated = Math.max(0, Number(order?.allocatedQty) || 0);
   const qty = Math.max(1, Number(order?.qty) || 1);
-  const price = Number(order?.lineItems?.[0]?.price) || 0;
+  const stub = order?.lineItems?.[0] || order;
+  const unit = lineItemEffectiveUnitPrice(stub);
+  const payable = lineItemAmount(stub);
   const depositPaid = Math.max(0, Number(order?.depositPaid ?? order?.total) || 0);
 
   if (ZERO_REVENUE_PAYMENTS.has(payment) || ZERO_REVENUE_STATUSES.has(status)) return 0;
 
-  if (allocated > 0 && price > 0) return Math.min(allocated, qty) * price;
+  if (allocated > 0 && unit > 0) return roundMoney(Math.min(allocated, qty) * unit);
   if (DEPOSIT_STAGE_PAYMENTS.has(payment)) return depositPaid;
   if (FULL_PAID_PAYMENTS.has(payment) || COMPLETED_STATUSES.has(status)) {
-    return order?.fullSubtotal ?? (price > 0 ? price * qty : (order?.total ?? 0));
+    // Prefer payable line total over list fullSubtotal when a discount was applied.
+    if (payable > 0) return payable;
+    return order?.fullSubtotal ?? (order?.total ?? 0);
   }
   return 0;
 }
@@ -389,6 +393,32 @@ export function orderCustomerTotal(order) {
   return Math.max(0, orderRevenue(order, "paid"));
 }
 
+/**
+ * Amount shown on customer account / order status.
+ * Prefer recognized revenue; before verification, show payable (discounted) order amount.
+ */
+export function orderCustomerDisplayTotal(order) {
+  const recognized = orderCustomerTotal(order);
+  if (recognized > 0) return recognized;
+
+  const items = orderLineItemsForAnalytics(order);
+  if (items.length) {
+    const hasPreorder = items.some((item) => isPreorderLine(item));
+    if (hasPreorder) {
+      const deposit = items.reduce((sum, item) => sum + lineItemDepositPaid(item), 0);
+      const balance = items.reduce((sum, item) => sum + Math.max(0, Number(item?.balanceDue) || 0), 0);
+      const payable = roundMoney(deposit + balance);
+      if (payable > 0) return payable;
+    }
+    const payable = roundMoney(items.reduce((sum, item) => sum + lineItemAmount(item), 0));
+    if (payable > 0) return payable;
+  }
+
+  const due = Math.max(0, Number(order?.total) || 0);
+  const balance = Math.max(0, Number(order?.balanceDue) || 0);
+  return roundMoney(due + balance);
+}
+
 export function orderOrderedQty(order) {
   const items = orderLineItemsForAnalytics(order);
   if (!items.length) return Math.max(1, Number(order?.qty) || 1);
@@ -437,8 +467,8 @@ export function orderListDisplayTotal(order) {
     }
     const qty = Math.max(1, Number(order?.qty) || 1);
     const allocated = Math.min(Math.max(0, Number(order?.allocatedQty) || 0), qty);
-    const price = Number(order?.lineItems?.[0]?.price) || 0;
-    if (price > 0) return allocated * price;
+    const price = lineItemEffectiveUnitPrice(order?.lineItems?.[0] || order);
+    if (price > 0) return roundMoney(allocated * price);
   }
   return Math.max(0, Number(order?.total) || 0);
 }

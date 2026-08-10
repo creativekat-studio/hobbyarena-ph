@@ -26,7 +26,7 @@ import {
   orderOutstandingBalance,
   orderStatusLabel,
 } from "../data/orderWorkflow.js";
-import { lineItemAmount, orderCustomerTotal } from "../lib/orderRevenue.js";
+import { lineItemAmount, orderCustomerDisplayTotal } from "../lib/orderRevenue.js";
 import { orderOpenCredit } from "../lib/orderCredit.js";
 import { formatOrderTimestamp } from "../lib/orderTimestamps.js";
 import { useAuth } from "../auth/AuthProvider.jsx";
@@ -285,7 +285,7 @@ export default function OrderStatusPage() {
               </Box>
               <Box sx={{ textAlign: { xs: "left", sm: "right" } }}>
                 <Typography sx={{ fontWeight: 800, color: "primary.main", fontSize: "1.35rem" }}>
-                  {PESO.format(orderCustomerTotal(order))}
+                  {PESO.format(orderCustomerDisplayTotal(order))}
                 </Typography>
                 <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>Final price</Typography>
                 {orderOutstandingBalance(order) > 0 ? (
@@ -318,7 +318,7 @@ export default function OrderStatusPage() {
               </Stack>
             </SummaryRow>
             <SummaryRow label="Final price">
-              <Typography sx={{ fontSize: "0.9rem", fontWeight: 800 }}>{PESO.format(orderCustomerTotal(order))}</Typography>
+              <Typography sx={{ fontSize: "0.9rem", fontWeight: 800 }}>{PESO.format(orderCustomerDisplayTotal(order))}</Typography>
             </SummaryRow>
             {orderOpenCredit(order) > 0 ? (
               <SummaryRow label="Order credit">

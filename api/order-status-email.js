@@ -76,6 +76,10 @@ function readPayload(body) {
           name: order.updatedLineItem.name ? String(order.updatedLineItem.name) : "",
           quantity: Number(order.updatedLineItem.quantity) || 1,
           price: Number(order.updatedLineItem.price) || 0,
+          lineTotal: Number(order.updatedLineItem.lineTotal) || 0,
+          ...(Number(order.updatedLineItem.discountPercent) > 0
+            ? { discountPercent: Math.min(100, Number(order.updatedLineItem.discountPercent) || 0) }
+            : {}),
           tag: order.updatedLineItem.tag ? String(order.updatedLineItem.tag) : "",
           payment: order.updatedLineItem.payment ? String(order.updatedLineItem.payment) : "",
           status: order.updatedLineItem.status ? String(order.updatedLineItem.status) : "",
@@ -83,7 +87,6 @@ function readPayload(body) {
           refundAmount: Number(order.updatedLineItem.refundAmount) || 0,
           allocatedQty: Number(order.updatedLineItem.allocatedQty) || 0,
           depositPaid: Number(order.updatedLineItem.depositPaid) || 0,
-          lineTotal: Number(order.updatedLineItem.lineTotal) || 0,
         }
         : null,
       statusAttachment: order.statusAttachment && typeof order.statusAttachment === "object"

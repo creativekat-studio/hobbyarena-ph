@@ -131,23 +131,42 @@ function orderMeta(order) {
   );
 }
 
+function normalizeDiscountPercent(value) {
+  const raw = Number(value);
+  return Number.isFinite(raw) && raw > 0 ? Math.min(100, raw) : 0;
+}
+
+function payableLineTotal(item) {
+  const quantity = Math.max(1, Number(item?.quantity) || 1);
+  const stored = Number(item?.lineTotal);
+  if (Number.isFinite(stored) && stored > 0) return stored;
+  const price = Number(item?.price) || 0;
+  const discountPercent = normalizeDiscountPercent(item?.discountPercent);
+  const unit = discountPercent > 0 ? price * (1 - discountPercent / 100) : price;
+  return unit * quantity;
+}
+
 function normalizeLineItems(order) {
   if (Array.isArray(order.lineItems) && order.lineItems.length) {
-    return order.lineItems.map((item) => ({
-      id: item.id ? String(item.id) : "",
-      name: String(item.name || "Item"),
-      quantity: Number(item.quantity) || 1,
-      price: Number(item.price) || 0,
-      lineTotal: Number(item.lineTotal) || 0,
-      tag: item.tag || "",
-      payment: item.payment ? String(item.payment) : "",
-      status: item.status ? String(item.status) : "",
-      balanceDue: Number(item.balanceDue) || 0,
-      refundAmount: Number(item.refundAmount) || 0,
-      allocatedQty: Number(item.allocatedQty) || 0,
-      depositPaid: Number(item.depositPaid) || 0,
-      creditAmount: Number(item.creditAmount) || 0,
-    }));
+    return order.lineItems.map((item) => {
+      const discountPercent = normalizeDiscountPercent(item.discountPercent);
+      return {
+        id: item.id ? String(item.id) : "",
+        name: String(item.name || "Item"),
+        quantity: Number(item.quantity) || 1,
+        price: Number(item.price) || 0,
+        lineTotal: payableLineTotal(item),
+        ...(discountPercent > 0 ? { discountPercent } : {}),
+        tag: item.tag || "",
+        payment: item.payment ? String(item.payment) : "",
+        status: item.status ? String(item.status) : "",
+        balanceDue: Number(item.balanceDue) || 0,
+        refundAmount: Number(item.refundAmount) || 0,
+        allocatedQty: Number(item.allocatedQty) || 0,
+        depositPaid: Number(item.depositPaid) || 0,
+        creditAmount: Number(item.creditAmount) || 0,
+      };
+    });
   }
   return [{
     id: "",
@@ -168,10 +187,12 @@ function normalizeLineItems(order) {
 
 function getUpdatedItem(order) {
   if (order.updatedLineItem?.name) {
+    const discountPercent = normalizeDiscountPercent(order.updatedLineItem.discountPercent);
     return {
       id: order.updatedLineItem.id ? String(order.updatedLineItem.id) : "",
       name: String(order.updatedLineItem.name),
       quantity: Number(order.updatedLineItem.quantity) || 1,
+      price: Number(order.updatedLineItem.price) || 0,
       tag: order.updatedLineItem.tag || "",
       payment: order.updatedLineItem.payment || "",
       status: order.updatedLineItem.status || "",
@@ -180,7 +201,8 @@ function getUpdatedItem(order) {
       allocatedQty: Number(order.updatedLineItem.allocatedQty) || 0,
       depositPaid: Number(order.updatedLineItem.depositPaid) || 0,
       creditAmount: Number(order.updatedLineItem.creditAmount) || 0,
-      lineTotal: Number(order.updatedLineItem.lineTotal) || 0,
+      lineTotal: payableLineTotal(order.updatedLineItem),
+      ...(discountPercent > 0 ? { discountPercent } : {}),
     };
   }
 
@@ -215,9 +237,14 @@ function itemBillQty(item) {
 
 function itemUnitPrice(item) {
   const qty = Math.max(1, Number(item?.quantity) || 1);
-  if (Number(item?.price) > 0) return Number(item.price);
+  // Payable unit first so discounted lines don't show list price in emails.
   if (Number(item?.lineTotal) > 0) return Number(item.lineTotal) / qty;
-  return 0;
+  const list = Number(item?.price) || 0;
+  const rawPct = Number(item?.discountPercent);
+  if (Number.isFinite(rawPct) && rawPct > 0 && list > 0) {
+    return list * (1 - Math.min(100, rawPct) / 100);
+  }
+  return list;
 }
 
 /** Final for allocated units (= unit × allocated), else ordered line total. */
