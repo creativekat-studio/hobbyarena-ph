@@ -76,8 +76,11 @@ import { UPLOAD_PROOF_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLi
 import {
   lineItemAmount,
   lineItemDepositPaid,
+  lineItemDiscountPercent,
+  lineItemEffectiveUnitPrice,
   lineItemFinalPrice,
   lineItemGrossRevenue,
+  lineItemUnitPrice,
   orderCustomerTotal,
 } from "../lib/orderRevenue.js";
 import { formatDateTime } from "../lib/orderTimestamps.js";
@@ -2038,8 +2041,13 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
 
   const summaryItems = lineItems.map((item) => {
     const isPreorder = resolveOrderKindForItem(item) === "Pre-order";
-    const fullLine = lineItemAmount(item);
     const allocatedQty = Math.max(0, Number(item.allocatedQty) || 0);
+    const listUnit = lineItemUnitPrice(item);
+    const unitPrice = lineItemEffectiveUnitPrice(item);
+    const discountPercent = lineItemDiscountPercent(item)
+      || (listUnit > 0 && unitPrice < listUnit
+        ? Math.round(((listUnit - unitPrice) / listUnit) * 10000) / 100
+        : 0);
 
     return {
       id: item.id,
@@ -2048,8 +2056,11 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
       allocatedQty,
       tag: item.tag ?? (isPreorder ? "Pre-order" : "In-stock"),
       depositPercent,
-      price: item.price ?? (item.quantity ? fullLine / item.quantity : fullLine),
-      // Final = DP + balance (= allocated × price), not checkout deposit alone.
+      listPrice: listUnit,
+      unitPrice,
+      price: unitPrice,
+      discountPercent,
+      // Final = DP + balance (= allocated × payable unit), not checkout deposit alone.
       amount: lineItemGrossRevenue(item, depositPercent),
       image: item.image || null,
       payment: item.payment,

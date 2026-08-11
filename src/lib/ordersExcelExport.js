@@ -12,11 +12,13 @@ import { lineOpenCredit } from "./orderCredit.js";
 import {
   lineItemAmount,
   lineItemDepositPaid,
+  lineItemDiscountPercent,
   lineItemEffectiveUnitPrice,
   lineItemFinalPrice,
   lineItemGrossRevenue,
   lineItemNetRevenue,
   lineItemUnitCost,
+  lineItemUnitPrice,
 } from "./orderRevenue.js";
 import { formatOrderTimestamp } from "./orderTimestamps.js";
 import { MONEY_UI_DECIMALS, roundMoney } from "./money.js";
@@ -192,6 +194,16 @@ function orderStatus(item) {
   return migrateOrderStatus(item.status) || "";
 }
 
+/** Stored Disc %, or inferred from list vs payable unit when % was stripped on save. */
+function discountPercentExport(item) {
+  const stored = lineItemDiscountPercent(item);
+  if (stored > 0) return numberOrBlank(stored);
+  const list = lineItemUnitPrice(item);
+  const effective = lineItemEffectiveUnitPrice(item);
+  if (!(list > 0) || !(effective < list)) return "";
+  return numberOrBlank(Math.round(((list - effective) / list) * 10000) / 100);
+}
+
 export const ORDER_EXCEL_COLUMNS = [
   { header: "Order #", value: (order) => formatOrderNumber(order.id), width: 16 },
   { header: "Name", value: (order) => order.customer ?? "", width: 24 },
@@ -199,6 +211,8 @@ export const ORDER_EXCEL_COLUMNS = [
   { header: "Item", value: (_order, item) => item.name ?? "", width: 32 },
   { header: "Date", value: (order) => formatOrderTimestamp(order), width: 20 },
   { header: "Quantity", value: (_order, item) => numberOrBlank(item.quantity ?? 1), group: "blue", width: 10 },
+  { header: "List Price", value: (_order, item) => moneyOrBlank(lineItemUnitPrice(item)), group: "blue", width: 12, money: true },
+  { header: "Disc %", value: (_order, item) => discountPercentExport(item), group: "blue", width: 10 },
   { header: "Unit Price", value: (_order, item) => moneyOrBlank(lineItemEffectiveUnitPrice(item)), group: "blue", width: 12, money: true },
   { header: "Unit Cost", value: (_order, item, context) => unitCost(item, context), group: "blue", width: 12, money: true },
   { header: "DP Amount", value: lineDepositPaidExport, group: "blue", width: 14, money: true },

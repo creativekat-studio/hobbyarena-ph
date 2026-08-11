@@ -47,6 +47,12 @@ export function compactOrderForFirestore(order) {
         price: item.price ?? 0,
         cost: item.cost ?? 0,
         lineTotal: item.lineTotal ?? 0,
+        ...(Number(item.discountPercent) > 0
+          ? { discountPercent: Math.min(100, Number(item.discountPercent) || 0) }
+          : {}),
+        ...(item.depositPercent != null && item.depositPercent !== ""
+          ? { depositPercent: Number(item.depositPercent) || 0 }
+          : {}),
         tag: item.tag ?? null,
         line: item.line ?? null,
         image: item.image ?? null,
@@ -120,6 +126,7 @@ export function compactOrderForFirestore(order) {
     shippingFee: slim.shippingFee ?? 0,
     total: slim.total ?? 0,
     fullSubtotal: slim.fullSubtotal ?? slim.total ?? 0,
+    discount: slim.discount ?? 0,
     balanceDue: slim.balanceDue ?? 0,
     refundAmount: slim.refundAmount ?? 0,
     creditAmount: slim.creditAmount ?? 0,

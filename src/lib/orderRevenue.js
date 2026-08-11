@@ -69,10 +69,20 @@ export function lineItemUnitPrice(item) {
 
 /** Unit price after per-item discount%. Original `price` stays list price. */
 export function lineItemEffectiveUnitPrice(item) {
-  const base = lineItemUnitPrice(item);
+  const qty = lineItemQty(item);
+  const list = lineItemUnitPrice(item);
   const pct = lineItemDiscountPercent(item);
-  if (pct <= 0) return base;
-  return roundMoney(base * (1 - pct / 100));
+  if (pct > 0 && list > 0) {
+    return roundMoney(list * (1 - pct / 100));
+  }
+  // When Disc % was stripped on save but payable lineTotal remains, derive from that.
+  if (item?.lineTotal != null && item.lineTotal !== "") {
+    const lt = Number(item.lineTotal);
+    if (Number.isFinite(lt) && lt >= 0) {
+      return roundMoney(lt / qty);
+    }
+  }
+  return list;
 }
 
 /** Payable line total (uses stored lineTotal when present, else effective × qty). */

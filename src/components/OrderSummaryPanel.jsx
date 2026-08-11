@@ -349,6 +349,9 @@ function SummaryItemRow({
             {(item.unitPrice ?? item.price) != null
               ? ` · ${PESO.format(item.unitPrice ?? item.price)} ea`
               : ""}
+            {Number(item.discountPercent) > 0
+              ? ` · ${Number(item.discountPercent)}% off`
+              : ""}
             {item.tag === "Pre-order" ? ` · ${item.depositPercent ?? 30}% dep.` : ""}
           </Typography>
           {renderItemExtra ? (
