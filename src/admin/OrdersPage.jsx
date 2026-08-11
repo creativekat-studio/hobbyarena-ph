@@ -44,10 +44,10 @@ import {
 } from "../data/orderWorkflow.js";
 import { isArchivedOrder, useOrders } from "../lib/ordersStore.jsx";
 import { compareOrdersByOrderNo } from "../lib/orderIds.js";
-import { exportOrdersToExcel } from "../lib/ordersExcelExport.js";
 import { buildCostByProductId, lineItemAmount } from "../lib/orderRevenue.js";
 import { formatOrderTimestamp, resolveOrderPlacedAt } from "../lib/orderTimestamps.js";
 import { useInventory } from "../lib/inventoryStore.jsx";
+import { useCatalog } from "../lib/catalogStore.jsx";
 import { sortRowsBy, toggleSortState } from "../lib/tableSort.js";
 import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
 import { InfiniteScrollSentinel } from "../components/InfiniteScrollSentinel.jsx";
@@ -68,6 +68,7 @@ import {
   adminStickyHeaderRowSx,
 } from "./adminTableHeader.jsx";
 import AddOrderDialog from "./AddOrderDialog.jsx";
+import ExportOrdersDialog from "./ExportOrdersDialog.jsx";
 
 const ORDER_SORT_ACCESSORS = {
   order: (o) => resolveOrderPlacedAt(o)?.getTime() ?? 0,
@@ -459,6 +460,7 @@ export default function OrdersPage() {
   const { panelSx, surfaceBorderColor } = surfaces;
   const { orders, ordersError, ordersReady, archiveOrders, restoreOrders } = useOrders();
   const { items: inventoryItems } = useInventory();
+  const { lines: catalogLines } = useCatalog();
   const costByProductId = useMemo(
     () => buildCostByProductId(inventoryItems),
     [inventoryItems],
@@ -467,6 +469,7 @@ export default function OrdersPage() {
   const [kindFilter, setKindFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [expandedOrderId, setExpandedOrderId] = useState(null);
   const [sort, setSort] = useState({ key: "order", dir: "desc" });
   const [archiveTargetIds, setArchiveTargetIds] = useState([]);
@@ -485,10 +488,6 @@ export default function OrdersPage() {
     navigate(`/admin/orders/${encodeURIComponent(id)}`, {
       state: { backTo: { path: "/admin/orders", label: "orders" } },
     });
-  }
-
-  function handleExportExcel() {
-    exportOrdersToExcel(rows, { costByProductId });
   }
 
   function toggleSelect(id) {
@@ -626,7 +625,7 @@ export default function OrdersPage() {
               color="primary"
               size="small"
               disabled={!ordersReady || rows.length === 0}
-              onClick={handleExportExcel}
+              onClick={() => setExportOpen(true)}
               sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
             >
               Export
@@ -843,6 +842,15 @@ export default function OrdersPage() {
         onCreated={(id) => navigate(`/admin/orders/${encodeURIComponent(id)}`, {
           state: { backTo: { path: "/admin/orders", label: "orders" } },
         })}
+      />
+
+      <ExportOrdersDialog
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        orders={rows}
+        catalogLines={catalogLines}
+        costByProductId={costByProductId}
+        surfaceBorderColor={surfaceBorderColor}
       />
 
       <TypeConfirmDialog

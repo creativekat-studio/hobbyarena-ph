@@ -20,7 +20,7 @@ import {
   lineItemUnitCost,
   lineItemUnitPrice,
 } from "./orderRevenue.js";
-import { formatOrderTimestamp } from "./orderTimestamps.js";
+import { formatOrderTimestamp, resolveOrderPlacedAt } from "./orderTimestamps.js";
 import { MONEY_UI_DECIMALS, roundMoney } from "./money.js";
 
 const DEFAULT_FILENAME = "hobbyarena-orders.xlsx";
@@ -229,6 +229,84 @@ export const ORDER_EXCEL_COLUMNS = [
   { header: "Order Status", value: (_order, item) => orderStatus(item), group: "green", width: 28 },
 ];
 
+function startOfDay(dateValue) {
+  if (!dateValue) return null;
+  const date = new Date(`${dateValue}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function endOfDay(dateValue) {
+  if (!dateValue) return null;
+  const date = new Date(`${dateValue}T23:59:59.999`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function orderMatchesDateRange(order, from, to) {
+  if (!from && !to) return true;
+  const placed = resolveOrderPlacedAt(order);
+  if (!placed) return false;
+  const start = startOfDay(from);
+  const end = endOfDay(to);
+  if (start && placed < start) return false;
+  if (end && placed > end) return false;
+  return true;
+}
+
+function normalizeLineKey(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+/** Match line item against a product-line match/label value. */
+export function lineItemMatchesProductLine(item, productLine) {
+  if (!productLine || productLine === "all") return true;
+  const needle = normalizeLineKey(productLine);
+  if (!needle) return true;
+  const hay = normalizeLineKey(item?.line);
+  if (!hay) return false;
+  return hay === needle || hay.includes(needle) || needle.includes(hay);
+}
+
+/**
+ * Filter orders for Excel export by optional date range and product line.
+ * Product-line filter keeps only matching line items on each order.
+ */
+export function filterOrdersForExcelExport(orders, { from = "", to = "", productLine = "all" } = {}) {
+  const list = Array.isArray(orders) ? orders : [];
+  return list.flatMap((order) => {
+    if (!orderMatchesDateRange(order, from, to)) return [];
+    const lineItems = getOrderLineItems(order);
+    const matched = productLine && productLine !== "all"
+      ? lineItems.filter((item) => lineItemMatchesProductLine(item, productLine))
+      : lineItems;
+    if (!matched.length) return [];
+    if (matched.length === lineItems.length) return [order];
+    return [{ ...order, lineItems: matched }];
+  });
+}
+
+export function countExcelExportRows(orders, filters = {}) {
+  return filterOrdersForExcelExport(orders, filters).reduce(
+    (sum, order) => sum + getOrderLineItems(order).length,
+    0,
+  );
+}
+
+export function buildExcelExportFilename({ from = "", to = "", productLine = "all" } = {}) {
+  const parts = ["hobbyarena-orders"];
+  if (from && to) parts.push(`${from}_to_${to}`);
+  else if (from) parts.push(`from_${from}`);
+  else if (to) parts.push(`to_${to}`);
+  if (productLine && productLine !== "all") {
+    const slug = String(productLine)
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+    if (slug) parts.push(slug);
+  }
+  return `${parts.join("-")}.xlsx`;
+}
+
 export function buildOrdersExcelRows(orders, columns = ORDER_EXCEL_COLUMNS, costByProductId = null) {
   return orders.flatMap((order) => {
     const lineItems = getOrderLineItems(order);
@@ -298,11 +376,17 @@ export function exportOrdersToExcel(
     filename = DEFAULT_FILENAME,
     columns = ORDER_EXCEL_COLUMNS,
     costByProductId = null,
+    from = "",
+    to = "",
+    productLine = "all",
   } = {},
 ) {
-  if (!orders?.length) return false;
+  const filtered = filterOrdersForExcelExport(orders, { from, to, productLine });
+  if (!filtered.length) return false;
 
-  const exportRows = buildOrdersExcelRows(orders, columns, costByProductId);
+  const exportRows = buildOrdersExcelRows(filtered, columns, costByProductId);
+  if (!exportRows.length) return false;
+
   const worksheet = XLSX.utils.json_to_sheet(exportRows, {
     header: columns.map((column) => column.header),
   });
@@ -311,6 +395,9 @@ export function exportOrdersToExcel(
   applyMoneyColumnFormatting(worksheet, columns);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Orders");
-  XLSX.writeFile(workbook, filename);
+  const resolvedName = filename === DEFAULT_FILENAME
+    ? buildExcelExportFilename({ from, to, productLine })
+    : filename;
+  XLSX.writeFile(workbook, resolvedName);
   return true;
 }
