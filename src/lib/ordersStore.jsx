@@ -873,11 +873,10 @@ export function OrdersProvider({ children }) {
           const allocationCheck = validateAllocationForStatus(targetItem, status);
           if (!allocationCheck.ok) return o;
 
-          // In-stock units are committed at checkout. Keep them off the shelf for every
-          // post-submit status (Pending Verification, Fully Paid, Ready for Pickup, …).
-          // Return to inventory only when the line is cancelled — Unpaid/Rejected —
-          // whether that is set on payment or status.
-          if (resolveOrderKindForItem(targetItem) === "In-stock") {
+          // Units (sealed stock and capped pre-order slots) are committed at checkout.
+          // Keep them off the shelf for every post-submit status. Return only when the
+          // line is cancelled — Unpaid/Rejected — whether that is set on payment or status.
+          {
             const wasReleased = Boolean(prevItem.stockReleased);
             const pay = migratePaymentStatus(payment);
             const st = migrateOrderStatus(status);

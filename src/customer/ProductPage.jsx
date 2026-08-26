@@ -36,7 +36,7 @@ import { useCart } from "../lib/cartStore.jsx";
 import { useWishlist } from "../lib/wishlistStore.jsx";
 import { PESO as PESO_DETAIL } from "../lib/money.js";
 import { getCountdownParts, getDepositPercent } from "../lib/preorder.js";
-import { maxStorefrontQuantity } from "../lib/quantityLimits.js";
+import { maxPerOrderHint, maxStorefrontQuantity, productTracksStock } from "../lib/quantityLimits.js";
 
 export { PESO_DETAIL };
 
@@ -95,12 +95,15 @@ export default function ProductPage() {
   const inCart = Boolean(cartItem);
   const isPreorder = product?.tag === "Pre-order";
   // Subtract stock other shoppers are actively holding so racers see it as unavailable.
-  const effectiveStock = product && !isPreorder ? availableStock(product.id, product.stock) : (product?.stock ?? 0);
-  const soldOut = product && !isPreorder && effectiveStock <= 0;
+  const effectiveStock = product && productTracksStock(product)
+    ? availableStock(product.id, product.stock)
+    : (product?.stock ?? 0);
+  const soldOut = Boolean(product && productTracksStock(product) && effectiveStock <= 0);
   const preorderClosed = isPreorder && getCountdownParts(product?.preorderEndsAt)?.expired;
   const comingSoon = isComingSoonProduct(product);
   const purchaseBlocked = Boolean(soldOut || preorderClosed || comingSoon);
-  const maxQty = maxStorefrontQuantity(product, isPreorder ? undefined : effectiveStock);
+  const maxQty = maxStorefrontQuantity(product, productTracksStock(product) ? effectiveStock : undefined);
+  const perOrderHint = maxPerOrderHint(product);
 
   useEffect(() => {
     if (product) setWishlisted(isWishlisted(product.id));
@@ -128,9 +131,9 @@ export default function ProductPage() {
   }
 
   let actionLabel = "Add to cart";
-  if (isPreorder) actionLabel = "Pre-order";
-  else if (comingSoon) actionLabel = "Coming soon";
+  if (comingSoon) actionLabel = "Coming soon";
   else if (soldOut) actionLabel = "Out of stock";
+  else if (isPreorder) actionLabel = "Pre-order";
 
   function addToCart(qty = 1) {
     const nextQty = Math.min(Math.max(Number(qty) || 1, 1), Math.max(maxQty, 1));
@@ -286,13 +289,20 @@ export default function ProductPage() {
                     fontFamily: MONO_FONT,
                     fontSize: "0.72rem",
                     fontWeight: 700,
-                    color: preorderClosed ? "error.main" : "warning.main",
+                    color: preorderClosed ? "error.main" : soldOut ? "error.main" : "warning.main",
                     letterSpacing: 0.5,
                   }}
                 >
                   {preorderClosed
                     ? "CLOSED"
-                    : `${getDepositPercent(product)}% deposit due at checkout — balance before release`}
+                    : soldOut
+                      ? "SOLD OUT"
+                      : `${getDepositPercent(product)}% deposit due at checkout — balance before release`}
+                </Typography>
+              ) : null}
+              {perOrderHint && !purchaseBlocked ? (
+                <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", fontWeight: 700, color: "text.secondary", letterSpacing: 0.4 }}>
+                  {perOrderHint}
                 </Typography>
               ) : null}
 

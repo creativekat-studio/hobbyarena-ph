@@ -69,6 +69,8 @@ export const SCHEMA = {
     price: "number",
     cost: "number",
     stock: "number",
+    maxPerOrder: "number | null",
+    preorderLimited: "boolean",
     type: "Sealed | Pre-order",
     published: "boolean",
     comingSoon: "boolean",

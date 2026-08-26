@@ -20,7 +20,7 @@ import { OFF_WHITE } from "../lib/colors.js";
 import { productMediaSurface } from "../lib/surfaces.js";
 import { getCountdownParts } from "../lib/preorder.js";
 import { isComingSoonProduct } from "../lib/products.js";
-import { maxStorefrontQuantity } from "../lib/quantityLimits.js";
+import { maxPerOrderHint, maxStorefrontQuantity, productTracksStock } from "../lib/quantityLimits.js";
 import { PESO } from "../lib/money.js";
 
 export { PESO };
@@ -65,17 +65,20 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
   const isPokemon = product.line?.startsWith("Pokémon");
   const Glyph = isPokemon ? PokeballIcon : CardIcon;
   const isPreorder = product.tag === "Pre-order";
-  const effectiveStock = isPreorder ? product.stock : availableStock(product.id, product.stock);
-  const soldOut = !isPreorder && effectiveStock <= 0;
+  const effectiveStock = productTracksStock(product)
+    ? availableStock(product.id, product.stock)
+    : product.stock;
+  const soldOut = productTracksStock(product) && effectiveStock <= 0;
   const preorderClosed = isPreorder && getCountdownParts(product.preorderEndsAt)?.expired;
   const comingSoon = isComingSoonProduct(product);
   const purchaseBlocked = soldOut || preorderClosed || comingSoon;
-  const maxQty = maxStorefrontQuantity(product, isPreorder ? undefined : effectiveStock);
+  const maxQty = maxStorefrontQuantity(product, productTracksStock(product) ? effectiveStock : undefined);
+  const perOrderHint = maxPerOrderHint(product);
 
   let actionLabel = "Add to cart";
-  if (isPreorder) actionLabel = "Pre-order";
-  else if (comingSoon) actionLabel = "Coming soon";
+  if (comingSoon) actionLabel = "Coming soon";
   else if (soldOut) actionLabel = "Out of stock";
+  else if (isPreorder) actionLabel = "Pre-order";
 
   useEffect(() => {
     setWishlisted(isWishlisted(product.id));
@@ -278,6 +281,11 @@ export default function ProductCard({ product, panelSx, isDarkMode }) {
             </Button>
           )}
         </Stack>
+        {perOrderHint && !purchaseBlocked ? (
+          <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", fontWeight: 700, color: "text.secondary", letterSpacing: 0.3 }}>
+            {perOrderHint}
+          </Typography>
+        ) : null}
       </Stack>
 
       {isPreorder ? (

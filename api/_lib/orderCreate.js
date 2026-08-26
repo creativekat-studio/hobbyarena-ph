@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { FieldPath } from "firebase-admin/firestore";
 import { DEFAULT_DEPOSIT_PERCENT } from "./preorderPricing.js";
-import { clampLineQuantity } from "../../src/lib/quantityLimits.js";
+import { clampLineQuantity, productMaxPerOrder, productTracksStock } from "../../src/lib/quantityLimits.js";
 import { getCountdownParts } from "../../src/lib/preorder.js";
 import { roundMoney } from "../../src/lib/money.js";
 
@@ -148,7 +148,18 @@ export async function buildPricedLines(db, lines, options = {}) {
           { status: 400 },
         );
       }
-      if (!isPreorder) {
+      const perOrder = productMaxPerOrder(product);
+      if (perOrder != null && quantity > perOrder) {
+        throw Object.assign(
+          new Error(
+            perOrder === 1
+              ? `${label} is limited to 1 per order.`
+              : `${label} is limited to ${perOrder} per order.`,
+          ),
+          { status: 400 },
+        );
+      }
+      if (productTracksStock(product)) {
         const stock = Math.max(0, Number(product.stock) || 0);
         if (stock <= 0) {
           throw Object.assign(
@@ -251,15 +262,14 @@ export async function buildPricedLines(db, lines, options = {}) {
 }
 
 /**
- * Commit in-stock units when an order is placed (Pending Verification counts).
- * Pre-order lines are skipped. Uses a transaction so concurrent checkouts cannot
- * oversell. Throws status 409 when stock is insufficient.
+ * Commit remaining units when an order is placed (Pending Verification counts).
+ * Unlimited pre-orders (no slot cap) are skipped. Uses a transaction so concurrent
+ * checkouts cannot oversell. Throws status 409 when stock is insufficient.
  */
 export async function commitInStockForLines(db, lineItems) {
   const qtyById = new Map();
   for (const item of lineItems || []) {
     if (!item?.id) continue;
-    if (item.tag === "Pre-order" || item.type === "Pre-order") continue;
     const qty = Math.max(0, Math.floor(Number(item.quantity) || 0));
     if (qty <= 0) continue;
     qtyById.set(item.id, (qtyById.get(item.id) || 0) + qty);
@@ -282,7 +292,8 @@ export async function commitInStockForLines(db, lineItems) {
         throw Object.assign(new Error(`Product “${id}” is no longer available.`), { status: 400 });
       }
       const data = snap.data() || {};
-      if (data.type === "Pre-order" || data.tag === "Pre-order") continue;
+      const product = { id, ...data };
+      if (!productTracksStock(product)) continue;
 
       const stock = Math.max(0, Number(data.stock) || 0);
       if (stock < qty) {
@@ -296,6 +307,7 @@ export async function commitInStockForLines(db, lineItems) {
       const nextStock = stock - qty;
       const patch = { stock: nextStock, updatedAt: new Date().toISOString() };
       if (nextStock <= 0) patch.featured = false;
+      if (isPreorderProduct(product)) patch.preorderLimited = true;
       tx.update(ref, patch);
       committed.push({ id, quantity: qty });
     }
@@ -325,7 +337,7 @@ export async function restockInStockForLines(db, entries) {
       const snap = snaps[i];
       if (!snap.exists) continue;
       const data = snap.data() || {};
-      if (data.type === "Pre-order" || data.tag === "Pre-order") continue;
+      if (!productTracksStock({ id, ...data })) continue;
       const stock = Math.max(0, Number(data.stock) || 0);
       tx.update(db.collection("products").doc(id), {
         stock: stock + qty,

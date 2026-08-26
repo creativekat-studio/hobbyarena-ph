@@ -21,7 +21,7 @@ import { useCart, cartItemDueNow, cartItemBalanceDue } from "../lib/cartStore.js
 import { useInventory } from "../lib/inventoryStore.jsx";
 import { useStockHolds } from "../lib/stockHoldStore.jsx";
 import { isPreorderProduct } from "../lib/preorder.js";
-import { maxStorefrontQuantity } from "../lib/quantityLimits.js";
+import { maxStorefrontQuantity, productTracksStock } from "../lib/quantityLimits.js";
 import { formatCartAvailabilityError, validateCartAgainstCatalog } from "../lib/cartAvailability.js";
 
 const addedFlash = keyframes`
@@ -47,26 +47,20 @@ function CartLineItem({ item, onQuantityChange, onRemove, surfaceBorderColor, is
   const dueNow = cartItemDueNow(item);
   const balance = cartItemBalanceDue(item);
   const product = getProduct(item.id);
-  const remaining = isPreorder
-    ? undefined
+  const remaining = product && productTracksStock(product)
+    ? availableStock(product.id, product.stock)
     : (product
-      ? availableStock(product.id, product.stock)
+      ? undefined
       : Math.max(0, Number(item.maxQuantity) || 0));
   const maxQty = maxStorefrontQuantity(product ?? item, remaining);
 
   useEffect(() => {
-    if (isPreorder) {
-      if (item.maxQuantity !== maxQty) {
-        onQuantityChange(item.id, item.quantity, { maxQuantity: maxQty });
-      }
-      return;
-    }
     if (item.quantity > maxQty) {
       onQuantityChange(item.id, maxQty, { maxQuantity: maxQty });
     } else if (item.maxQuantity !== maxQty) {
       onQuantityChange(item.id, item.quantity, { maxQuantity: maxQty });
     }
-  }, [isPreorder, item.id, item.maxQuantity, item.quantity, maxQty, onQuantityChange]);
+  }, [item.id, item.maxQuantity, item.quantity, maxQty, onQuantityChange]);
 
   return (
     <Stack direction="row" spacing={1.5} alignItems="flex-start">

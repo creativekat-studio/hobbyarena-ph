@@ -17,6 +17,7 @@ import { PESO } from "./ProductCard.jsx";
 import { useInventory } from "../lib/inventoryStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { openOrdersByProductId } from "../data/orderWorkflow.js";
+import { isPreorderStockLimited, productMaxPerOrder } from "../lib/quantityLimits.js";
 import { useMemo } from "react";
 
 function DetailRow({ label, value, mono = false, strong = false }) {
@@ -151,7 +152,17 @@ export default function ProductStockDetailsDialog({
                 value={PESO.format(margin)}
                 strong
               />
-              <DetailRow label="Stock on hand" value={String(stock)} mono strong />
+              <DetailRow
+                label={isPreorder ? "Available slots" : "Stock on hand"}
+                value={isPreorder && !isPreorderStockLimited(row) ? "No cap" : String(stock)}
+                mono
+                strong
+              />
+              <DetailRow
+                label="Max per order"
+                value={productMaxPerOrder(row) == null ? "No limit" : String(productMaxPerOrder(row))}
+                mono
+              />
               <DetailRow
                 label="Stock value (cost)"
                 value={PESO.format(stock * cost)}

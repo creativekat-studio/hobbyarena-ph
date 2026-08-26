@@ -39,6 +39,7 @@ import {
 import { isGuestCaptchaEnabled, useCms } from "../lib/cmsContent.jsx";
 import { useCheckoutConfirmation, writeCheckoutConfirmation } from "../lib/checkoutConfirmation.js";
 import { formatCartAvailabilityError, validateCartAgainstCatalog } from "../lib/cartAvailability.js";
+import { productTracksStock } from "../lib/quantityLimits.js";
 import { compressProofFile } from "../lib/imageCompression.js";
 import { UPLOAD_PROOF_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLimits.js";
 import { getCustomerCheckoutDefaults, patchCustomerProfileIfEmpty, recordCustomerFromCheckout, useCustomers } from "../lib/customersStore.jsx";
@@ -968,13 +969,13 @@ export default function CheckoutPage() {
     [cartAvailabilityIssues],
   );
 
-  // In-stock lines only — pre-orders never reserve stock.
+  // Reserve remaining units (sealed stock and capped pre-order slots).
   const inStockLines = useMemo(
     () =>
       items
-        .filter((item) => item.tag !== "Pre-order")
+        .filter((item) => productTracksStock(getProduct(item.id) ?? item))
         .map((item) => ({ productId: item.id, quantity: item.quantity, name: item.name })),
-    [items],
+    [items, getProduct],
   );
 
   const attemptHold = useCallback(() => {

@@ -34,6 +34,7 @@ import { getCustomerProfile, useCustomers } from "../lib/customersStore.jsx";
 import { useOrders, getOrdersForEmail } from "../lib/ordersStore.jsx";
 import { useWishlist } from "../lib/wishlistStore.jsx";
 import { useCart } from "../lib/cartStore.jsx";
+import { productTracksStock } from "../lib/quantityLimits.js";
 import { CustomerOrderCard } from "../components/CustomerOrderCard.jsx";
 import { setAuthSurface } from "../auth/authSurface.js";
 import { sortOrdersByOrderNo } from "../lib/orderIds.js";
@@ -853,7 +854,7 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
               <Stack spacing={1.5} sx={{ p: 3 }}>
                 {wishlistItems.map((item) => {
                   const isPreorder = item.tag === "Pre-order";
-                  const soldOut = !isPreorder && item.stock <= 0;
+                  const soldOut = productTracksStock(item) && item.stock <= 0;
                   return (
                     <Stack
                       key={item.id}

@@ -6,6 +6,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { COLLECTIONS } from "../../../data/firestoreSchema.js";
+import { productTracksStock } from "../../quantityLimits.js";
 import { getFirestoreDb } from "../app.js";
 
 const BATCH_LIMIT = 400;
@@ -13,8 +14,9 @@ const LOCAL_ORDERS_KEY = "hobbyarena:orders";
 const LOCAL_CUSTOMERS_KEY = "hobbyarena:customers";
 
 /**
- * In-stock qty still committed on an order (never decremented for Pre-order;
- * skip lines already released via Unpaid / stockReleased).
+ * Qty still committed on an order (skip lines already released via Unpaid /
+ * stockReleased). Unlimited pre-orders are filtered out when applying because
+ * they never decrement stock.
  */
 export function collectRestockDeltas(orders) {
   const deltas = new Map();
@@ -22,7 +24,6 @@ export function collectRestockDeltas(orders) {
     const items = Array.isArray(order.lineItems) ? order.lineItems : [];
     for (const item of items) {
       if (!item?.id) continue;
-      if (item.tag === "Pre-order" || item.type === "Pre-order") continue;
       if (item.stockReleased) continue;
       const qty = Math.max(0, Number(item.quantity) || 0);
       if (!qty) continue;
@@ -92,8 +93,8 @@ function removeCustomersFromLocalCache(customerKeys) {
 }
 
 /**
- * Delete selected orders and restore committed in-stock quantities.
- * Pre-order lines are not restocked. Does not delete customers.
+ * Delete selected orders and restore committed stock / pre-order slots.
+ * Unlimited pre-orders are not restocked. Does not delete customers.
  */
 export async function deleteOrdersAndRestock(orderIds) {
   const ids = normalizeIdList(orderIds);
@@ -125,7 +126,9 @@ export async function deleteOrdersAndRestock(orderIds) {
       [...deltas.keys()].map((productId) => getDoc(doc(db, COLLECTIONS.products, productId))),
     );
     productSnaps.forEach((snap) => {
-      if (snap.exists()) productRefs.set(snap.id, snap.ref);
+      if (!snap.exists()) return;
+      if (!productTracksStock({ id: snap.id, ...snap.data() })) return;
+      productRefs.set(snap.id, snap.ref);
     });
   }
 

@@ -1,5 +1,6 @@
 import { getCountdownParts, isPreorderProduct } from "./preorder.js";
 import { isComingSoonProduct } from "./products.js";
+import { productMaxPerOrder, productTracksStock } from "./quantityLimits.js";
 
 /**
  * Why a live catalog product cannot be purchased right now.
@@ -13,15 +14,13 @@ export function productUnavailableReason(product) {
 
   if (isComingSoonProduct(product)) return "is coming soon";
 
-  if (isPreorderProduct(product)) {
-    if (getCountdownParts(product.preorderEndsAt)?.expired) {
-      return "pre-order window has closed";
-    }
-    return null;
+  if (isPreorderProduct(product) && getCountdownParts(product.preorderEndsAt)?.expired) {
+    return "pre-order window has closed";
   }
 
-  const stock = Math.max(0, Number(product.stock) || 0);
-  if (stock <= 0) return "is out of stock";
+  if (productTracksStock(product) && Math.max(0, Number(product.stock) || 0) <= 0) {
+    return "is out of stock";
+  }
   return null;
 }
 
@@ -42,9 +41,18 @@ export function validateCartAgainstCatalog(cartItems, getProduct) {
       issues.push({ id, name, reason });
       continue;
     }
-    if (!isPreorderProduct(product)) {
+    const qty = Math.max(1, Math.floor(Number(item.quantity) || 1));
+    const perOrder = productMaxPerOrder(product);
+    if (perOrder != null && qty > perOrder) {
+      issues.push({
+        id,
+        name,
+        reason: perOrder === 1 ? "is limited to 1 per order" : `is limited to ${perOrder} per order`,
+      });
+      continue;
+    }
+    if (productTracksStock(product)) {
       const stock = Math.max(0, Number(product.stock) || 0);
-      const qty = Math.max(1, Math.floor(Number(item.quantity) || 1));
       if (qty > stock) {
         issues.push({
           id,

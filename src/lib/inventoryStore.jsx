@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { productImage } from "../data/mediaAssets.js";
 import { DEFAULT_DEPOSIT_PERCENT } from "./preorder.js";
+import { productMaxPerOrder, productTracksStock } from "./quantityLimits.js";
 import { roundMoney } from "./money.js";
 import { sortStorefrontProducts } from "./products.js";
 import { useFirebaseData } from "./firebase/config.js";
@@ -47,6 +48,7 @@ function rowToProduct(row) {
       ? { cost: Math.max(0, Number(row.cost) || 0) }
       : {}),
     stock: row.stock,
+    maxPerOrder: productMaxPerOrder(row),
     rating: typeof row.rating === "number" ? row.rating : 4.5,
     reviews: typeof row.reviews === "number" ? row.reviews : 0,
     accent: row.accent ?? "#2563EB",
@@ -67,6 +69,7 @@ function rowToProduct(row) {
           preorderEndsAt: row.preorderEndsAt ?? null,
           depositPercent:
             typeof row.depositPercent === "number" ? row.depositPercent : DEFAULT_DEPOSIT_PERCENT,
+          preorderLimited: Boolean(row.preorderLimited),
         }
       : {}),
   };
@@ -174,7 +177,7 @@ export function InventoryProvider({ children }) {
     setItems((prev) => {
       const current = prev.find((row) => row.id === id);
       if (!current) return prev;
-      if (featured && current.stock <= 0) return prev;
+      if (featured && productTracksStock(current) && current.stock <= 0) return prev;
       if (featured && !current.featured && featuredSlotsRemaining(prev, current) <= 0) {
         return prev;
       }
@@ -199,7 +202,7 @@ export function InventoryProvider({ children }) {
         if (!idSet.has(row.id)) return row;
         if (!featured) return { ...row, featured: false };
         if (row.featured) return row;
-        if (row.stock <= 0) return row;
+        if (productTracksStock(row) && row.stock <= 0) return row;
         const preorder = isPreorderRow(row);
         if (preorder) {
           if (remainingPreorder <= 0) return row;
@@ -220,7 +223,7 @@ export function InventoryProvider({ children }) {
       const current = prev.find((row) => row.id === id);
       if (!current || isDeletedRow(current)) return prev;
       const turningOn = !current.featured;
-      if (turningOn && current.stock <= 0) return prev;
+      if (turningOn && productTracksStock(current) && current.stock <= 0) return prev;
       if (turningOn && featuredSlotsRemaining(prev, current) <= 0) {
         return prev;
       }
@@ -274,10 +277,14 @@ export function InventoryProvider({ children }) {
       const next = prev.map((row) => {
         if (row.id !== id) return row;
         const nextStock = Math.max(0, stock);
+        const preorder = isPreorderRow(row);
         return {
           ...row,
           stock: nextStock,
-          featured: nextStock <= 0 ? false : row.featured,
+          ...(preorder ? { preorderLimited: true } : {}),
+          featured: productTracksStock({ ...row, stock: nextStock, preorderLimited: preorder ? true : row.preorderLimited }) && nextStock <= 0
+            ? false
+            : row.featured,
         };
       });
       persistRow(next.find((row) => row.id === id));
@@ -287,14 +294,23 @@ export function InventoryProvider({ children }) {
 
   const decrementStockForCart = useCallback((cartItems) => {
     setItems((prev) => {
-      const qtyById = new Map(cartItems.filter((i) => i.tag !== "Pre-order").map((i) => [i.id, i.quantity]));
+      const qtyById = new Map();
+      for (const item of cartItems || []) {
+        if (!item?.id) continue;
+        const row = prev.find((entry) => entry.id === item.id);
+        if (!row || !productTracksStock(row)) continue;
+        const qty = Math.max(0, Number(item.quantity) || 0);
+        if (!qty) continue;
+        qtyById.set(item.id, (qtyById.get(item.id) || 0) + qty);
+      }
       const next = prev.map((row) => {
         const qty = qtyById.get(row.id);
-        if (!qty || row.type === "Pre-order") return row;
+        if (!qty) return row;
         const nextStock = Math.max(0, row.stock - qty);
         return {
           ...row,
           stock: nextStock,
+          ...(isPreorderRow(row) ? { preorderLimited: true } : {}),
           featured: nextStock <= 0 ? false : row.featured,
         };
       });
@@ -303,14 +319,14 @@ export function InventoryProvider({ children }) {
     });
   }, [persistRows]);
 
-  /** Release committed stock back to inventory (e.g. an in-stock order marked Unpaid). */
+  /** Release committed stock / pre-order slots (e.g. an order marked Unpaid). */
   const restockItems = useCallback((entries) => {
     const list = Array.isArray(entries) ? entries : [entries];
     setItems((prev) => {
       const qtyById = new Map(list.filter((i) => i && i.id).map((i) => [i.id, Math.max(0, Number(i.quantity) || 0)]));
       const next = prev.map((row) => {
         const qty = qtyById.get(row.id);
-        if (!qty || row.type === "Pre-order") return row;
+        if (!qty || !productTracksStock(row)) return row;
         return { ...row, stock: Math.max(0, row.stock + qty) };
       });
       persistRows(next.filter((row) => qtyById.has(row.id)));
@@ -326,6 +342,8 @@ export function InventoryProvider({ children }) {
     const type = input.type === "Pre-order" ? "Pre-order" : "Sealed";
     const price = Math.max(0, Number(input.price) || 0);
     const stock = Math.max(0, Number(input.stock) || 0);
+    const maxPerOrder = productMaxPerOrder(input);
+    const preorderLimited = type === "Pre-order" && Boolean(input.preorderLimited);
     const cost = input.cost === "" || input.cost == null
       ? roundMoney(price * 0.72)
       : Math.max(0, Number(input.cost) || 0);
@@ -335,7 +353,8 @@ export function InventoryProvider({ children }) {
 
     let created = null;
     setItems((prev) => {
-      const wantFeatured = Boolean(input.featured) && stock > 0;
+      const draft = { type, stock, preorderLimited };
+      const wantFeatured = Boolean(input.featured) && (!productTracksStock(draft) || stock > 0);
       const featured = wantFeatured && featuredSlotsRemaining(prev, { type }) > 0;
       const row = {
         id,
@@ -346,6 +365,7 @@ export function InventoryProvider({ children }) {
         price,
         cost,
         stock,
+        maxPerOrder,
         reorderAt,
         published: Boolean(input.published),
         featured,
@@ -362,8 +382,9 @@ export function InventoryProvider({ children }) {
           ? {
               preorderEndsAt: input.preorderEndsAt || null,
               depositPercent: Math.min(99, Math.max(1, Number(input.depositPercent) || DEFAULT_DEPOSIT_PERCENT)),
+              preorderLimited,
             }
-          : {}),
+          : { preorderLimited: false }),
       };
       created = row;
       persistRow(row);
@@ -383,13 +404,17 @@ export function InventoryProvider({ children }) {
       ? roundMoney(price * 0.72)
       : Math.max(0, Number(input.cost) || 0);
     const stock = Math.max(0, Number(input.stock) || 0);
+    const maxPerOrder = productMaxPerOrder(input);
+    const preorderLimited = type === "Pre-order" && Boolean(input.preorderLimited);
     const reorderAt = Math.max(0, Number(input.reorderAt) ?? 3);
 
     let updated = null;
     setItems((prev) =>
       prev.map((row) => {
         if (row.id !== id) return row;
-        const wantFeatured = (typeof input.featured === "boolean" ? input.featured : Boolean(row.featured)) && stock > 0;
+        const draft = { type, stock, preorderLimited };
+        const wantFeatured = (typeof input.featured === "boolean" ? input.featured : Boolean(row.featured))
+          && (!productTracksStock(draft) || stock > 0);
         const sameKind = isPreorderRow(row) === (type === "Pre-order");
         let featured = false;
         if (wantFeatured) {
@@ -410,6 +435,7 @@ export function InventoryProvider({ children }) {
           price,
           cost,
           stock,
+          maxPerOrder,
           reorderAt,
           published: typeof input.published === "boolean" ? input.published : row.published,
           featured,
@@ -424,6 +450,7 @@ export function InventoryProvider({ children }) {
             type === "Pre-order"
               ? Math.min(99, Math.max(1, Number(input.depositPercent) || row.depositPercent || DEFAULT_DEPOSIT_PERCENT))
               : undefined,
+          preorderLimited: type === "Pre-order" ? preorderLimited : false,
         };
         return updated;
       }),
@@ -594,7 +621,13 @@ export function mergeProductInventory(product, inventoryById) {
   if (!product) return null;
   const row = inventoryById.get(product.id);
   if (!row) return product;
-  return { ...product, stock: row.stock, image: product.image ?? row.image ?? null };
+  return {
+    ...product,
+    stock: row.stock,
+    maxPerOrder: productMaxPerOrder(row),
+    image: product.image ?? row.image ?? null,
+    ...(isPreorderRow(row) ? { preorderLimited: Boolean(row.preorderLimited) } : {}),
+  };
 }
 
 export { rowToProduct };

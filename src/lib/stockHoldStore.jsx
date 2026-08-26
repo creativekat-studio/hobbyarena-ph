@@ -7,7 +7,7 @@ import {
 } from "./firebase/repositories/stockHolds.js";
 
 /**
- * Stock-hold (reservation) store — in-stock products only.
+ * Stock-hold (reservation) store — sealed stock and capped pre-order slots.
  *
  * When a shopper reaches the "add proof of payment" step of checkout, we place a
  * short-lived hold on the quantity they are buying. The hold reserves that stock

@@ -1,6 +1,7 @@
 /** Catalog helpers — operate on inventory/product lists, not mock data. */
 
 import { getCountdownParts } from "./preorder.js";
+import { productTracksStock } from "./quantityLimits.js";
 
 /**
  * Teaser flag: visible on shop, not purchasable.
@@ -14,10 +15,11 @@ export function isComingSoonProduct(product) {
 export function isUnavailableProduct(product) {
   if (!product) return true;
   if (isComingSoonProduct(product)) return true;
-  if (product.tag === "Pre-order") {
-    return Boolean(getCountdownParts(product.preorderEndsAt)?.expired);
+  if (product.tag === "Pre-order" && getCountdownParts(product.preorderEndsAt)?.expired) {
+    return true;
   }
-  return Number(product.stock) <= 0;
+  if (productTracksStock(product) && Number(product.stock) <= 0) return true;
+  return false;
 }
 
 /** Available / in-stock first, then closed / out of stock. Stable for equal availability. */

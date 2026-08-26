@@ -55,6 +55,7 @@ const EMPTY = {
   price: "",
   cost: "",
   stock: "0",
+  maxPerOrder: "",
   reorderAt: "3",
   image: "",
   published: false,
@@ -139,7 +140,12 @@ function formFromProduct(product) {
     type: product.type ?? "Sealed",
     price: String(product.price ?? ""),
     cost: String(product.cost ?? ""),
-    stock: String(product.stock ?? 0),
+    stock: product.type === "Pre-order" && !product.preorderLimited && !(Number(product.stock) > 0)
+      ? ""
+      : String(product.stock ?? 0),
+    maxPerOrder: product.maxPerOrder != null && Number(product.maxPerOrder) > 0
+      ? String(product.maxPerOrder)
+      : "",
     reorderAt: String(product.reorderAt ?? 3),
     image: product.image ?? "",
     published: Boolean(product.published),
@@ -162,7 +168,7 @@ function formFromCopy(product) {
     name: copyLabel,
     published: false,
     featured: false,
-    stock: "0",
+    stock: base.type === "Pre-order" ? "" : "0",
   };
 }
 
@@ -207,7 +213,8 @@ export default function AddProductDialog({
   }
   const featuredCount = form.featured ? featuredOthers + 1 : featuredOthers;
   const featuredAtLimit = !form.featured && featuredOthers >= maxFeatured;
-  const outOfStock = Number(form.stock) <= 0;
+  const slotsBlank = isPreorderForm && String(form.stock).trim() === "";
+  const outOfStock = !slotsBlank && Number(form.stock) <= 0;
   const featuredDisabled = featuredAtLimit || (outOfStock && !form.featured);
   const featuredKindLabel = isPreorderForm ? "pre-order" : "in-stock";
 
@@ -335,7 +342,9 @@ export default function AddProductDialog({
       type: form.type,
       price: Number(form.price),
       cost: Number(form.cost),
-      stock: Number(form.stock),
+      stock: slotsBlank ? 0 : Number(form.stock),
+      maxPerOrder: form.maxPerOrder === "" ? null : Number(form.maxPerOrder),
+      preorderLimited: form.type === "Pre-order" && !slotsBlank,
       reorderAt: Number(form.reorderAt),
       image: form.image,
       published: form.published,
@@ -639,7 +648,16 @@ export default function AddProductDialog({
                 select
                 fullWidth
                 value={form.type}
-                onChange={(e) => update("type", e.target.value)}
+                onChange={(e) => {
+                  const nextType = e.target.value;
+                  setForm((prev) => {
+                    let nextStock = prev.stock;
+                    if (nextType === "Pre-order" && String(prev.stock).trim() === "0") nextStock = "";
+                    if (nextType !== "Pre-order" && String(prev.stock).trim() === "") nextStock = "0";
+                    return { ...prev, type: nextType, stock: nextStock };
+                  });
+                  setError("");
+                }}
               >
                 {TYPES.map((item) => (
                   <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
@@ -684,12 +702,19 @@ export default function AddProductDialog({
             </Stack>
             <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
               <TextField
-                label="Stock"
+                label={isPreorderForm
+                  ? fieldLabel(
+                    "Available slots",
+                    "Hard cap of remaining pre-orders. Leave blank for no cap. Decrements as orders are placed.",
+                  )
+                  : "Stock"}
                 type="number"
                 fullWidth
+                placeholder={isPreorderForm ? "No cap" : undefined}
                 inputProps={{ min: 0, step: 1 }}
                 value={form.stock}
                 onChange={(e) => update("stock", e.target.value)}
+                InputLabelProps={isPreorderForm ? { shrink: true } : undefined}
               />
               <TextField
                 label={fieldLabel("Reorder at", "Low-stock alert threshold.")}
@@ -698,6 +723,19 @@ export default function AddProductDialog({
                 inputProps={{ min: 0, step: 1 }}
                 value={form.reorderAt}
                 onChange={(e) => update("reorderAt", e.target.value)}
+              />
+              <TextField
+                label={fieldLabel(
+                  "Max per order",
+                  "Most units one customer can buy in a single checkout. Leave blank for no extra limit.",
+                )}
+                type="number"
+                fullWidth
+                placeholder="No limit"
+                inputProps={{ min: 1, step: 1 }}
+                value={form.maxPerOrder}
+                onChange={(e) => update("maxPerOrder", e.target.value)}
+                InputLabelProps={{ shrink: true }}
               />
             </Stack>
             {form.type === "Pre-order" ? (

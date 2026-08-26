@@ -140,7 +140,7 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
       orderKind: value,
       payment: defaults.payment,
       status: defaults.status,
-      deductStock: value === "In-stock",
+      deductStock: true,
     }));
     setLineItems([]);
     setPicker(null);
@@ -221,14 +221,14 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
         fullSubtotal: totals.fullSubtotal,
         balanceDue: totals.balanceDue,
         manual: true,
-        deductStock: form.deductStock && form.orderKind === "In-stock",
+        deductStock: form.deductStock,
         initialPayment: form.payment,
         initialStatus: form.status,
       });
 
       // Firebase create-order already deducted when deductStock was true.
       // Local mode still needs the client inventory update.
-      if (order && !firebaseEnabled && form.deductStock && form.orderKind === "In-stock") {
+      if (order && !firebaseEnabled && form.deductStock) {
         decrementStockForCart(lineItems);
       }
 
@@ -478,13 +478,11 @@ export default function AddOrderDialog({ open, onClose, surfaceBorderColor, onCr
             sx={{ flexShrink: 0 }}
           />
 
-          {form.orderKind === "In-stock" ? (
-            <FormControlLabel
-              sx={{ flexShrink: 0 }}
-              control={<Checkbox checked={form.deductStock} onChange={(e) => update("deductStock", e.target.checked)} />}
-              label="Deduct in-stock quantities from inventory"
-            />
-          ) : null}
+          <FormControlLabel
+            sx={{ flexShrink: 0 }}
+            control={<Checkbox checked={form.deductStock} onChange={(e) => update("deductStock", e.target.checked)} />}
+            label="Deduct quantities from inventory"
+          />
 
           {error ? <Typography color="error" sx={{ fontSize: "0.85rem", flexShrink: 0 }}>{error}</Typography> : null}
         </Stack>

@@ -8,7 +8,7 @@ import {
   preorderBalanceDue,
   preorderDueNow,
 } from "./preorder.js";
-import { maxStorefrontQuantity } from "./quantityLimits.js";
+import { maxStorefrontQuantity, productMaxPerOrder, productTracksStock } from "./quantityLimits.js";
 
 /**
  * Shopping cart store.
@@ -54,8 +54,8 @@ function canAddProduct(product) {
   if (product?.comingSoon) return false;
   const isPreorder = isPreorderProduct(product);
   if (isPreorder && getCountdownParts(product.preorderEndsAt)?.expired) return false;
-  const soldOut = !isPreorder && product.stock <= 0;
-  return isPreorder || !soldOut;
+  if (productTracksStock(product) && Number(product.stock) <= 0) return false;
+  return true;
 }
 
 function maxQuantity(product) {
@@ -95,19 +95,19 @@ export function CartProvider({ children }) {
         0,
         Number(options.maxQuantity ?? maxQuantity(product)) || 0,
       );
-      if (limit <= 0 && !isPreorderProduct(product)) return prev;
+      if (limit <= 0) return prev;
 
       const isPreorder = isPreorderProduct(product);
       const depositPercent = isPreorder ? getDepositPercent(product) : null;
       const pricing = isPreorder ? calcPreorderPricing(product.price, depositPercent) : null;
-      const effectiveLimit = isPreorder ? Math.max(limit, 1) : limit;
+      const effectiveLimit = limit;
 
       if (existing) {
         const nextQty = Math.min(existing.quantity + qty, effectiveLimit);
         if (nextQty === existing.quantity && existing.maxQuantity === effectiveLimit) return prev;
         return prev.map((item) => (
           item.id === product.id
-            ? { ...item, quantity: nextQty, maxQuantity: effectiveLimit }
+            ? { ...item, quantity: nextQty, maxQuantity: effectiveLimit, maxPerOrder: productMaxPerOrder(product) }
             : item
         ));
       }
@@ -125,12 +125,14 @@ export function CartProvider({ children }) {
           image: product.image,
           maxQuantity: effectiveLimit,
           quantity: Math.min(qty, effectiveLimit),
+          maxPerOrder: productMaxPerOrder(product),
           ...(isPreorder
             ? {
                 depositPercent,
                 preorderEndsAt: product.preorderEndsAt ?? null,
                 depositAmount: pricing.deposit,
                 balanceAmount: pricing.balance,
+                preorderLimited: Boolean(product.preorderLimited) || Number(product.stock) > 0,
               }
             : {}),
         },
@@ -147,13 +149,12 @@ export function CartProvider({ children }) {
       if (quantity <= 0) return prev.filter((item) => item.id !== id);
       return prev.flatMap((item) => {
         if (item.id !== id) return [item];
-        const isPreorder = item.tag === "Pre-order";
         const rawLimit = Number(options.maxQuantity ?? item.maxQuantity);
         const limit = Number.isFinite(rawLimit) && rawLimit >= 0
           ? rawLimit
           : maxStorefrontQuantity(item);
-        if (!isPreorder && limit <= 0) return [];
-        const effectiveLimit = isPreorder ? Math.max(limit, 1) : limit;
+        if (limit <= 0) return [];
+        const effectiveLimit = limit;
         const nextQty = Math.min(Math.max(Number(quantity) || 1, 1), effectiveLimit);
         return [{ ...item, quantity: nextQty, maxQuantity: effectiveLimit }];
       });

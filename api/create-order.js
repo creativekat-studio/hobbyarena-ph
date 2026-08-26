@@ -135,9 +135,9 @@ export default async function handler(req, res) {
       status: initialStatus,
     }));
 
-    // Storefront always commits in-stock units on place — they stay off the shelf
+    // Storefront always commits remaining units on place — they stay off the shelf
     // for Pending Verification and later success statuses; Unpaid/Rejected restocks.
-    // Manual admin orders honor the deductStock checkbox.
+    // Manual admin orders honor the deductStock checkbox. Unlimited pre-orders skip.
     const shouldDeductStock = manual ? Boolean(body.deductStock) : true;
 
     let proofUrl = null;

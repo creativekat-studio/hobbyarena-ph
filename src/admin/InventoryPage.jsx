@@ -40,6 +40,7 @@ import InventoryProductThumb from "../components/InventoryProductThumb.jsx";
 import { BoxIcon, EditIcon, InfoIcon, InventoryIcon, SearchIcon, ShieldIcon, SparkleIcon, TrashIcon, ViewGridIcon, ViewTableIcon } from "../components/icons.jsx";
 import { lineMatchFromOptions, useCatalog } from "../lib/catalogStore.jsx";
 import { MAX_FEATURED_PRODUCTS, useInventory } from "../lib/inventoryStore.jsx";
+import { isPreorderStockLimited, productTracksStock } from "../lib/quantityLimits.js";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { openOrdersByProductId } from "../data/orderWorkflow.js";
 import { sortRowsBy, toggleSortState } from "../lib/tableSort.js";
@@ -87,9 +88,15 @@ function isArchivedRow(row) {
 
 function stockStatus(row) {
   if (row.comingSoon) return { label: "Coming soon", color: "warning" };
+  if (!productTracksStock(row)) return { label: "No slot cap", color: "success" };
   if (row.stock <= 0) return { label: "Out of stock", color: "error" };
   if (row.stock <= row.reorderAt) return { label: "Low stock", color: "warning" };
-  return { label: "In stock", color: "success" };
+  return { label: row.type === "Pre-order" ? "Slots left" : "In stock", color: "success" };
+}
+
+function stockDisplay(row) {
+  if (row.type === "Pre-order" && !isPreorderStockLimited(row)) return "—";
+  return row.stock;
 }
 
 /** On-hand inventory value — sealed only (matches KPI). */
@@ -151,7 +158,7 @@ function PublishControl({ row, togglePublished }) {
 
 function FeaturedCheckbox({ row, featuredCountSealed, featuredCountPreorder, toggleFeatured }) {
   const archived = isArchivedRow(row);
-  const outOfStock = row.stock <= 0;
+  const outOfStock = productTracksStock(row) && row.stock <= 0;
   const isPreorder = row.type === "Pre-order";
   const kindCount = isPreorder ? featuredCountPreorder : featuredCountSealed;
   const kindLabel = isPreorder ? "pre-order" : "in-stock";
@@ -376,7 +383,7 @@ function InventoryTableView({
                 <TableCell align="right" sx={{ fontWeight: 700, display: { xs: "none", md: "table-cell" }, color: "text.secondary" }}>
                   {PESO.format(Number(row.cost) || 0)}
                 </TableCell>
-                <TableCell align="right" sx={{ fontWeight: 800, fontFamily: MONO_FONT }}>{row.stock}</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 800, fontFamily: MONO_FONT }}>{stockDisplay(row)}</TableCell>
                 <TableCell align="right" sx={{ fontWeight: 700, display: { xs: "none", sm: "table-cell" }, fontFamily: MONO_FONT }}>
                   {stockValue == null ? "—" : PESO.format(stockValue)}
                 </TableCell>
@@ -570,7 +577,7 @@ function InventoryCardView({
               <Stack direction="row" justifyContent="space-between" alignItems="baseline" sx={{ mt: "auto", pl: 4 }} useFlexGap flexWrap="wrap" spacing={1}>
                 <Typography sx={{ fontWeight: 800, fontSize: "1.05rem" }}>{PESO.format(row.price)}</Typography>
                 <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 700, color: "text.secondary" }}>
-                  Stock: {row.stock}
+                  Stock: {stockDisplay(row)}
                   {stockValue != null ? ` · Value ${PESO.format(stockValue)}` : ""}
                 </Typography>
               </Stack>
@@ -711,7 +718,7 @@ export default function InventoryPage() {
           if (!row.featured) return false;
           break;
         case "low":
-          if (row.stock > row.reorderAt) return false;
+          if (!productTracksStock(row) || row.stock > row.reorderAt) return false;
           break;
         default:
           break;
@@ -769,7 +776,7 @@ export default function InventoryPage() {
 
   const stats = useMemo(() => {
     const totalUnits = activeItems.reduce((sum, row) => sum + Math.max(row.stock, 0), 0);
-    const outOfStock = activeItems.filter((row) => row.stock <= 0).length;
+    const outOfStock = activeItems.filter((row) => productTracksStock(row) && row.stock <= 0).length;
     // Cost of on-hand / sealed only — pre-orders are not inventory on the shelf.
     const value = activeItems
       .filter((row) => row.type !== "Pre-order")
