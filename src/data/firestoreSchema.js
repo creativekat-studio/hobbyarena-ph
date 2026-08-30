@@ -27,6 +27,7 @@ export const STORAGE_PATHS = {
   orderProofs: (orderId) => `order-proofs/${orderId}`,
   productImages: (productId) => `products/${productId}`,
   cmsAssets: (filename) => `cms/${filename}`,
+  adminBackups: (stamp, filename) => `admin-backups/${stamp}/${filename}`,
 };
 
 /** Shape reference — not enforced at runtime. */
@@ -74,6 +75,7 @@ export const SCHEMA = {
     type: "Sealed | Pre-order",
     published: "boolean",
     comingSoon: "boolean",
+    showCheckoutTimer: "boolean",
     active: "boolean",
   },
 };

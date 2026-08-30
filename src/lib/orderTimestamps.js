@@ -45,6 +45,23 @@ function pad2(n) {
   return String(n).padStart(2, "0");
 }
 
+/**
+ * Local calendar day `YYYY-MM-DD`.
+ * Uses the runtime timezone (browser local, or `timeZone` on the server).
+ */
+export function localDateKey(value = new Date(), timeZone = null) {
+  const date = value instanceof Date ? value : coerceDate(value) || new Date();
+  if (timeZone) {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  }
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
 function formatLocalParts(date, { withSeconds = true } = {}) {
   const yyyy = date.getFullYear();
   const mm = pad2(date.getMonth() + 1);

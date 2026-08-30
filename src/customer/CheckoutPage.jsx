@@ -35,7 +35,9 @@ import {
   SHIPPING_DISCLAIMER,
   STORE_PICKUP_INFO,
   calcShipping,
+  resolveCheckoutHoldMinutes,
 } from "../data/checkoutSettings.js";
+import { productShowsCheckoutTimer } from "../lib/products.js";
 import { isGuestCaptchaEnabled, useCms } from "../lib/cmsContent.jsx";
 import { useCheckoutConfirmation, writeCheckoutConfirmation } from "../lib/checkoutConfirmation.js";
 import { formatCartAvailabilityError, validateCartAgainstCatalog } from "../lib/cartAvailability.js";
@@ -601,8 +603,10 @@ function formatHoldClock(ms) {
 function StockHoldBanner({ hold, surfaceBorderColor }) {
   const theme = useTheme();
   if (!hold || hold.status === "idle" || hold.status === "none") return null;
+  const holdMinutes = hold.minutes || 20;
 
   if (hold.status === "held") {
+    if (!hold.showTimer) return null;
     return (
       <Box
         sx={{
@@ -643,7 +647,7 @@ function StockHoldBanner({ hold, surfaceBorderColor }) {
       }
     >
       {hold.status === "expired"
-        ? "Your 20-minute reservation expired and the stock was released to other shoppers."
+        ? `Your ${holdMinutes}-minute reservation expired and the stock was released to other shoppers.`
         : `Out of stock — ${shortfallNames || "these items"} were just reserved by another shopper.`}
     </Alert>
   );
@@ -940,6 +944,7 @@ export default function CheckoutPage() {
   const { placeOrder } = useOrders();
   const { decrementStockForCart, getProduct } = useInventory();
   const { placeHolds, releaseSessionHolds } = useStockHolds();
+  const holdMinutes = resolveCheckoutHoldMinutes(content.storefront);
   const confirmedOrder = useCheckoutConfirmation();
 
   const [step, setStep] = useState(0);
@@ -969,7 +974,11 @@ export default function CheckoutPage() {
     [cartAvailabilityIssues],
   );
 
-  // Reserve remaining units (sealed stock and capped pre-order slots).
+  const showCheckoutTimer = useMemo(
+    () => items.some((item) => productShowsCheckoutTimer(getProduct(item.id) ?? item)),
+    [items, getProduct],
+  );
+
   const inStockLines = useMemo(
     () =>
       items
@@ -1012,7 +1021,7 @@ export default function CheckoutPage() {
     return () => releaseSessionHolds();
   }, [step, releaseSessionHolds]);
 
-  // 20-minute countdown for the active hold.
+  // Reservation countdown for the active hold.
   useEffect(() => {
     if (holdState.status !== "held" || !holdState.expiresAt) return undefined;
     const tick = () => {
@@ -1128,7 +1137,7 @@ export default function CheckoutPage() {
       return;
     }
     if (holdState.status === "expired") {
-      setPaymentError("Your 20-minute reservation expired and the stock was released. Please re-check availability.");
+      setPaymentError(`Your ${holdMinutes}-minute reservation expired and the stock was released. Please re-check availability.`);
       return;
     }
     if (holdState.status === "blocked") {
@@ -1349,6 +1358,8 @@ export default function CheckoutPage() {
                     remainingMs: holdRemaining,
                     shortfalls: holdState.shortfalls,
                     onRetry: attemptHold,
+                    minutes: holdMinutes,
+                    showTimer: showCheckoutTimer,
                   }}
                 />
               ) : null}

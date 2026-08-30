@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { BRAND } from "../data/brand.js";
+import { resolveCheckoutHoldMinutes } from "../data/checkoutSettings.js";
 import { MARQUEE_BANNERS } from "../data/mediaAssets.js";
 import { useFirebaseData } from "./firebase/config.js";
 import { useAdminFirestoreWrite } from "./firebase/adminWriteAccess.js";
@@ -124,6 +125,8 @@ const DEFAULT_CONTENT = {
     landingSocialLabel: "Stay in the loop",
     /** When false, guest checkout skips reCAPTCHA (client + create-order API). */
     guestCaptchaEnabled: true,
+    /** Stock-hold / checkout countdown length. */
+    checkoutHoldMinutes: 20,
   },
 };
 
@@ -215,6 +218,7 @@ function mergeStorefront(saved) {
     ...rest,
     landingSocialLabel,
     guestCaptchaEnabled: saved.guestCaptchaEnabled !== false,
+    checkoutHoldMinutes: resolveCheckoutHoldMinutes(saved),
   };
 }
 

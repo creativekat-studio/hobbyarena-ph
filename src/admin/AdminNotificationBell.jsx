@@ -20,14 +20,15 @@ import { BellIcon, BoxIcon, MailIcon } from "../components/icons.jsx";
 import { INQUIRY_STATUS, useInquiries } from "../lib/inquiriesStore.jsx";
 import { isUnseenOrder, useOrders } from "../lib/ordersStore.jsx";
 import { sortOrdersByOrderNo } from "../lib/orderIds.js";
+import { formatDateTime, resolveOrderPlacedAt } from "../lib/orderTimestamps.js";
 
 function formatWhen(value) {
-  try {
-    const date = value.includes("T") ? new Date(value) : new Date(`${value}T12:00:00`);
-    return date.toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" });
-  } catch {
-    return value;
-  }
+  return formatDateTime(value, { withSeconds: false, fallback: value || "—" });
+}
+
+function formatOrderWhen(order) {
+  const latest = [...(order.trail ?? [])].sort((a, b) => new Date(b.at) - new Date(a.at))[0];
+  return formatWhen(latest?.at || resolveOrderPlacedAt(order) || order.createdAt || order.date);
 }
 
 function SectionHeader({ icon: Icon, label, count }) {
@@ -44,10 +45,9 @@ function SectionHeader({ icon: Icon, label, count }) {
 
 export default function AdminNotificationBell({ surfaceBorderColor }) {
   const navigate = useNavigate();
-  const { inquiries, unreadCount, setStatus, markAllNewAsRead } = useInquiries();
-  const { orders, notificationCount, markOrderSeen, markAllOrdersSeen } = useOrders();
+  const { inquiries, unreadCount, setStatus } = useInquiries();
+  const { orders, notificationCount, markOrderSeen } = useOrders();
   const [anchor, setAnchor] = useState(null);
-  const [menuSnapshot, setMenuSnapshot] = useState({ orders: [], inquiries: [] });
 
   const unseenOrders = useMemo(
     () => sortOrdersByOrderNo(orders.filter(isUnseenOrder)).slice(0, 5),
@@ -62,9 +62,6 @@ export default function AdminNotificationBell({ surfaceBorderColor }) {
   const totalCount = unreadCount + notificationCount;
   const isEmpty = totalCount === 0;
 
-  const menuOrders = anchor ? menuSnapshot.orders : unseenOrders;
-  const menuInquiries = anchor ? menuSnapshot.inquiries : newInquiries;
-
   function tooltipLabel() {
     if (isEmpty) return "Notifications";
     const parts = [];
@@ -74,9 +71,6 @@ export default function AdminNotificationBell({ surfaceBorderColor }) {
   }
 
   function openMenu(event) {
-    setMenuSnapshot({ orders: unseenOrders, inquiries: newInquiries });
-    markAllOrdersSeen();
-    markAllNewAsRead();
     setAnchor(event.currentTarget);
   }
 
@@ -130,18 +124,18 @@ export default function AdminNotificationBell({ surfaceBorderColor }) {
           <Typography variant="caption" color="text.secondary">
             {isEmpty
               ? "You're all caught up"
-              : "Tap an item to review — opening this panel clears the badge"}
+              : "Tap an item to review — other alerts stay until you open them"}
           </Typography>
         </Box>
         <Divider />
 
-        <SectionHeader icon={BoxIcon} label="Order alerts" count={menuOrders.length} />
-        {menuOrders.length === 0 ? (
+        <SectionHeader icon={BoxIcon} label="Order alerts" count={unseenOrders.length} />
+        {unseenOrders.length === 0 ? (
           <MenuItem disabled sx={{ whiteSpace: "normal", py: 1.5, opacity: 0.7 }}>
             <Typography variant="body2" color="text.secondary">No order alerts.</Typography>
           </MenuItem>
         ) : (
-          menuOrders.map((order) => {
+          unseenOrders.map((order) => {
             const latest = [...(order.trail ?? [])].sort((a, b) => new Date(b.at) - new Date(a.at))[0];
             const hint = latest?.title?.includes("proof") || latest?.title === "Refund details submitted"
               ? latest.title
@@ -151,7 +145,7 @@ export default function AdminNotificationBell({ surfaceBorderColor }) {
               <Stack spacing={0.25} sx={{ minWidth: 0 }}>
                 <Typography sx={{ fontWeight: 700, fontSize: "0.88rem", fontFamily: MONO_FONT }}>{order.id}</Typography>
                 <Typography sx={{ fontSize: "0.82rem" }}>{order.customer} · {PESO.format(order.total)}</Typography>
-                <Typography variant="caption" color="text.secondary">{hint} · {formatWhen(order.date)}</Typography>
+                <Typography variant="caption" color="text.secondary">{hint} · {formatOrderWhen(order)}</Typography>
               </Stack>
             </MenuItem>
             );
@@ -160,17 +154,17 @@ export default function AdminNotificationBell({ surfaceBorderColor }) {
 
         <Divider sx={{ my: 0.5 }} />
 
-        <SectionHeader icon={MailIcon} label="New inquiries" count={menuInquiries.length} />
-        {menuInquiries.length === 0 ? (
+        <SectionHeader icon={MailIcon} label="New inquiries" count={newInquiries.length} />
+        {newInquiries.length === 0 ? (
           <MenuItem disabled sx={{ whiteSpace: "normal", py: 1.5, opacity: 0.7 }}>
             <Typography variant="body2" color="text.secondary">No new inquiries.</Typography>
           </MenuItem>
         ) : (
-          menuInquiries.map((inquiry) => (
+          newInquiries.map((inquiry) => (
             <MenuItem key={inquiry.id} onClick={() => goToInquiry(inquiry.id)} sx={{ whiteSpace: "normal", alignItems: "flex-start", py: 1.5 }}>
               <Stack spacing={0.25} sx={{ minWidth: 0 }}>
                 <Typography sx={{ fontWeight: 700, fontSize: "0.88rem" }}>{inquiry.subject || "(no subject)"}</Typography>
-                <Typography variant="caption" color="text.secondary">{inquiry.name} · {formatWhen(inquiry.date)}</Typography>
+                <Typography variant="caption" color="text.secondary">{inquiry.name} · {formatWhen(inquiry.date || inquiry.createdAt)}</Typography>
               </Stack>
             </MenuItem>
           ))

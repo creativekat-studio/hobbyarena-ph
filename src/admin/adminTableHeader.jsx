@@ -1,4 +1,5 @@
 import {
+  Box,
   FormControl,
   InputLabel,
   MenuItem,
@@ -136,9 +137,32 @@ export const ADMIN_LIST_FILTER_TOGGLE_SX = {
   fontWeight: 700,
 };
 
+function FilterCountBadge({ count }) {
+  return (
+    <Box
+      component="span"
+      sx={{
+        minWidth: 18,
+        height: 18,
+        px: 0.5,
+        borderRadius: 9,
+        bgcolor: "error.main",
+        color: "error.contrastText",
+        fontSize: "0.62rem",
+        fontWeight: 800,
+        lineHeight: "18px",
+        textAlign: "center",
+        fontFamily: MONO_FONT,
+      }}
+    >
+      {count}
+    </Box>
+  );
+}
+
 /**
  * Queue/status filter tabs — Select dropdown on mobile, toggle group on desktop.
- * `options`: [{ id, label }]
+ * `options`: [{ id, label, count? }]
  */
 export function AdminListFilterTabs({
   label = "Filter",
@@ -170,7 +194,12 @@ export function AdminListFilterTabs({
           onChange={(event) => onChange?.(event.target.value)}
         >
           {(options || []).map((item) => (
-            <MenuItem key={item.id} value={item.id}>{item.label}</MenuItem>
+            <MenuItem key={item.id} value={item.id}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: "100%" }}>
+                <Box component="span" sx={{ flex: 1 }}>{item.label}</Box>
+                {item.count > 0 ? <FilterCountBadge count={item.count} /> : null}
+              </Box>
+            </MenuItem>
           ))}
         </Select>
       </FormControl>
@@ -186,8 +215,9 @@ export function AdminListFilterTabs({
       sx={{ flexWrap: "nowrap" }}
     >
       {(options || []).map((item) => (
-        <ToggleButton key={item.id} value={item.id} sx={ADMIN_LIST_FILTER_TOGGLE_SX}>
+        <ToggleButton key={item.id} value={item.id} sx={{ ...ADMIN_LIST_FILTER_TOGGLE_SX, gap: 0.75 }}>
           {item.label}
+          {item.count > 0 ? <FilterCountBadge count={item.count} /> : null}
         </ToggleButton>
       ))}
     </ToggleButtonGroup>

@@ -11,6 +11,11 @@ export function isComingSoonProduct(product) {
   return Boolean(product?.comingSoon);
 }
 
+/** Reservation countdown on checkout — on unless the product explicitly turns it off. */
+export function productShowsCheckoutTimer(product) {
+  return product?.showCheckoutTimer !== false;
+}
+
 /** True when the product cannot be purchased (coming soon, closed, or out of stock). */
 export function isUnavailableProduct(product) {
   if (!product) return true;

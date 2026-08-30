@@ -1,5 +1,23 @@
 /** Checkout settings — shipping/fulfillment. Bank accounts live in CMS (Firestore). */
 
+export const DEFAULT_CHECKOUT_HOLD_MINUTES = 20;
+export const MIN_CHECKOUT_HOLD_MINUTES = 1;
+export const MAX_CHECKOUT_HOLD_MINUTES = 180;
+
+/** CMS-configured reservation length; falls back to 20 minutes. */
+export function resolveCheckoutHoldMinutes(storefront) {
+  const raw = Number(storefront?.checkoutHoldMinutes);
+  if (!Number.isFinite(raw)) return DEFAULT_CHECKOUT_HOLD_MINUTES;
+  return Math.min(
+    MAX_CHECKOUT_HOLD_MINUTES,
+    Math.max(MIN_CHECKOUT_HOLD_MINUTES, Math.round(raw)),
+  );
+}
+
+export function checkoutHoldDurationMs(storefront) {
+  return resolveCheckoutHoldMinutes(storefront) * 60 * 1000;
+}
+
 export const SHIPPING = {
   metroManila: 150,
   provincial: 250,

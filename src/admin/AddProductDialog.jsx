@@ -61,6 +61,7 @@ const EMPTY = {
   published: false,
   featured: false,
   comingSoon: false,
+  showCheckoutTimer: true,
   rating: "",
   reviews: "0",
   preorderEndsAt: "",
@@ -151,6 +152,7 @@ function formFromProduct(product) {
     published: Boolean(product.published),
     featured: Boolean(product.featured),
     comingSoon: Boolean(product.comingSoon),
+    showCheckoutTimer: product.showCheckoutTimer !== false,
     rating: product.rating != null ? String(product.rating) : "",
     reviews: String(product.reviews ?? 0),
     preorderEndsAt: toDatetimeLocalValue(product.preorderEndsAt),
@@ -350,6 +352,7 @@ export default function AddProductDialog({
       published: form.published,
       featured: form.featured,
       comingSoon: Boolean(form.comingSoon),
+      showCheckoutTimer: form.showCheckoutTimer !== false,
       rating: form.rating === "" ? 0 : Number(form.rating),
       reviews: Number(form.reviews),
       descriptionSections: serializeDescriptionSections(form.descriptionSections),
@@ -738,6 +741,20 @@ export default function AddProductDialog({
                 InputLabelProps={{ shrink: true }}
               />
             </Stack>
+            <FormControlLabel
+              control={(
+                <Switch
+                  checked={form.showCheckoutTimer}
+                  onChange={(e) => update("showCheckoutTimer", e.target.checked)}
+                  color="primary"
+                />
+              )}
+              label={fieldLabel(
+                "Show checkout timer",
+                "When on, checkout shows the reservation countdown for this product. Applies to sealed and pre-order items.",
+              )}
+              sx={{ mx: 0, alignItems: "center" }}
+            />
             {form.type === "Pre-order" ? (
               <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                 <TextField

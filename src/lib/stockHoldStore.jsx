@@ -1,4 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { checkoutHoldDurationMs, DEFAULT_CHECKOUT_HOLD_MINUTES } from "../data/checkoutSettings.js";
+import { useCms } from "./cmsContent.jsx";
 import { useFirebaseData } from "./firebase/config.js";
 import {
   deleteStockHolds,
@@ -11,7 +13,7 @@ import {
  *
  * When a shopper reaches the "add proof of payment" step of checkout, we place a
  * short-lived hold on the quantity they are buying. The hold reserves that stock
- * for HOLD_DURATION_MS (20 minutes) so a second shopper racing for the same units
+ * for HOLD_DURATION_MS (default 20 minutes) so a second shopper racing for the same units
  * sees them as unavailable. When the shopper completes checkout, create-order
  * commits (decrements) product stock server-side — units stay unavailable for
  * Pending Verification and every later success status (Fully Paid, Ready for
@@ -30,7 +32,7 @@ import {
 const STORAGE_KEY = "hobbyarena:stock-holds";
 const SESSION_KEY = "hobbyarena:hold-session";
 
-export const HOLD_DURATION_MS = 20 * 60 * 1000; // 20 minutes
+export const HOLD_DURATION_MS = DEFAULT_CHECKOUT_HOLD_MINUTES * 60 * 1000;
 
 function nowMs() {
   return Date.now();
@@ -78,6 +80,8 @@ function pruneExpired(holds, ts) {
 const StockHoldContext = createContext(null);
 
 export function StockHoldProvider({ children }) {
+  const { content } = useCms();
+  const holdDurationMs = checkoutHoldDurationMs(content.storefront);
   const firebaseEnabled = useFirebaseData();
   const sessionId = useMemo(getSessionId, []);
   const [holds, setHolds] = useState(() => (firebaseEnabled ? [] : pruneExpired(loadHolds(), nowMs())));
@@ -163,7 +167,7 @@ export function StockHoldProvider({ children }) {
   const placeHolds = useCallback(
     (lines, getStock) => {
       const ts = nowMs();
-      const expiresAt = ts + HOLD_DURATION_MS;
+      const expiresAt = ts + holdDurationMs;
       const current = pruneExpired(holdsRef.current, ts);
       const shortfalls = [];
 
@@ -207,7 +211,7 @@ export function StockHoldProvider({ children }) {
       }
       return { ok: true, expiresAt, shortfalls: [] };
     },
-    [commitLocal, firebaseEnabled, sessionId],
+    [commitLocal, firebaseEnabled, holdDurationMs, sessionId],
   );
 
   const releaseSessionHolds = useCallback(
@@ -239,9 +243,9 @@ export function StockHoldProvider({ children }) {
       availableStock,
       placeHolds,
       releaseSessionHolds,
-      holdDurationMs: HOLD_DURATION_MS,
+      holdDurationMs,
     }),
-    [sessionId, holds, sessionHolds, heldByOthers, availableStock, placeHolds, releaseSessionHolds],
+    [sessionId, holds, sessionHolds, heldByOthers, availableStock, placeHolds, releaseSessionHolds, holdDurationMs],
   );
 
   return <StockHoldContext.Provider value={value}>{children}</StockHoldContext.Provider>;

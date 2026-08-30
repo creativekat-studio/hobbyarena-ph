@@ -30,6 +30,7 @@ import {
   refundedAmountForOrder,
 } from "../data/orderWorkflow.js";
 import { formatPeso, roundMoney } from "./money.js";
+import { localDateKey } from "./orderTimestamps.js";
 import { calcPreorderPricing, getDepositPercent } from "./preorder.js";
 import { makeOrderId, migrateLegacyOrderId, sortOrdersByOrderNo } from "./orderIds.js";
 import {
@@ -167,8 +168,11 @@ export function isArchivedOrder(order) {
 export function isUnseenOrder(order) {
   if (isArchivedOrder(order)) return false;
   if (order.notificationSeen === true) return false;
-  // New checkouts awaiting verification (including legacy without the flag)
+  // New checkouts awaiting verification (including mixed rollups / legacy without the flag)
   if (migratePaymentStatus(order.payment) === "Pending Verification") return true;
+  if (getOrderLineItems(order).some((item) => migratePaymentStatus(item.payment) === "Pending Verification")) {
+    return true;
+  }
   // Customer-initiated updates explicitly re-flag the order
   return order.notificationSeen === false;
 }
@@ -748,7 +752,7 @@ export function OrdersProvider({ children }) {
         hasProof: Boolean(proofUrl),
         guest: Boolean(payload.guest),
         userId: payload.userId || null,
-        date: new Date().toISOString().slice(0, 10),
+        date: localDateKey(),
         createdAt: new Date().toISOString(),
         notificationSeen: false,
         manual: Boolean(payload.manual),

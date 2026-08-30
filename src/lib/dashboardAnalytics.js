@@ -11,7 +11,7 @@ import {
   orderQtyLabel,
   orderRevenue,
 } from "./orderRevenue.js";
-import { formatOrderTimestamp } from "./orderTimestamps.js";
+import { formatOrderTimestamp, localDateKey, resolveOrderPlacedAt } from "./orderTimestamps.js";
 import { roundMoney } from "./money.js";
 
 const PERIOD_DAYS = {
@@ -84,10 +84,7 @@ const LINE_COLORS = {
 };
 
 function parseOrderDate(order) {
-  const raw = order.date || order.createdAt;
-  if (!raw) return null;
-  const parsed = new Date(raw.includes("T") ? raw : `${raw}T12:00:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return resolveOrderPlacedAt(order);
 }
 
 function filterOrdersByRange(orders, start, end) {
@@ -194,7 +191,7 @@ function buildTrendBuckets(orders, period, window, now = new Date(), revenueFn =
         const bucketEnd = new Date(bucketStart);
         bucketEnd.setHours(23, 59, 59, 999);
         buckets.push({
-          key: bucketStart.toISOString().slice(0, 10),
+          key: localDateKey(bucketStart),
           label: bucketStart.toLocaleString("en-US", { month: "short", day: "numeric" }),
           revenue: 0,
           orders: 0,
@@ -223,7 +220,7 @@ function buildTrendBuckets(orders, period, window, now = new Date(), revenueFn =
         bucketEnd.setHours(23, 59, 59, 999);
         if (bucketEnd > end) bucketEnd.setTime(end.getTime());
         buckets.push({
-          key: bucketStart.toISOString().slice(0, 10),
+          key: localDateKey(bucketStart),
           label: bucketStart.toLocaleString("en-US", { month: "short", day: "numeric" }),
           revenue: 0,
           orders: 0,
@@ -330,7 +327,7 @@ function buildTrendBuckets(orders, period, window, now = new Date(), revenueFn =
       bucketStart.setHours(0, 0, 0, 0);
       const labelDate = i === 0 ? end : bucketStart;
       buckets.push({
-        key: bucketStart.toISOString().slice(0, 10),
+        key: localDateKey(bucketStart),
         label: labelDate.toLocaleString("en-US", { month: "short", day: "numeric" }),
         revenue: 0,
         orders: 0,

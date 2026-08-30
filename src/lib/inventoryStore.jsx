@@ -58,6 +58,7 @@ function rowToProduct(row) {
     featured: Boolean(row.featured),
     published: Boolean(row.published),
     comingSoon: Boolean(row.comingSoon),
+    showCheckoutTimer: row.showCheckoutTimer !== false,
     descriptionSections: row.descriptionSections ?? [
       {
         title: "Product details",
@@ -370,6 +371,7 @@ export function InventoryProvider({ children }) {
         published: Boolean(input.published),
         featured,
         comingSoon: Boolean(input.comingSoon),
+        showCheckoutTimer: input.showCheckoutTimer !== false,
         deletedAt: null,
         image: input.image?.trim() || null,
         custom: true,
@@ -440,6 +442,9 @@ export function InventoryProvider({ children }) {
           published: typeof input.published === "boolean" ? input.published : row.published,
           featured,
           comingSoon: typeof input.comingSoon === "boolean" ? input.comingSoon : Boolean(row.comingSoon),
+          showCheckoutTimer: typeof input.showCheckoutTimer === "boolean"
+            ? input.showCheckoutTimer
+            : row.showCheckoutTimer !== false,
           image: input.image?.trim() || null,
           rating: Math.min(5, Math.max(0, Number(input.rating) ?? row.rating ?? 0)),
           reviews: Math.max(0, Number(input.reviews) ?? row.reviews ?? 0),

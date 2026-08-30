@@ -34,15 +34,16 @@ import {
   allocationLabelForItem,
   getOrderLineItems,
   getOrderStage,
-  isBalanceDuePreorderStatus,
   isPreorderOrder,
   lineItemTrailLabel,
   migratePaymentStatus,
   migrateOrderStatus,
+  orderKindLabels,
+  orderMatchesKind,
   orderStatusLabel,
   resolveOrderKindForItem,
 } from "../data/orderWorkflow.js";
-import { isArchivedOrder, useOrders } from "../lib/ordersStore.jsx";
+import { isArchivedOrder, isUnseenOrder, useOrders } from "../lib/ordersStore.jsx";
 import { compareOrdersByOrderNo } from "../lib/orderIds.js";
 import { buildCostByProductId, lineItemAmount } from "../lib/orderRevenue.js";
 import { formatOrderTimestamp, resolveOrderPlacedAt } from "../lib/orderTimestamps.js";
@@ -92,19 +93,6 @@ const LINEITEM_GRID = "minmax(160px, 1.25fr) minmax(100px, 0.85fr) minmax(72px, 
 const ORDER_TABLE_MIN_WIDTH = 760;
 
 
-function orderKindLabels(order) {
-  const lineItems = getOrderLineItems(order);
-  if (lineItems.length) {
-    const hasPreorder = lineItems.some((item) => resolveOrderKindForItem(item) === "Pre-order");
-    const hasInstock = lineItems.some((item) => resolveOrderKindForItem(item) !== "Pre-order");
-    if (hasPreorder && hasInstock) return ["Pre-order", "In-stock"];
-    if (hasPreorder) return ["Pre-order"];
-    return ["In-stock"];
-  }
-  if (order?.type === "Mixed") return ["Pre-order", "In-stock"];
-  if (order?.type === "Pre-order") return ["Pre-order"];
-  return ["In-stock"];
-}
 const LINEITEM_TABLE_MIN_WIDTH = 720;
 
 function orderSummaryGridSx(overrides = {}) {
@@ -186,7 +174,7 @@ function AdminOrderAccordionRow({
   const preorder = isPreorderOrder(order);
   const status = migrateOrderStatus(order.status);
   const archived = isArchivedOrder(order);
-  const needsReview = !archived && lineItems.some((item) => migratePaymentStatus(item.payment) === "Pending Verification");
+  const hasUnseenActivity = !archived && isUnseenOrder(order);
 
   const doneCount = lineItems.filter(isLineItemDone).length;
   const allDone = lineItems.length > 0 && doneCount === lineItems.length;
@@ -230,8 +218,8 @@ function AdminOrderAccordionRow({
 
         <Box sx={{ minWidth: 0 }}>
           <Stack direction="row" spacing={0.75} alignItems="center">
-            {needsReview ? (
-              <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "warning.main", flexShrink: 0 }} title="Needs payment review" />
+            {hasUnseenActivity ? (
+              <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "warning.main", flexShrink: 0 }} title="New activity" />
             ) : null}
             <Box sx={{ minWidth: 0 }}>
               <Stack direction="row" spacing={0.75} alignItems="center">
@@ -566,8 +554,7 @@ export default function OrdersPage() {
         o.customer.toLowerCase().includes(query.toLowerCase()) ||
         o.items.toLowerCase().includes(query.toLowerCase());
       if (!matchesQuery) return false;
-      if (kindFilter === "preorder" && o.type !== "Pre-order") return false;
-      if (kindFilter === "instock" && o.type !== "In-stock") return false;
+      if (!orderMatchesKind(o, kindFilter)) return false;
       if (queueFilter === "all" || viewingArchived) return true;
       return activeQueue.match?.(o) ?? false;
     });
@@ -597,18 +584,28 @@ export default function OrdersPage() {
   const someLoadedSelected = visibleItems.some((row) => selectedIds.has(row.id));
   const archiveCount = archiveTargetIds.length;
 
+  const queueMatch = (id) => ORDER_QUEUES.find((q) => q.id === id)?.match ?? (() => false);
+
   const stats = useMemo(() => {
-    const review = activeOrders.filter((o) => migratePaymentStatus(o.payment) === "Pending Verification").length;
-    const preorders = activeOrders.filter((o) => o.type === "Pre-order").length;
-    const balanceDue = activeOrders.filter((o) =>
-      isPreorderOrder(o) && (
-        isBalanceDuePreorderStatus(migrateOrderStatus(o.status))
-        || getOrderLineItems(o).some((item) => isBalanceDuePreorderStatus(item.status))
-      ),
-    ).length;
-    const pickup = activeOrders.filter((o) => migrateOrderStatus(o.status) === "Ready for Pickup").length;
+    const review = activeOrders.filter(queueMatch("review")).length;
+    const preorders = activeOrders.filter(queueMatch("preorder")).length;
+    const balanceDue = activeOrders.filter(queueMatch("balance-due")).length;
+    const pickup = activeOrders.filter(queueMatch("pickup")).length;
     return { total: activeOrders.length, review, preorders, balanceDue, pickup };
   }, [activeOrders]);
+
+  const queueFilterOptions = useMemo(
+    () => QUEUE_FILTERS.map((filter) => {
+      if (filter.id === "archived") return filter;
+      const unseen = activeOrders.filter((order) => {
+        if (!isUnseenOrder(order)) return false;
+        if (filter.id === "all") return true;
+        return filter.match?.(order) ?? false;
+      }).length;
+      return unseen > 0 ? { ...filter, count: unseen } : filter;
+    }),
+    [activeOrders],
+  );
 
   const { surfaceBackground } = surfaces;
   const stickyHeaderBg = theme.palette.mode === "dark" ? "#12204A" : surfaceBackground;
@@ -700,7 +697,7 @@ export default function OrdersPage() {
               <AdminListFilterTabs
                 label="Queue"
                 labelId="orders-queue-filter"
-                options={QUEUE_FILTERS}
+                options={queueFilterOptions}
                 value={queueFilter}
                 onChange={setQueueFilter}
               />
@@ -741,7 +738,7 @@ export default function OrdersPage() {
               <AdminListFilterTabs
                 label="Queue"
                 labelId="orders-queue-filter-mobile"
-                options={QUEUE_FILTERS}
+                options={queueFilterOptions}
                 value={queueFilter}
                 onChange={setQueueFilter}
               />

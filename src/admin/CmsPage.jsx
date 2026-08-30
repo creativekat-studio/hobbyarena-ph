@@ -721,6 +721,26 @@ function SiteModeTab({ panelSx, surfaceBorderColor }) {
         </Stack>
       </Box>
 
+      <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
+        <SectionHeader title="Checkout reservation" />
+        <Typography sx={{ color: "text.secondary", fontSize: "0.85rem", mb: 2.5, lineHeight: 1.55 }}>
+          How long stock stays reserved after a shopper reaches payment. The countdown appears on
+          the storefront for products with “Show checkout timer” enabled. Default is 20 minutes.
+        </Typography>
+        <TextField
+          label="Checkout timer (minutes)"
+          type="number"
+          inputProps={{ min: 1, max: 180, step: 1 }}
+          value={storefront.checkoutHoldMinutes ?? 20}
+          onChange={(e) => {
+            const raw = e.target.value;
+            setStorefront({ checkoutHoldMinutes: raw === "" ? 20 : Number(raw) });
+          }}
+          helperText="Applies to sealed and pre-order items. Range 1–180 minutes."
+          sx={{ maxWidth: 280 }}
+        />
+      </Box>
+
       <CmsTabSaveBar surfaceBorderColor={surfaceBorderColor} />
     </Stack>
   );

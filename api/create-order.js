@@ -15,6 +15,15 @@ import { isGuestCaptchaEnabled } from "./_lib/cmsSettings.js";
 import { checkOrderRateLimit, recordOrderRateLimit } from "./_lib/orderRateLimit.js";
 import { requireAdmin } from "./_lib/requireAdmin.js";
 import { verifyRecaptchaToken } from "./_lib/verifyRecaptcha.js";
+function localDateKey(date = new Date(), timeZone = "Asia/Manila") {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
 function readAddress(raw) {
   if (!raw || typeof raw !== "object") return null;
   return {
@@ -203,7 +212,7 @@ export default async function handler(req, res) {
           hasProof: Boolean(proofUrl),
           guest,
           userId,
-          date: nowIso.slice(0, 10),
+          date: localDateKey(),
           createdAt: nowIso,
           notificationSeen: false,
           manual,

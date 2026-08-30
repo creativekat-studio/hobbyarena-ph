@@ -362,53 +362,78 @@ export function getOrderStage(order) {
   return status;
 }
 
+function itemIsRefundPending(item) {
+  const status = migrateOrderStatus(item.status);
+  const payment = migratePaymentStatus(item.payment);
+  return status === "Partially Fulfilled & For Refund"
+    || status === "For Full Refund"
+    || payment === "For Partial Refund"
+    || payment === "For Full Refund";
+}
+
+/** Kind labels for mixed carts — an order can be both Pre-order and In-stock. */
+export function orderKindLabels(order) {
+  const lineItems = getOrderLineItems(order);
+  if (lineItems.length) {
+    const hasPreorder = lineItems.some((item) => resolveOrderKindForItem(item) === "Pre-order");
+    const hasInstock = lineItems.some((item) => resolveOrderKindForItem(item) !== "Pre-order");
+    if (hasPreorder && hasInstock) return ["Pre-order", "In-stock"];
+    if (hasPreorder) return ["Pre-order"];
+    return ["In-stock"];
+  }
+  if (order?.type === "Mixed") return ["Pre-order", "In-stock"];
+  if (order?.type === "Pre-order") return ["Pre-order"];
+  return ["In-stock"];
+}
+
+export function orderMatchesKind(order, kindId) {
+  if (!kindId || kindId === "all") return true;
+  const labels = orderKindLabels(order);
+  if (kindId === "preorder") return labels.includes("Pre-order");
+  if (kindId === "instock") return labels.includes("In-stock");
+  return true;
+}
+
 export const ORDER_QUEUES = [
   { id: "all", label: "All" },
   {
     id: "review",
     label: "Needs review",
-    match: (o) => migratePaymentStatus(o.payment) === "Pending Verification",
+    match: (o) => getOrderLineItems(o).some((item) => migratePaymentStatus(item.payment) === "Pending Verification"),
   },
   {
     id: "awaiting-stock",
     label: "Awaiting stock",
-    match: (o) => isPreorderOrder(o) && migrateOrderStatus(o.status) === "Awaiting Stock",
+    match: (o) => getOrderLineItems(o).some(
+      (item) => resolveOrderKindForItem(item) === "Pre-order"
+        && migrateOrderStatus(item.status) === "Awaiting Stock",
+    ),
   },
   {
     id: "balance-due",
     label: "Balance due",
-    match: (o) => isPreorderOrder(o) && (
-      isBalanceDuePreorderStatus(migrateOrderStatus(o.status))
-      || getOrderLineItems(o).some((item) => isBalanceDuePreorderStatus(item.status))
-    ),
+    match: (o) => getOrderLineItems(o).some((item) => isBalanceDuePreorderStatus(item.status)),
   },
   {
     id: "refund",
     label: "Refund pending",
-    match: (o) => isPreorderOrder(o) && (
-      migrateOrderStatus(o.status) === "Partially Fulfilled & For Refund"
-      || migrateOrderStatus(o.status) === "For Full Refund"
-    ),
+    match: (o) => getOrderLineItems(o).some(itemIsRefundPending),
   },
   {
     id: "unpaid",
     label: "Unpaid",
-    match: (o) =>
-      migrateOrderStatus(o.status) === "Unpaid"
-      || migratePaymentStatus(o.payment) === "Unpaid"
-      || getOrderLineItems(o).some(
-        (item) =>
-          migrateOrderStatus(item.status) === "Unpaid"
-          || migratePaymentStatus(item.payment) === "Unpaid",
-      ),
+    match: (o) => getOrderLineItems(o).some(
+      (item) => migrateOrderStatus(item.status) === "Unpaid"
+        || migratePaymentStatus(item.payment) === "Unpaid",
+    ),
   },
   {
     id: "pickup",
     label: "Ready for pickup",
-    match: (o) => migrateOrderStatus(o.status) === "Ready for Pickup",
+    match: (o) => getOrderLineItems(o).some((item) => migrateOrderStatus(item.status) === "Ready for Pickup"),
   },
-  { id: "preorder", label: "Pre-orders", match: (o) => o.type === "Pre-order" },
-  { id: "instock", label: "In-stock", match: (o) => o.type === "In-stock" },
+  { id: "preorder", label: "Pre-orders", match: (o) => orderKindLabels(o).includes("Pre-order") },
+  { id: "instock", label: "In-stock", match: (o) => orderKindLabels(o).includes("In-stock") },
 ];
 
 export function allocationLabel(order) {

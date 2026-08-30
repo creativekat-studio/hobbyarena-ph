@@ -40,6 +40,7 @@ import { computeDashboardAnalytics } from "../lib/dashboardAnalytics.js";
 import { STATUS_COLOR as ORDER_STATUS_COLOR, orderStatusLabel } from "../data/orderWorkflow.js";
 import { buildCostByProductId } from "../lib/orderRevenue.js";
 import { isArchivedOrder, useOrders } from "../lib/ordersStore.jsx";
+import { localDateKey } from "../lib/orderTimestamps.js";
 import { useInventory } from "../lib/inventoryStore.jsx";
 import { useIsMobileMd } from "../lib/mobileUi.js";
 
@@ -149,8 +150,8 @@ function defaultCustomRange() {
   const start = new Date();
   start.setDate(start.getDate() - 29);
   return {
-    from: start.toISOString().slice(0, 10),
-    to: end.toISOString().slice(0, 10),
+    from: localDateKey(start),
+    to: localDateKey(end),
   };
 }
 
