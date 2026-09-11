@@ -62,7 +62,7 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
   const { submitBalanceProof } = useOrders();
   const inputRef = useRef(null);
   const [proofFile, setProofFile] = useState(null);
-  const [showBanks, setShowBanks] = useState(false);
+  const [showBanks, setShowBanks] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -209,7 +209,7 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
         </Typography>
       )}
 
-      <Collapse in={showBanks && needsProof}>
+      <Collapse in={showBanks && needsProof} appear={false}>
         <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1, mb: 1 }}>
           {banks.map((bank) => (
             <Chip
