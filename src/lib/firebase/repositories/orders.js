@@ -153,6 +153,10 @@ export function compactOrderForFirestore(order) {
         mergedAllocation: slim.mergedAllocation && typeof slim.mergedAllocation === "object"
           ? slim.mergedAllocation
           : {},
+        ...(slim.mergedEmailNote ? { mergedEmailNote: String(slim.mergedEmailNote) } : {}),
+        ...(slim.mergedEmailAttachment && typeof slim.mergedEmailAttachment === "object"
+          ? { mergedEmailAttachment: slim.mergedEmailAttachment }
+          : {}),
       }
       : {}),
     trail,

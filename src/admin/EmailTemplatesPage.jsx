@@ -11,7 +11,10 @@ import {
   DialogTitle,
   FormControl,
   IconButton,
+  InputAdornment,
   InputLabel,
+  List,
+  ListItemButton,
   MenuItem,
   Select,
   Stack,
@@ -30,7 +33,7 @@ import {
 import { alpha, useTheme } from "@mui/material/styles";
 import { useOutletContext } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
-import { TrashIcon } from "../components/icons.jsx";
+import { SearchIcon, TrashIcon } from "../components/icons.jsx";
 import { AdminTableHeaderCell } from "./adminTableHeader.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { ORDER_STATUS_EMAIL_LABELS } from "../lib/orderEmailTriggers.js";
@@ -54,6 +57,7 @@ import {
   setPreorderReminderConfig,
 } from "../lib/emailTemplatesStore.js";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
+import { ADMIN_LIST_PAGE_SX, ADMIN_LIST_PANEL_SX } from "./adminTableHeader.jsx";
 import EmailSimInbox from "./EmailSimInbox.jsx";
 
 const PREVIEW_EMAIL = "preview@hobbyarena.ph";
@@ -91,13 +95,20 @@ function buildSampleOrder(recipientEmail, emailType) {
       items: "Delta Reign 18ct, ME06 36ct",
       lineItems: [],
       consolidated: {
+        id: "HA-C-202609000001",
         orderIds: ["HA-202609000356", "HA-202609000355", "HA-202609000354"],
-        items: [
-          { name: "[Pre-order] Pokemon TCG [ME06] Delta Reign 18ct Booster Box", newQty: 1, newAmount: 4600 },
-          { name: "[Pre-order] Pokemon TCG [ME06] 36ct Booster Box", newQty: 1, newAmount: 9200 },
+        orderDetails: [
+          { orderId: "HA-202609000356", name: "[Pre-order] Pokemon TCG [ME06] Delta Reign 18ct Booster Box", qty: 10, dpAmount: 13800 },
+          { orderId: "HA-202609000355", name: "[Pre-order] Pokemon TCG [ME06] Delta Reign 18ct Booster Box", qty: 10, dpAmount: 13800 },
+          { orderId: "HA-202609000354", name: "[Pre-order] Pokemon TCG [ME06] 36ct Booster Box", qty: 6, dpAmount: 16560 },
         ],
-        totals: { newTotal: 13800, totalDp: 44160, net: -30360, netLabel: "Refund" },
+        items: [
+          { name: "[Pre-order] Pokemon TCG [ME06] Delta Reign 18ct Booster Box", totalQty: 20, totalDp: 27600, newQty: 1, newAmount: 4600 },
+          { name: "[Pre-order] Pokemon TCG [ME06] 36ct Booster Box", totalQty: 6, totalDp: 16560, newQty: 1, newAmount: 9200 },
+        ],
+        totals: { newTotal: 13800, totalDp: 44160, net: -30360, netLabel: "Refund amount" },
       },
+      notes: "Please send your refund details at your earliest convenience.",
     };
   }
   return {
@@ -176,8 +187,8 @@ function EmailPreview({ emailType, body, subject, reminder, surfaceBorderColor }
   }, [emailType, body, subject, reminder]);
 
   return (
-    <Box>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+    <Box sx={{ height: "100%", minHeight: 0, flex: 1, display: "flex", flexDirection: "column" }}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1, flexShrink: 0 }}>
         <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", color: "text.secondary" }}>
           Live preview
         </Typography>
@@ -185,7 +196,7 @@ function EmailPreview({ emailType, body, subject, reminder, surfaceBorderColor }
       </Stack>
 
       {state.subject ? (
-        <Box sx={{ mb: 1, p: 1, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor, bgcolor: "background.paper" }}>
+        <Box sx={{ mb: 1, p: 1, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor, bgcolor: "background.paper", flexShrink: 0 }}>
           <Typography sx={{ fontSize: "0.62rem", fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", color: "text.secondary" }}>
             Subject
           </Typography>
@@ -204,7 +215,9 @@ function EmailPreview({ emailType, body, subject, reminder, surfaceBorderColor }
           srcDoc={state.html}
           sx={{
             width: "100%",
-            minHeight: 620,
+            flex: 1,
+            minHeight: 0,
+            height: "100%",
             border: "1px solid",
             borderColor: surfaceBorderColor,
             borderRadius: 1,
@@ -214,6 +227,24 @@ function EmailPreview({ emailType, body, subject, reminder, surfaceBorderColor }
           }}
         />
       )}
+    </Box>
+  );
+}
+
+function PlaceholderGroup({ children }) {
+  return (
+    <Box
+      sx={{
+        px: 1.25,
+        py: 1,
+        border: "1px solid",
+        borderColor: "divider",
+        borderRadius: 1,
+      }}
+    >
+      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+        {children}
+      </Stack>
     </Box>
   );
 }
@@ -295,10 +326,10 @@ function EmailEditor({
   }
 
   return (
-    <Stack spacing={1.5} sx={{ height: "100%" }}>
+    <Stack spacing={1.5} sx={{ height: "100%", minHeight: 0 }}>
       {isConsolidated ? (
         <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", lineHeight: 1.5 }}>
-          Sent once for a consolidated order. Edit the subject and message. The allocated items table and totals stay in the email.
+          Sent once for a consolidated order. Edit the subject and message. The before/after item tables and totals stay in the email.
         </Typography>
       ) : null}
 
@@ -308,8 +339,8 @@ function EmailEditor({
         label="Subject"
         value={subject || ""}
         onChange={(e) => { onSubjectChange?.(e.target.value); setSaved(false); }}
-        placeholder={isConsolidated ? "Allocation update — refund due" : ""}
-        helperText={isConsolidated ? "Leave blank to keep the automatic refund / balance subject." : "Leave blank to keep the default subject."}
+        placeholder={isConsolidated ? "Allocation confirmed" : ""}
+        helperText="Leave blank to keep the default subject."
       />
 
       <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
@@ -332,12 +363,13 @@ function EmailEditor({
         placeholder={defaultBody}
         sx={{
           flex: 1,
+          minHeight: 0,
           "& .MuiInputBase-root": { height: "100%", alignItems: "flex-start" },
           "& textarea": { height: "100% !important", overflow: "auto !important", resize: "none" },
         }}
       />
 
-      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+      <PlaceholderGroup>
         {EMAIL_PLACEHOLDERS.map((placeholder) => (
           <Chip
             key={placeholder.token}
@@ -346,21 +378,13 @@ function EmailEditor({
             variant="outlined"
             onClick={() => insertPlaceholder(placeholder.token)}
             title={placeholder.description}
-            sx={{ fontFamily: MONO_FONT, fontSize: "0.66rem", borderColor: surfaceBorderColor, cursor: "pointer" }}
+            sx={{ fontFamily: MONO_FONT, fontSize: "0.66rem", borderColor: "divider", cursor: "pointer" }}
           />
         ))}
-      </Stack>
+      </PlaceholderGroup>
 
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }} flexWrap="wrap" useFlexGap>
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={handleSave}
-          sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
-        >
-          Save
-        </Button>
-        <FormControl size="small" sx={{ minWidth: 200 }}>
+      <Stack direction="row" spacing={1} alignItems="center">
+        <FormControl size="small" sx={{ flex: 1, minWidth: 0 }}>
           <InputLabel id={`footer-select-${emailType}`}>Footer</InputLabel>
           <Select
             labelId={`footer-select-${emailType}`}
@@ -383,16 +407,26 @@ function EmailEditor({
           color="inherit"
           disabled={!isCustom}
           onClick={handleReset}
-          sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem" }}
+          sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", flexShrink: 0 }}
         >
           Reset
         </Button>
-        <Box sx={{ flex: 1 }} />
+      </Stack>
+
+      <Stack direction="row" spacing={1} alignItems="center">
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={handleSave}
+          sx={{ flex: 1, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
+        >
+          Save
+        </Button>
         <Button
           variant="outlined"
           disabled={sending}
           onClick={handleSendTest}
-          sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem" }}
+          sx={{ flex: 1, borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem" }}
         >
           {sending ? "Sending…" : "Send test to me"}
         </Button>
@@ -712,7 +746,7 @@ function FooterTemplateEditor({ draft, onDraftChange, surfaceBorderColor }) {
 
 function TestRecipientCard({ panelSx, testEmail, setTestEmail, feedback, onClearFeedback, feedbackSeverity }) {
   return (
-    <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
+    <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 }, flexShrink: 0 }}>
       <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, mb: 1 }}>
         <Typography sx={{ fontWeight: 800, fontSize: "0.9rem" }}>Test recipient</Typography>
         <Tooltip
@@ -922,7 +956,7 @@ function PasswordResetTemplateEditor({
   }
 
   return (
-    <Stack spacing={1.5} sx={{ height: "100%" }}>
+    <Stack spacing={1.5} sx={{ height: "100%", minHeight: 0 }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
         <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", color: "text.secondary" }}>
           Password reset body
@@ -945,9 +979,15 @@ function PasswordResetTemplateEditor({
         value={draft}
         onChange={(e) => { onDraftChange(e.target.value); setSaved(false); }}
         placeholder={defaultBody}
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          "& .MuiInputBase-root": { height: "100%", alignItems: "flex-start" },
+          "& textarea": { height: "100% !important", overflow: "auto !important", resize: "none" },
+        }}
       />
 
-      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+      <PlaceholderGroup>
         {PASSWORD_RESET_PLACEHOLDERS.map((placeholder) => (
           <Chip
             key={placeholder.token}
@@ -956,20 +996,12 @@ function PasswordResetTemplateEditor({
             variant="outlined"
             onClick={() => insertPlaceholder(placeholder.token)}
             title={placeholder.description}
-            sx={{ fontFamily: MONO_FONT, fontSize: "0.66rem", borderColor: surfaceBorderColor, cursor: "pointer" }}
+            sx={{ fontFamily: MONO_FONT, fontSize: "0.66rem", borderColor: "divider", cursor: "pointer" }}
           />
         ))}
-      </Stack>
+      </PlaceholderGroup>
 
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }} flexWrap="wrap" useFlexGap>
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={handleSave}
-          sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
-        >
-          Save
-        </Button>
+      <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
         <Button
           variant="text"
           color="inherit"
@@ -979,12 +1011,22 @@ function PasswordResetTemplateEditor({
         >
           Reset
         </Button>
-        <Box sx={{ flex: 1 }} />
+      </Stack>
+
+      <Stack direction="row" spacing={1} alignItems="center">
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={handleSave}
+          sx={{ flex: 1, fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", fontSize: "0.72rem" }}
+        >
+          Save
+        </Button>
         <Button
           variant="outlined"
           disabled={sending}
           onClick={handleSendTest}
-          sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem" }}
+          sx={{ flex: 1, borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem" }}
         >
           {sending ? "Sending…" : "Send test to me"}
         </Button>
@@ -996,6 +1038,101 @@ function PasswordResetTemplateEditor({
         </Typography>
       ) : null}
     </Stack>
+  );
+}
+
+function filterTemplateTypes(types, query) {
+  const needle = String(query || "").trim().toLowerCase();
+  if (!needle) return types;
+  return types.filter((type) => {
+    const label = ORDER_STATUS_EMAIL_LABELS[type] || type;
+    return label.toLowerCase().includes(needle) || type.toLowerCase().includes(needle);
+  });
+}
+
+function TemplateSidebar({ types, activeType, onSelect, surfaceBorderColor }) {
+  const theme = useTheme();
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(() => filterTemplateTypes(types, query), [types, query]);
+
+  function handleQueryChange(value) {
+    setQuery(value);
+    const next = filterTemplateTypes(types, value);
+    if (next.length && !next.includes(activeType)) onSelect(next[0]);
+  }
+
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 1.25,
+        p: 1.5,
+        borderBottom: { xs: "1px solid", md: "none" },
+        borderRight: { xs: "none", md: "1px solid" },
+        borderColor: `${surfaceBorderColor} !important`,
+        minWidth: 0,
+        minHeight: 0,
+        height: "100%",
+      }}
+    >
+      <TextField
+        size="small"
+        fullWidth
+        value={query}
+        onChange={(e) => handleQueryChange(e.target.value)}
+        placeholder="Search templates…"
+        inputProps={{ "aria-label": "Search templates" }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon sx={{ fontSize: 18, color: "text.secondary" }} />
+            </InputAdornment>
+          ),
+        }}
+      />
+      <Typography sx={{ px: 0.5, fontSize: "0.62rem", fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", color: "text.secondary" }}>
+        {query.trim() ? `${filtered.length} of ${types.length}` : `${types.length} templates`}
+      </Typography>
+      <List disablePadding sx={{ display: "flex", flexDirection: "column", justifyContent: "flex-start", gap: 0.25, overflow: "auto", flex: 1, minHeight: 0 }}>
+        {filtered.length ? filtered.map((type) => {
+          const selected = type === activeType;
+          return (
+            <ListItemButton
+              key={type}
+              selected={selected}
+              onClick={() => onSelect(type)}
+              sx={{
+                borderRadius: 1,
+                py: 1,
+                px: 1.25,
+                flexGrow: 0,
+                flexShrink: 0,
+                alignItems: "flex-start",
+                color: selected ? "primary.main" : "text.secondary",
+                bgcolor: selected ? alpha(theme.palette.primary.main, 0.12) : "transparent",
+                "&.Mui-selected": {
+                  bgcolor: alpha(theme.palette.primary.main, 0.12),
+                  color: "primary.main",
+                },
+                "&.Mui-selected:hover": {
+                  bgcolor: alpha(theme.palette.primary.main, 0.18),
+                },
+                "&:hover": { color: "text.primary" },
+              }}
+            >
+              <Typography sx={{ fontWeight: selected ? 800 : 600, fontSize: "0.82rem", lineHeight: 1.35 }}>
+                {ORDER_STATUS_EMAIL_LABELS[type] || type}
+              </Typography>
+            </ListItemButton>
+          );
+        }) : (
+          <Typography sx={{ px: 1.25, py: 2, fontSize: "0.8rem", color: "text.secondary" }}>
+            No templates match “{query.trim()}”.
+          </Typography>
+        )}
+      </List>
+    </Box>
   );
 }
 
@@ -1016,6 +1153,13 @@ export default function EmailTemplatesPage() {
   const [subjects, setSubjects] = useState(() => (
     Object.fromEntries(EMAIL_TYPES.map((type) => [type, getEmailSubjectOverride(type)]))
   ));
+  useEffect(() => {
+    setSubjects((prev) => {
+      const next = getEmailSubjectOverride("consolidated_allocation");
+      if (prev.consolidated_allocation === next) return prev;
+      return { ...prev, consolidated_allocation: next };
+    });
+  }, []);
   const [reminderDraft, setReminderDraft] = useState(() => getPreorderReminderConfig());
   const [passwordResetDraft, setPasswordResetDraft] = useState(() => getEditableEmailBody(PASSWORD_RESET_EMAIL_TYPE));
 
@@ -1037,7 +1181,7 @@ export default function EmailTemplatesPage() {
   }
 
   return (
-    <Stack spacing={ADMIN_PAGE_SPACING}>
+    <Stack spacing={ADMIN_PAGE_SPACING} sx={ADMIN_LIST_PAGE_SX}>
       <AdminPageHeader
         eyebrow="Settings"
         title="Email templates"
@@ -1047,7 +1191,7 @@ export default function EmailTemplatesPage() {
       <Tabs
         value={pageMode}
         onChange={(_, value) => setPageMode(value)}
-        sx={{ ...panelSx, px: 1 }}
+        sx={{ ...panelSx, px: 1, flexShrink: 0 }}
       >
         <Tab value="templates" label="Order templates" />
         <Tab value="account" label="Password reset" />
@@ -1126,31 +1270,34 @@ export default function EmailTemplatesPage() {
             feedbackSeverity={feedbackSeverity}
           />
 
-          <Box sx={{ ...panelSx, overflow: "hidden" }}>
-            <Tabs
-              value={activeType}
-              onChange={(_, value) => setActiveType(value)}
-              variant="scrollable"
-              scrollButtons="auto"
-              allowScrollButtonsMobile
-              sx={{ px: 1.5, borderBottom: "1px solid", borderColor: surfaceBorderColor }}
-            >
-              {emailTypes.map((type) => (
-                <Tab
-                  key={type}
-                  value={type}
-                  label={ORDER_STATUS_EMAIL_LABELS[type]}
-                />
-              ))}
-            </Tabs>
+          <Box
+            sx={{
+              ...panelSx,
+              ...ADMIN_LIST_PANEL_SX,
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", md: "260px minmax(0, 1fr)" },
+              gridTemplateRows: "minmax(0, 1fr)",
+              alignItems: "stretch",
+            }}
+          >
+            <TemplateSidebar
+              types={emailTypes}
+              activeType={activeType}
+              onSelect={setActiveType}
+              surfaceBorderColor={surfaceBorderColor}
+            />
 
             <Box
               sx={{
                 p: { xs: 2, md: 3 },
                 display: "grid",
-                gap: { xs: 3, md: 3 },
-                gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) minmax(0, 1fr)" },
+                gap: { xs: 2, md: 2.5 },
+                gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1fr) minmax(0, 1fr)" },
+                gridTemplateRows: "minmax(0, 1fr)",
                 alignItems: "stretch",
+                minWidth: 0,
+                minHeight: 0,
+                height: "100%",
               }}
             >
               <EmailEditor
@@ -1174,6 +1321,10 @@ export default function EmailTemplatesPage() {
                   border: "1px dashed",
                   borderColor: alpha(surfaceBorderColor, 0.9),
                   bgcolor: alpha(theme.palette.text.primary, 0.015),
+                  minHeight: 0,
+                  height: "100%",
+                  display: "flex",
+                  flexDirection: "column",
                 }}
               >
                 <EmailPreview

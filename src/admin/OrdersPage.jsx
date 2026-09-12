@@ -492,7 +492,7 @@ export default function OrdersPage() {
                     onClick={openMergeSimulation}
                     sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
                   >
-                    Merge & simulate
+                    Merge Orders ({selectedCount})
                   </Button>
                 </span>
               </Tooltip>

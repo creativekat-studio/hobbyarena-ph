@@ -51,6 +51,8 @@ export const SCHEMA = {
     mergedSetId: "string | undefined — HA-C-yyyymm###### shared id for a consolidated set",
     mergedAt: "string | undefined",
     mergedAllocation: "{ [productKey]: { percent, newQty } } | undefined",
+    mergedEmailNote: "string | undefined — staff note included on the consolidated email",
+    mergedEmailAttachment: "{ label, url, type } | undefined — file included on the consolidated email",
   },
   inquiry: {
     name: "string",

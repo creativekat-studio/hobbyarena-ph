@@ -18,6 +18,7 @@ import {
   metaLine,
   preorderReminderBlock,
   preorderReminderText,
+  quoteBlock,
   sectionHeading,
   statusList,
   totalsBlock,
@@ -51,44 +52,120 @@ function consolidatedOrderIds(order) {
   return order?.id ? [String(order.id)] : [];
 }
 
-function consolidatedItemsTable(order) {
+function consolidatedId(order) {
+  const id = String(order?.consolidated?.id || "").trim();
+  return !id || id === "—" ? "" : id;
+}
+
+function consolidatedNetLabel(order) {
+  const totals = order?.consolidated?.totals || {};
+  if (totals.netLabel) return totals.netLabel;
+  const net = consolidatedNet(order);
+  if (net < 0) return "Refund amount";
+  if (net > 0) return "Balance";
+  return "Settled";
+}
+
+function emailTableHeaderCell(label, { align = "left", width, nowrap = true } = {}) {
+  const c = EMAIL_BRAND.colors;
+  const widthStyle = width ? `width:${width}` : "";
+  const wrapStyle = nowrap ? "white-space:nowrap" : "";
+  return `
+    <td align="${align}" style="padding:0 6px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:10px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:${c.muted};${widthStyle};${wrapStyle}">
+      ${escapeHtml(label)}
+    </td>
+  `;
+}
+
+function emailTableCell(content, { align = "left", width, nowrap = false, muted = false } = {}) {
+  const c = EMAIL_BRAND.colors;
+  const widthStyle = width ? `width:${width}` : "";
+  const wrapStyle = nowrap ? "white-space:nowrap" : "";
+  return `
+    <td align="${align}" style="padding:10px 6px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:13px;line-height:1.45;color:${muted ? c.muted : c.text};vertical-align:top;${widthStyle};${wrapStyle}">
+      ${content}
+    </td>
+  `;
+}
+
+function consolidatedOrderDetailsTable(order) {
+  const rows = Array.isArray(order?.consolidated?.orderDetails) ? order.consolidated.orderDetails : [];
+  if (!rows.length) return "";
+  const c = EMAIL_BRAND.colors;
+  const body = rows.map((row) => `
+    <tr>
+      ${emailTableCell(`<span style="font-size:11px;letter-spacing:0;color:${c.muted}">${escapeHtml(row.orderId || "—")}</span>`, { nowrap: true, width: "146px" })}
+      ${emailTableCell(escapeHtml(row.name || "Item"))}
+      ${emailTableCell(String(Math.max(0, Number(row.qty) || 0)), { align: "center", nowrap: true, muted: true, width: "36px" })}
+      ${emailTableCell(formatPeso(row.dpAmount), { align: "right", nowrap: true, width: "104px" })}
+    </tr>
+  `).join("");
+  const totalDp = order?.consolidated?.totals?.totalDp;
+  return `
+    ${sectionHeading("Order details")}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px;table-layout:fixed">
+      <tr>
+        ${emailTableHeaderCell("Order #", { width: "146px" })}
+        ${emailTableHeaderCell("Product")}
+        ${emailTableHeaderCell("Qty", { align: "center", width: "36px" })}
+        ${emailTableHeaderCell("Downpayment", { align: "right", width: "104px" })}
+      </tr>
+      ${body}
+    </table>
+    ${totalsBlock([{ label: "Total downpayment:", value: formatPeso(totalDp) }])}
+    <div style="clear:both;height:20px"></div>
+  `;
+}
+
+function consolidatedAfterItemsTable(order) {
   const items = Array.isArray(order?.consolidated?.items) ? order.consolidated.items : [];
   if (!items.length) return "";
-  const c = EMAIL_BRAND.colors;
   const rows = items.map((item) => `
     <tr>
-      <td style="padding:12px 12px 12px 16px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;line-height:1.45;color:${c.text};vertical-align:top">
-        ${escapeHtml(item.name || "Item")}
-      </td>
-      <td align="center" style="padding:12px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;color:${c.muted};vertical-align:top;width:56px;white-space:nowrap">
-        ${Math.max(0, Number(item.newQty) || 0)}
-      </td>
-      <td align="right" style="padding:12px 16px 12px 12px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;color:${c.text};vertical-align:top;width:110px;white-space:nowrap">
-        ${formatPeso(item.newAmount)}
-      </td>
+      ${emailTableCell(escapeHtml(item.name || "Item"))}
+      ${emailTableCell(String(Math.max(0, Number(item.totalQty) || 0)), { align: "center", nowrap: true, muted: true, width: "36px" })}
+      ${emailTableCell(formatPeso(item.totalDp), { align: "right", nowrap: true, muted: true, width: "92px" })}
+      ${emailTableCell(String(Math.max(0, Number(item.newQty) || 0)), { align: "center", nowrap: true, width: "56px" })}
+      ${emailTableCell(formatPeso(item.newAmount), { align: "right", nowrap: true, width: "96px" })}
     </tr>
   `).join("");
   return `
-    ${sectionHeading("Allocated items")}
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px">
+    ${sectionHeading("Consolidated items")}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px;table-layout:fixed">
       <tr>
-        <td style="padding:0 12px 8px 16px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted}">Item</td>
-        <td align="center" style="padding:0 8px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted};width:56px">Qty</td>
-        <td align="right" style="padding:0 16px 8px 12px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted};width:110px">Amount</td>
+        ${emailTableHeaderCell("Product")}
+        ${emailTableHeaderCell("Qty", { align: "center", width: "36px" })}
+        ${emailTableHeaderCell("Downpayment", { align: "right", width: "92px" })}
+        ${emailTableHeaderCell("New Qty", { align: "center", width: "56px" })}
+        ${emailTableHeaderCell("New Amount", { align: "right", width: "96px" })}
       </tr>
       ${rows}
     </table>
   `;
 }
 
+function consolidatedNoteBlock(order) {
+  const note = String(order?.notes || "").trim();
+  if (!note) return "";
+  return `
+    ${sectionHeading("Note")}
+    ${quoteBlock(note)}
+    <div style="height:12px"></div>
+  `;
+}
+
+function consolidatedEmailTables(order) {
+  return `${consolidatedOrderDetailsTable(order)}${consolidatedAfterItemsTable(order)}${consolidatedTotalsBlock(order)}${consolidatedNoteBlock(order)}`;
+}
+
 function consolidatedTotalsBlock(order) {
   const totals = order?.consolidated?.totals || {};
   const net = consolidatedNet(order);
   const rows = [
-    { label: "New total", value: formatPeso(totals.newTotal) },
-    { label: "Downpayment", value: formatPeso(totals.totalDp) },
+    { label: "New total:", value: formatPeso(totals.newTotal) },
+    { label: "Total downpayment:", value: formatPeso(totals.totalDp) },
     {
-      label: `${totals.netLabel || (net < 0 ? "Refund" : net > 0 ? "Balance due" : "Settled")}:`,
+      label: `${consolidatedNetLabel(order)}:`,
       value: formatPeso(Math.abs(net)),
       strong: true,
     },
@@ -209,11 +286,17 @@ function statusAttachmentBlock(attachment) {
     </div>`;
 }
 
-function orderMeta(order) {
-  const ids = consolidatedOrderIds(order);
-  const label = ids.length > 1 ? ids.join(", ") : (ids[0] || order.id);
+function orderMeta(order, { consolidated = false } = {}) {
+  const date = escapeHtml(formatEmailDate(order.date));
+  if (consolidated) {
+    const id = consolidatedId(order);
+    if (!id) return metaLine(date);
+    return metaLine(
+      `<strong style="color:${EMAIL_BRAND.colors.text}">${escapeHtml(id)}</strong> · ${date}`,
+    );
+  }
   return metaLine(
-    `<strong style="color:${EMAIL_BRAND.colors.text}">${escapeHtml(label)}</strong> · ${escapeHtml(formatEmailDate(order.date))}`,
+    `<strong style="color:${EMAIL_BRAND.colors.text}">${escapeHtml(order.id)}</strong> · ${date}`,
   );
 }
 
@@ -374,6 +457,7 @@ function buildPlaceholderMap(order) {
     allocation: allocationOfOrdered(item) || `${allocated} of ${qty}`,
     finalTotal: formatPeso(item ? itemFinalTotal(item) : 0),
     orders: consolidatedOrderIds(order).join(", "),
+    consolidated: consolidatedId(order),
   };
 }
 
@@ -797,14 +881,9 @@ const TEMPLATES = {
     footer: "Stock is not reserved until payment is confirmed.",
   },
   consolidated_allocation: {
-    subject: (order) => {
-      const net = consolidatedNet(order);
-      if (net < 0) return "Allocation update — refund due";
-      if (net > 0) return "Allocation update — balance due";
-      return "Allocation update";
-    },
+    subject: () => "Allocation confirmed",
     preheader: "Your allocated quantities are confirmed.",
-    title: "Allocation update",
+    title: "Allocation confirmed",
     lead: (order) => `Hello <strong>${escapeHtml(order.customer)}</strong>,`,
     body: () => "We reviewed your related orders and confirmed the allocated quantities below.",
     footer: (order) => (consolidatedNet(order) < 0 ? getSupportContactHtml() : ""),
@@ -847,20 +926,19 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
 
   const isConsolidated = emailType === "consolidated_allocation";
   const net = consolidatedNet(order);
-  const consolidatedTitle = net < 0
-    ? "Allocation update — refund due"
-    : net > 0
-      ? "Allocation update — balance due"
-      : template.title;
+  const resolvedSubject = subjectOverride
+    ? subjectOverride.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => buildPlaceholderMap(order)[key] ?? "")
+    : template.subject(order);
+  const heading = isConsolidated ? escapeHtml(resolvedSubject) : template.title;
   const bodyHtml = `
     <p style="margin:0 0 6px;font-family:Inter,Arial,sans-serif;font-size:22px;font-weight:700;line-height:1.3;color:${EMAIL_BRAND.colors.ink}">
-      ${isConsolidated ? consolidatedTitle : template.title}
+      ${heading}
     </p>
-    ${orderMeta(order)}
+    ${orderMeta(order, { consolidated: isConsolidated })}
     ${bodyLead(template.lead(order))}
     ${!showSummary && !isConsolidated ? itemFocusBlock(order) : ""}
     ${bodyOverride ? renderOverrideBody(order, bodyOverride) : bodyText(template.body(order))}
-    ${isConsolidated ? `${consolidatedItemsTable(order)}${consolidatedTotalsBlock(order)}` : ""}
+    ${isConsolidated ? consolidatedEmailTables(order) : ""}
     ${showSummary && !isConsolidated ? invoiceSummary(order, emailType) : ""}
     ${showMilestones && !isConsolidated ? preorderMilestones(item, emailType) : ""}
     ${customerActionButtonsBlock(emailType, order)}
@@ -873,24 +951,40 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
 
   const links = getEmailLinks();
   const text = [
-    isConsolidated ? consolidatedTitle : template.title,
+    isConsolidated ? resolvedSubject : template.title,
     "",
-    isConsolidated ? `Orders: ${consolidatedOrderIds(order).join(", ")}` : `Order: ${order.id}`,
+    isConsolidated
+      ? (consolidatedId(order) ? `${consolidatedId(order)} · ${formatEmailDate(order.date)}` : formatEmailDate(order.date))
+      : `Order: ${order.id}`,
     !isConsolidated && item ? `Item: ${itemLabel(item)}` : "",
     "",
     plainBody,
   ];
   if (isConsolidated) {
+    const details = order.consolidated?.orderDetails || [];
+    if (details.length) {
+      text.push("", "Order details");
+      for (const row of details) {
+        text.push(`${row.orderId}  ${row.name}  ×${Math.max(0, Number(row.qty) || 0)}  ${formatPeso(row.dpAmount)}`);
+      }
+      text.push(`Total downpayment: ${formatPeso(order.consolidated?.totals?.totalDp)}`);
+    }
+    text.push("", "Consolidated items");
     for (const row of order.consolidated?.items || []) {
-      text.push(`${row.name} ×${Math.max(0, Number(row.newQty) || 0)} — ${formatPeso(row.newAmount)}`);
+      text.push(
+        `${row.name}  ${Math.max(0, Number(row.totalQty) || 0)} → ${Math.max(0, Number(row.newQty) || 0)}  DP ${formatPeso(row.totalDp)}  New ${formatPeso(row.newAmount)}`,
+      );
     }
     const totals = order.consolidated?.totals || {};
     text.push(
       "",
       `New total: ${formatPeso(totals.newTotal)}`,
-      `Downpayment: ${formatPeso(totals.totalDp)}`,
-      `${totals.netLabel || "Settled"}: ${formatPeso(Math.abs(net))}`,
+      `Total downpayment: ${formatPeso(totals.totalDp)}`,
+      `${consolidatedNetLabel(order)}: ${formatPeso(Math.abs(net))}`,
     );
+    if (String(order.notes || "").trim()) {
+      text.push("", "Note", String(order.notes).trim());
+    }
   }
 
   if (BALANCE_ACTION_EMAIL_TYPES.has(emailType) || (isConsolidated && net > 0)) {
@@ -944,10 +1038,6 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
   const footerNote = showReminder
     ? preorderReminderBlock(reminderOpts)
     : (typeof template.footer === "function" ? template.footer(order) : template.footer);
-
-  const resolvedSubject = subjectOverride
-    ? subjectOverride.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => buildPlaceholderMap(order)[key] ?? "")
-    : template.subject(order);
 
   return {
     subject: resolvedSubject,

@@ -34,7 +34,7 @@ import { formatOrderTimestamp } from "../lib/orderTimestamps.js";
 
 export const ORDER_SUMMARY_GRID = "36px 28px minmax(140px, 1.1fr) minmax(120px, 1fr) minmax(140px, 1.3fr) minmax(120px, 0.9fr) auto";
 export const ORDER_SUMMARY_GRID_NO_SELECT = "28px minmax(140px, 1.1fr) minmax(120px, 1fr) minmax(140px, 1.3fr) minmax(120px, 0.9fr) auto";
-export const LINEITEM_GRID = "minmax(160px, 1.25fr) minmax(100px, 0.85fr) minmax(72px, 0.6fr) minmax(88px, 0.65fr) minmax(110px, 0.85fr) minmax(110px, 0.85fr)";
+export const LINEITEM_GRID = "minmax(160px, 1.25fr) minmax(100px, 0.85fr) minmax(72px, 0.6fr) minmax(110px, 0.75fr) minmax(110px, 0.85fr) minmax(110px, 0.85fr)";
 export const ORDER_TABLE_MIN_WIDTH = 760;
 const LINEITEM_TABLE_MIN_WIDTH = 720;
 
@@ -299,7 +299,7 @@ export default function AdminOrderAccordionRow({
                 <GridHeaderCell>Item</GridHeaderCell>
                 <GridHeaderCell>Stage</GridHeaderCell>
                 <GridHeaderCell>Allocation</GridHeaderCell>
-                <GridHeaderCell sx={{ textAlign: "right" }}>Balance</GridHeaderCell>
+                <GridHeaderCell>Balance</GridHeaderCell>
                 <GridHeaderCell>Payment</GridHeaderCell>
                 <GridHeaderCell>Status</GridHeaderCell>
               </Box>
@@ -333,7 +333,7 @@ export default function AdminOrderAccordionRow({
                     <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.78rem" }}>
                       {preorder ? allocationLabelForItem(item) : "—"}
                     </Typography>
-                    <Typography sx={{ fontWeight: 700, fontSize: "0.82rem", textAlign: "right" }}>
+                    <Typography sx={{ fontWeight: 700, fontSize: "0.82rem" }}>
                       {(item.balanceDue ?? 0) > 0 ? PESO.format(item.balanceDue) : "—"}
                     </Typography>
                     <Box>

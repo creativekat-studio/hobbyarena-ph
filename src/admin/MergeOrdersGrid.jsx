@@ -55,6 +55,9 @@ import { compareOrdersByOrderNo, displayConsolidatedOrderId, withConsolidatedDis
 import { lineItemAmount } from "../lib/orderRevenue.js";
 import { formatOrderTimestamp } from "../lib/orderTimestamps.js";
 import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
+import { TrashIcon } from "../components/icons.jsx";
+import { compressProofFile } from "../lib/imageCompression.js";
+import { UPLOAD_PROOF_DISCLAIMER, validateUploadFileSize } from "../lib/uploadLimits.js";
 import {
   AdminGridHeaderLabel,
   ADMIN_LIST_SCROLL_SX,
@@ -374,11 +377,20 @@ function OrderDetailsTable({
         component="table"
         sx={{
           width: "100%",
-          minWidth: 860,
+          minWidth: 1040,
           borderCollapse: "collapse",
-          tableLayout: "auto",
+          tableLayout: "fixed",
         }}
       >
+        <Box component="colgroup">
+          <Box component="col" sx={{ width: "22%" }} />
+          <Box component="col" sx={{ width: "6%" }} />
+          <Box component="col" sx={{ width: "11%" }} />
+          <Box component="col" sx={{ width: "12%" }} />
+          <Box component="col" sx={{ width: "12%" }} />
+          <Box component="col" sx={{ width: "16%" }} />
+          <Box component="col" sx={{ width: "21%" }} />
+        </Box>
         <Box component="thead">
           <Box component="tr">
             {ORDER_DETAIL_COLUMNS.map((column) => (
@@ -530,48 +542,97 @@ function OrderDetailsTable({
             );
           })}
         </Box>
-      </Box>
-      </Box>
-      <Box
-        component="table"
-        sx={{
-          width: "100%",
-          minWidth: 860,
-          borderCollapse: "collapse",
-          tableLayout: "auto",
-        }}
-      >
-        <Box component="tbody">
+        <Box component="tfoot">
           <Box component="tr">
-            {ORDER_DETAIL_COLUMNS.map((column) => {
-              const value = {
-                unit: "Total",
-                dp: PESO.format(workbook.totals?.totalDp || 0),
-                balance: PESO.format(totalBalance),
-              }[column.key];
-              return (
-                <Box
-                  component="td"
-                  key={`total-${column.key}`}
-                  sx={{
-                    ...cellSx,
-                    borderColor: "divider",
-                    borderTop: "1px solid",
-                    textAlign: column.align || "right",
-                    fontFamily: MONO_FONT,
-                    fontWeight: 800,
-                    bgcolor: footerBg,
-                  }}
-                >
-                  {value}
-                </Box>
-              );
-            })}
+            <Box
+              component="td"
+              colSpan={3}
+              sx={{
+                ...cellSx,
+                borderColor: "divider",
+                position: "sticky",
+                bottom: 0,
+                zIndex: 2,
+                textAlign: "right",
+                fontFamily: MONO_FONT,
+                fontWeight: 800,
+                bgcolor: footerBg,
+              }}
+            >
+              Total
+            </Box>
+            <Box
+              component="td"
+              sx={{
+                ...cellSx,
+                borderColor: "divider",
+                position: "sticky",
+                bottom: 0,
+                zIndex: 2,
+                textAlign: "right",
+                fontFamily: MONO_FONT,
+                fontWeight: 800,
+                bgcolor: footerBg,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {PESO.format(workbook.totals?.totalDp || 0)}
+            </Box>
+            <Box
+              component="td"
+              sx={{
+                ...cellSx,
+                borderColor: "divider",
+                position: "sticky",
+                bottom: 0,
+                zIndex: 2,
+                textAlign: "right",
+                fontFamily: MONO_FONT,
+                fontWeight: 800,
+                bgcolor: footerBg,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {PESO.format(totalBalance)}
+            </Box>
+            <Box
+              component="td"
+              colSpan={2}
+              sx={{
+                ...cellSx,
+                borderColor: "divider",
+                position: "sticky",
+                bottom: 0,
+                zIndex: 2,
+                bgcolor: footerBg,
+              }}
+            />
           </Box>
         </Box>
       </Box>
+      </Box>
     </Box>
   );
+}
+
+function AttachmentIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" {...props}>
+      <path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z" />
+    </svg>
+  );
+}
+
+function emailExtrasFromOrders(orders) {
+  const primary = (orders || []).find((order) => order?.mergedEmailNote || order?.mergedEmailAttachment) || orders?.[0] || {};
+  return {
+    note: String(primary.mergedEmailNote || "").trim(),
+    attachment: primary.mergedEmailAttachment || null,
+  };
+}
+
+function attachmentLabel(attachment) {
+  return attachment?.name || attachment?.label || "Attachment";
 }
 
 function MergeWorkbookView({
@@ -585,6 +646,11 @@ function MergeWorkbookView({
   onPaymentChange,
   onStatusChange,
   statusWarning = false,
+  note = "",
+  attachment = null,
+  onNoteChange,
+  onAttachmentChange,
+  attachmentError = "",
 }) {
   const theme = useTheme();
   const byOrder = useMemo(
@@ -706,13 +772,96 @@ function MergeWorkbookView({
           ) : null}
         </Box>
       </Box>
+
+      <Box>
+        <SectionTitle>Note & attachment:</SectionTitle>
+        <Stack spacing={1.5} sx={{ mt: 1 }}>
+          <TextField
+            fullWidth
+            multiline
+            minRows={3}
+            value={note}
+            onChange={(event) => onNoteChange?.(event.target.value)}
+            placeholder="Optional note included in the customer email…"
+            inputProps={{ "aria-label": "Email note" }}
+          />
+          <Box>
+            <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", mb: 1 }}>
+              Attachment
+              <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                (optional)
+              </Typography>
+            </Typography>
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+              <Button
+                component="label"
+                size="small"
+                variant="outlined"
+                startIcon={<AttachmentIcon sx={{ fontSize: 16 }} />}
+                sx={{ fontFamily: MONO_FONT, letterSpacing: 0.3, textTransform: "uppercase" }}
+              >
+                {attachment ? "Replace file" : "Attach file"}
+                <input
+                  type="file"
+                  hidden
+                  accept="image/*,application/pdf"
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (!file || !onAttachmentChange) return;
+                    if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+                      onAttachmentChange(null, "Attachment must be an image or PDF.");
+                      return;
+                    }
+                    const sizeError = validateUploadFileSize(file);
+                    if (sizeError) {
+                      onAttachmentChange(null, sizeError);
+                      return;
+                    }
+                    try {
+                      const dataUrl = await compressProofFile(file);
+                      onAttachmentChange({
+                        name: file.name,
+                        dataUrl,
+                        type: file.type === "application/pdf" || /\.pdf$/i.test(file.name) ? "pdf" : "image",
+                      }, "");
+                    } catch (error) {
+                      onAttachmentChange(null, error.message || "Could not read attachment.");
+                    }
+                  }}
+                />
+              </Button>
+              {attachment ? (
+                <>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontFamily: MONO_FONT, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {attachmentLabel(attachment)}
+                  </Typography>
+                  <IconButton size="small" color="error" aria-label="Remove attachment" onClick={() => onAttachmentChange?.(null, "")}>
+                    <TrashIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </>
+              ) : (
+                <Typography variant="caption" color="text.secondary">
+                  Image or PDF — included in the email when you send.
+                </Typography>
+              )}
+              <Typography variant="caption" color="text.secondary" sx={{ width: "100%", lineHeight: 1.4 }}>
+                {UPLOAD_PROOF_DISCLAIMER}
+              </Typography>
+            </Stack>
+            {attachmentError ? (
+              <Alert severity="error" sx={{ mt: 1 }}>{attachmentError}</Alert>
+            ) : null}
+          </Box>
+        </Stack>
+      </Box>
     </Stack>
   );
 }
 
-async function sendMergedOrderEmails(orders, sendConsolidatedAllocationEmail) {
+async function sendMergedOrderEmails(orders, sendConsolidatedAllocationEmail, extras) {
   if (!sendConsolidatedAllocationEmail) return;
-  await sendConsolidatedAllocationEmail(orders);
+  await sendConsolidatedAllocationEmail(orders, extras);
 }
 
 function customerContactFromOrders(orders) {
@@ -743,7 +892,7 @@ function totalItemQty(rows) {
 
 const CONSOLIDATED_SUMMARY_GRID = "28px minmax(148px, 1fr) minmax(120px, 1fr) minmax(160px, 0.85fr) minmax(110px, 0.85fr) minmax(130px, 0.95fr) minmax(120px, 0.85fr) auto";
 const CONSOLIDATED_TABLE_MIN_WIDTH = 980;
-const CONSOLIDATED_LINE_GRID = "minmax(180px, 1.4fr) minmax(72px, 0.6fr) minmax(88px, 0.65fr) minmax(110px, 0.85fr) minmax(110px, 0.85fr) auto";
+const CONSOLIDATED_LINE_GRID = "minmax(180px, 1.4fr) minmax(72px, 0.6fr) minmax(110px, 0.75fr) minmax(110px, 0.85fr) minmax(110px, 0.85fr) auto";
 const CONSOLIDATED_LINE_MIN_WIDTH = 760;
 
 function consolidatedLineGridSx(overrides = {}) {
@@ -981,7 +1130,7 @@ function MergedSetAccordionRow({
               >
                 <AdminGridHeaderLabel>Item</AdminGridHeaderLabel>
                 <AdminGridHeaderLabel>Allocation</AdminGridHeaderLabel>
-                <AdminGridHeaderLabel sx={{ textAlign: "right" }}>Balance</AdminGridHeaderLabel>
+                <AdminGridHeaderLabel>Balance</AdminGridHeaderLabel>
                 <AdminGridHeaderLabel>Payment</AdminGridHeaderLabel>
                 <AdminGridHeaderLabel>Status</AdminGridHeaderLabel>
                 <Box />
@@ -1015,7 +1164,7 @@ function MergedSetAccordionRow({
                     <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.78rem" }}>
                       {preorder ? allocationLabelForItem(item) : "—"}
                     </Typography>
-                    <Typography sx={{ fontWeight: 700, fontSize: "0.82rem", textAlign: "right" }}>
+                    <Typography sx={{ fontWeight: 700, fontSize: "0.82rem" }}>
                       {row.balanceDue > 0 ? PESO.format(row.balanceDue) : "—"}
                     </Typography>
                     <Box>
@@ -1066,6 +1215,18 @@ function ConsolidatedOrderViewDialog({
   const workbook = useMemo(() => (set ? buildLiveMergeWorkbook(set.orders) : null), [set]);
   const summary = useMemo(() => (set ? summarizeMergedSet(set.orders) : null), [set]);
   const contact = customerContactFromOrders(set?.orders);
+  const [note, setNote] = useState("");
+  const [attachment, setAttachment] = useState(null);
+  const [attachmentError, setAttachmentError] = useState("");
+
+  useEffect(() => {
+    if (!open || !set) return;
+    const extras = emailExtrasFromOrders(set.orders);
+    setNote(extras.note);
+    setAttachment(extras.attachment);
+    setAttachmentError("");
+  }, [open, set?.id]);
+
   if (!set || !workbook || !summary) return null;
   const consolidatedId = displayConsolidatedOrderId(set);
 
@@ -1106,7 +1267,18 @@ function ConsolidatedOrderViewDialog({
           flex: 1,
         }}
       >
-        <MergeWorkbookView workbook={workbook} orders={set.orders} />
+        <MergeWorkbookView
+          workbook={workbook}
+          orders={set.orders}
+          note={note}
+          attachment={attachment}
+          attachmentError={attachmentError}
+          onNoteChange={setNote}
+          onAttachmentChange={(next, error) => {
+            setAttachment(next);
+            setAttachmentError(error || "");
+          }}
+        />
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
         <Button onClick={onClose} color="inherit" sx={{ mr: "auto" }}>
@@ -1115,7 +1287,7 @@ function ConsolidatedOrderViewDialog({
         <Button
           variant="outlined"
           disabled={!sendEnabled || sending}
-          onClick={onSend}
+          onClick={() => onSend?.({ note, attachment })}
           sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
         >
           {sending ? "Sending…" : "Send email"}
@@ -1189,6 +1361,9 @@ export function MergeSimulateDialog({
   const [confirmSend, setConfirmSend] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
+  const [note, setNote] = useState("");
+  const [attachment, setAttachment] = useState(null);
+  const [attachmentError, setAttachmentError] = useState("");
   const selectionKey = sourceRows.map((row) => row.key).join("|");
   const applyLabel = `Apply to order${summary.orderCount === 1 ? "" : "s"} (${summary.orderCount})`;
 
@@ -1198,6 +1373,9 @@ export function MergeSimulateDialog({
     setNewQtyByProduct({});
     setStatusByRow({});
     setPaymentByRow({});
+    setNote("");
+    setAttachment(null);
+    setAttachmentError("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, selectionKey]);
 
@@ -1255,7 +1433,7 @@ export function MergeSimulateDialog({
     setSending(true);
     try {
       const patched = writeSimulation();
-      await sendMergedOrderEmails(patched, sendConsolidatedAllocationEmail);
+      await sendMergedOrderEmails(patched, sendConsolidatedAllocationEmail, { note, attachment });
       setConfirmSend(false);
       onApplied?.();
     } catch (error) {
@@ -1328,6 +1506,14 @@ export function MergeSimulateDialog({
                 setStatusByRow((prev) => ({ ...prev, [row.key]: status }));
               }}
               statusWarning={statusesNeedUpdate}
+              note={note}
+              attachment={attachment}
+              attachmentError={attachmentError}
+              onNoteChange={setNote}
+              onAttachmentChange={(next, error) => {
+                setAttachment(next);
+                setAttachmentError(error || "");
+              }}
             />
           )}
         </DialogContent>
@@ -1416,11 +1602,11 @@ export function MergedOrdersPanel({
     setExpandedSetId((current) => (current === id ? null : id));
   }
 
-  async function handleSendSet(set) {
+  async function handleSendSet(set, extras) {
     setSendError("");
     setSendingId(set.id);
     try {
-      await sendMergedOrderEmails(set.orders, sendConsolidatedAllocationEmail);
+      await sendMergedOrderEmails(set.orders, sendConsolidatedAllocationEmail, extras);
     } catch (error) {
       setSendError(error?.message || "Could not send email.");
     } finally {
@@ -1489,7 +1675,7 @@ export function MergedOrdersPanel({
         sending={Boolean(viewingSet && sendingId === viewingSet.id)}
         sendEnabled={Boolean(sendConsolidatedAllocationEmail)}
         onSend={viewingSet && sendConsolidatedAllocationEmail
-          ? () => handleSendSet(viewingSet)
+          ? (extras) => handleSendSet(viewingSet, extras)
           : undefined}
       />
     </Box>

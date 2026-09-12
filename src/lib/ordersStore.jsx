@@ -55,6 +55,7 @@ import { resolveOrderStatusEmailTypeForCurrentState, ORDER_STATUS_EMAIL_LABELS }
 import { buildConsolidatedEmailOrder, buildLiveMergeWorkbook } from "./orderMergeSimulation.js";
 import { getEmailBodyOverride, getEmailSubjectOverride, getPreorderReminderConfig } from "./emailTemplatesStore.js";
 import { normalizeProofDataUrl } from "./imageCompression.js";
+import { uploadOrderProofFromDataUrl } from "./firebase/repositories/uploads.js";
 import { useInventory } from "./inventoryStore.jsx";
 
 const STORAGE_KEY = "hobbyarena:orders";
@@ -613,26 +614,65 @@ export function OrdersProvider({ children }) {
       return dispatchStatusEmail(order, payload);
     };
 
-    const sendConsolidatedAllocationEmail = async (orders) => {
+    const sendConsolidatedAllocationEmail = async (orders, extras = {}) => {
       const list = (orders || []).filter(Boolean);
       if (!list.length) throw new Error("No orders to email.");
       const primary = list[0];
       if (!primary.email) throw new Error("Customer email is missing.");
       const workbook = buildLiveMergeWorkbook(list);
+      const note = String(extras.note ?? primary.mergedEmailNote ?? "").trim();
+      let attachment = extras.attachment || primary.mergedEmailAttachment || null;
+      const rawUrl = attachment?.url || attachment?.dataUrl || "";
+      if (attachment && rawUrl.startsWith("data:") && firebaseEnabled) {
+        try {
+          const storageUrl = await uploadOrderProofFromDataUrl(
+            primary.id,
+            rawUrl,
+            attachment.name || attachment.label || "attachment",
+          );
+          attachment = {
+            label: attachment.name || attachment.label || "Attachment",
+            url: storageUrl,
+            type: attachment.type || (/pdf/i.test(rawUrl) || /\.pdf$/i.test(attachment.name || "") ? "pdf" : "image"),
+          };
+        } catch (error) {
+          console.warn("[orders] Could not upload consolidated email attachment:", error);
+          attachment = {
+            label: attachment.name || attachment.label || "Attachment",
+            url: rawUrl,
+            type: attachment.type || (/pdf/i.test(rawUrl) ? "pdf" : "image"),
+          };
+        }
+      } else if (attachment && rawUrl) {
+        attachment = {
+          label: attachment.name || attachment.label || "Attachment",
+          url: rawUrl,
+          type: attachment.type || (/pdf/i.test(rawUrl) || /\.pdf$/i.test(attachment.name || attachment.label || "") ? "pdf" : "image"),
+        };
+      } else {
+        attachment = null;
+      }
+      const persistAttachment = attachment?.url && String(attachment.url).startsWith("http")
+        ? attachment
+        : null;
       const payload = {
         emailType: "consolidated_allocation",
         bodyOverride: getEmailBodyOverride("consolidated_allocation"),
         subjectOverride: getEmailSubjectOverride("consolidated_allocation"),
         reminder: getPreorderReminderConfig(),
-        order: buildConsolidatedEmailOrder(list, workbook),
+        order: {
+          ...buildConsolidatedEmailOrder(list, workbook),
+          ...(note ? { notes: note } : {}),
+          ...(attachment ? { statusAttachment: attachment } : {}),
+        },
       };
       return new Promise((resolve, reject) => {
         queueOrderStatusEmail(payload, ({ ok, result, error }) => {
           const at = new Date().toISOString();
-          const ids = new Set(list.map((order) => order.id));
+          const idSet = new Set(list.map((order) => order.id));
           setOrders((current) => {
             const next = current.map((row) => {
-              if (!ids.has(row.id)) return row;
+              if (!idSet.has(row.id)) return row;
               const source = list.find((order) => order.id === row.id) || row;
               const record = { ...buildStatusEmailRecord("consolidated_allocation", source.email, { ok, result, error }), at };
               const trailEntry = {
@@ -643,12 +683,17 @@ export function OrdersProvider({ children }) {
                   { ok, result, error },
                 ),
                 at,
-                note: "Consolidated allocation email.",
+                note: note || "Consolidated allocation email.",
+                ...(persistAttachment
+                  ? { attachment: buildTrailAttachment(persistAttachment.url, persistAttachment.label, "admin") }
+                  : {}),
               };
               const updated = {
                 ...row,
                 emails: [...(row.emails || []), record],
                 trail: [...(row.trail || []), trailEntry],
+                ...(note ? { mergedEmailNote: note } : {}),
+                ...(persistAttachment ? { mergedEmailAttachment: persistAttachment } : {}),
               };
               persistOrder(updated);
               return updated;

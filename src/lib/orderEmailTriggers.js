@@ -186,5 +186,5 @@ export const ORDER_STATUS_EMAIL_LABELS = {
   order_fulfilled: "Order fulfilled",
   full_refund_sent: "Full refund sent",
   payment_not_received: "Payment not received (stock released)",
-  consolidated_allocation: "Consolidated allocation",
+  consolidated_allocation: "Consolidated Order",
 };

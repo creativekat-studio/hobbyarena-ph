@@ -25,7 +25,8 @@ export const EMAIL_PLACEHOLDERS = [
   { token: "{{customer}}", description: "Customer name" },
   { token: "{{item}}", description: "Item name (with qty)" },
   { token: "{{order}}", description: "Order number" },
-  { token: "{{orders}}", description: "Consolidated order numbers" },
+  { token: "{{orders}}", description: "Source order numbers" },
+  { token: "{{consolidated}}", description: "Consolidated order number (HA-C-…)" },
   { token: "{{balance}}", description: "Balance due" },
   { token: "{{refund}}", description: "Refund amount" },
   { token: "{{allocated}}", description: "Allocated qty" },
@@ -117,7 +118,7 @@ export const DEFAULT_EMAIL_BODIES = {
   payment_not_received:
     "We have not received your payment for this order, so we can no longer hold the stock for you — it has been released and may be purchased by other customers. If you still want the item, please place a new order while stock lasts. If you've already paid, upload proof via your account or Hobby Arena PH and we'll sort it out.",
   consolidated_allocation:
-    "We reviewed your related orders ({{orders}}) and confirmed the allocated quantities below.",
+    "We reviewed your related orders and confirmed the allocated quantities below.",
   password_reset: DEFAULT_PASSWORD_RESET_BODY,
 };
 
@@ -184,10 +185,23 @@ function writeSubjectStore(map) {
   }
 }
 
+const LEGACY_CONSOLIDATED_SUBJECTS = new Set([
+  "Allocation update — refund due",
+  "Allocation update — balance due",
+  "Allocation update",
+]);
+
 /** Custom subject override, or "" to keep the built-in subject. */
 export function getEmailSubjectOverride(emailType) {
   const stored = readSubjectStore()[emailType];
-  return typeof stored === "string" ? stored : "";
+  if (typeof stored !== "string" || !stored.trim()) return "";
+  if (emailType === "consolidated_allocation" && LEGACY_CONSOLIDATED_SUBJECTS.has(stored.trim())) {
+    const map = readSubjectStore();
+    delete map[emailType];
+    writeSubjectStore(map);
+    return "";
+  }
+  return stored;
 }
 
 export function setEmailSubjectOverride(emailType, subject) {

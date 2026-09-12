@@ -29,7 +29,7 @@ import {
   resolveOrderStatusForPayment,
   syncOrderRollup,
 } from "../data/orderWorkflow.js";
-import { compareOrdersByOrderNo, makeConsolidatedOrderId } from "./orderIds.js";
+import { compareOrdersByOrderNo, displayConsolidatedOrderId, makeConsolidatedOrderId } from "./orderIds.js";
 import { lineItemAmount, lineItemDepositPaid, lineItemEffectiveUnitPrice } from "./orderRevenue.js";
 import { roundMoney } from "./money.js";
 
@@ -608,6 +608,15 @@ export function buildConsolidatedEmailOrder(orders, workbook) {
   const totals = workbook?.totals || {};
   const net = Number(totals.net) || 0;
   const orderIds = list.map((order) => order.id).filter(Boolean);
+  const orderDetails = (workbook?.orderDetails || [])
+    .slice()
+    .sort((a, b) => compareOrdersByOrderNo({ id: a.orderId }, { id: b.orderId }))
+    .map((row) => ({
+      orderId: row.orderId,
+      name: row.name,
+      qty: row.qty,
+      dpAmount: Number(row.dpAmount) || 0,
+    }));
   return {
     id: primary.id || orderIds[0] || "",
     customer: primary.customer || "Customer",
@@ -623,9 +632,17 @@ export function buildConsolidatedEmailOrder(orders, workbook) {
     items: (workbook?.consolidated || []).map((row) => row.name).filter(Boolean).join(", "),
     lineItems: [],
     consolidated: {
+      id: displayConsolidatedOrderId({
+        id: primary.mergedSetId,
+        displayId: primary.mergedSetId,
+        orders: list,
+      }),
       orderIds,
+      orderDetails,
       items: (workbook?.consolidated || []).map((row) => ({
         name: row.name,
+        totalQty: Number(row.totalQty) || 0,
+        totalDp: Number(row.totalDp) || 0,
         newQty: row.newQty,
         newAmount: row.newAmount,
       })),
@@ -633,7 +650,7 @@ export function buildConsolidatedEmailOrder(orders, workbook) {
         newTotal: Number(totals.newTotal) || 0,
         totalDp: Number(totals.totalDp) || 0,
         net,
-        netLabel: totals.netLabel || (net < 0 ? "Refund" : net > 0 ? "Balance due" : "Settled"),
+        netLabel: net < 0 ? "Refund amount" : net > 0 ? "Balance" : "Settled",
       },
     },
   };
