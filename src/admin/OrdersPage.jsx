@@ -70,6 +70,8 @@ import {
 } from "./adminTableHeader.jsx";
 import AddOrderDialog from "./AddOrderDialog.jsx";
 import ExportOrdersDialog from "./ExportOrdersDialog.jsx";
+import MergeOrdersGrid from "./MergeOrdersGrid.jsx";
+import { buildMergeSourceRows } from "../lib/orderMergeSimulation.js";
 
 const ORDER_SORT_ACCESSORS = {
   order: (o) => resolveOrderPlacedAt(o)?.getTime() ?? 0,
@@ -446,7 +448,7 @@ export default function OrdersPage() {
   const navigate = useNavigate();
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
-  const { orders, ordersError, ordersReady, archiveOrders, restoreOrders } = useOrders();
+  const { orders, ordersError, ordersReady, archiveOrders, restoreOrders, updateOrder } = useOrders();
   const { items: inventoryItems } = useInventory();
   const { lines: catalogLines } = useCatalog();
   const costByProductId = useMemo(
@@ -463,6 +465,7 @@ export default function OrdersPage() {
   const [archiveTargetIds, setArchiveTargetIds] = useState([]);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [actionsAnchor, setActionsAnchor] = useState(null);
+  const [mergeOpen, setMergeOpen] = useState(false);
 
   function handleSort(key) {
     setSort((prev) => toggleSortState(prev, key, { defaultDir: key === "order" ? "desc" : "asc" }));
@@ -508,6 +511,17 @@ export default function OrdersPage() {
     setActionsAnchor(null);
     if (!ids.length) return;
     setArchiveTargetIds(ids);
+  }
+
+  function openMergeSimulation() {
+    const selected = orders.filter((order) => selectedIds.has(order.id) && !isArchivedOrder(order));
+    setActionsAnchor(null);
+    if (!buildMergeSourceRows(selected).length) return;
+    setMergeOpen(true);
+  }
+
+  function closeMergeSimulation() {
+    setMergeOpen(false);
   }
 
   function bulkRestore() {
@@ -573,13 +587,28 @@ export default function OrdersPage() {
   const rowIds = useMemo(() => new Set(rows.map((row) => row.id)), [rows]);
 
   useEffect(() => {
+    if (mergeOpen) return;
     setSelectedIds((prev) => {
       const next = new Set([...prev].filter((id) => rowIds.has(id)));
       return next.size === prev.size ? prev : next;
     });
-  }, [rowIds]);
+  }, [rowIds, mergeOpen]);
 
   const selectedCount = selectedIds.size;
+  const selectedOrders = useMemo(
+    () => orders.filter((order) => selectedIds.has(order.id) && !isArchivedOrder(order)),
+    [orders, selectedIds],
+  );
+  const selectedMergeRows = useMemo(
+    () => buildMergeSourceRows(selectedOrders),
+    [selectedOrders],
+  );
+  const canMergeSelected = selectedMergeRows.length > 0;
+
+  useEffect(() => {
+    if (mergeOpen && selectedOrders.length === 0) setMergeOpen(false);
+  }, [mergeOpen, selectedOrders.length]);
+
   const allLoadedSelected = visibleItems.length > 0 && visibleItems.every((row) => selectedIds.has(row.id));
   const someLoadedSelected = visibleItems.some((row) => selectedIds.has(row.id));
   const archiveCount = archiveTargetIds.length;
@@ -614,7 +643,10 @@ export default function OrdersPage() {
       <AdminPageHeader
         eyebrow="Sales"
         title="Orders"
-        subtitle="Work the pre-order pipeline: verify deposits, allocate stock, collect balance, then release for pickup."
+        subtitle={mergeOpen
+          ? "Selected orders stay on their own customers. This grid only simulates allocation and status — emails are not sent."
+          : "Work the pre-order pipeline: verify deposits, allocate stock, collect balance, then release for pickup."
+        }
         action={(
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ flexShrink: 0 }}>
             <Button
@@ -670,6 +702,16 @@ export default function OrdersPage() {
                   size="small"
                   variant="outlined"
                   color="inherit"
+                  disabled={!canMergeSelected}
+                  onClick={openMergeSimulation}
+                  sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
+                >
+                  Merge & simulate
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="inherit"
                   onClick={(event) => setActionsAnchor(event.currentTarget)}
                   sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
                 >
@@ -682,9 +724,12 @@ export default function OrdersPage() {
                 >
                   {viewingArchived ? (
                     <MenuItem onClick={bulkRestore}>Restore</MenuItem>
-                  ) : (
-                    <MenuItem onClick={requestBulkArchive} sx={{ color: "error.main" }}>Archive…</MenuItem>
-                  )}
+                  ) : [
+                    <MenuItem key="merge" disabled={!canMergeSelected} onClick={openMergeSimulation}>
+                      Merge & simulate
+                    </MenuItem>,
+                    <MenuItem key="archive" onClick={requestBulkArchive} sx={{ color: "error.main" }}>Archive…</MenuItem>,
+                  ]}
                 </Menu>
               </Stack>
             ) : null}
@@ -771,7 +816,15 @@ export default function OrdersPage() {
 
       {/* ── Grid panel (internal scroll + sticky header) ── */}
       <Box sx={{ ...ADMIN_LIST_PANEL_SX, ...panelSx }}>
-        {!ordersReady ? (
+        {mergeOpen ? (
+          <MergeOrdersGrid
+            orders={selectedOrders}
+            updateOrder={updateOrder}
+            surfaceBorderColor={surfaceBorderColor}
+            stickyHeaderBg={stickyHeaderBg}
+            onClose={closeMergeSimulation}
+          />
+        ) : !ordersReady ? (
           <Stack spacing={1.5} alignItems="center" sx={{ py: 6, color: "text.secondary" }}>
             <CircularProgress size={26} />
             <Typography variant="body2">Loading orders from Firestore…</Typography>
