@@ -45,6 +45,40 @@ function readReminderConfig(raw) {
   };
 }
 
+function readConsolidated(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const id = raw.id ? String(raw.id).trim().slice(0, 40) : "";
+  return {
+    ...(id ? { id } : {}),
+    orderIds: Array.isArray(raw.orderIds)
+      ? raw.orderIds.map((value) => String(value || "").trim()).filter(Boolean).slice(0, 40)
+      : [],
+    orderDetails: Array.isArray(raw.orderDetails)
+      ? raw.orderDetails.slice(0, 80).map((row) => ({
+        orderId: row?.orderId ? String(row.orderId).trim().slice(0, 40) : "",
+        name: row?.name ? String(row.name).slice(0, 200) : "Item",
+        qty: Math.max(0, Number(row?.qty) || 0),
+        dpAmount: Number(row?.dpAmount) || 0,
+      }))
+      : [],
+    items: Array.isArray(raw.items)
+      ? raw.items.slice(0, 40).map((item) => ({
+        name: item?.name ? String(item.name).slice(0, 200) : "Item",
+        totalQty: Math.max(0, Number(item?.totalQty) || 0),
+        totalDp: Number(item?.totalDp) || 0,
+        newQty: Math.max(0, Number(item?.newQty) || 0),
+        newAmount: Number(item?.newAmount) || 0,
+      }))
+      : [],
+    totals: {
+      newTotal: Number(raw.totals?.newTotal) || 0,
+      totalDp: Number(raw.totals?.totalDp) || 0,
+      net: Number(raw.totals?.net) || 0,
+      netLabel: raw.totals?.netLabel ? String(raw.totals.netLabel).slice(0, 40) : "",
+    },
+  };
+}
+
 function readPayload(body) {
   if (!body || typeof body !== "object") return null;
   const { emailType, order, bodyOverride, subjectOverride, reminder } = body;
@@ -70,6 +104,7 @@ function readPayload(body) {
       depositPercent: Number(order.depositPercent) || 30,
       date: order.date ? String(order.date) : "",
       items: order.items ? String(order.items) : "",
+      notes: order.notes ? String(order.notes).trim().slice(0, 2000) : "",
       lineItems: Array.isArray(order.lineItems) ? order.lineItems : [],
       updatedLineItem: order.updatedLineItem && typeof order.updatedLineItem === "object"
         ? {
@@ -90,28 +125,7 @@ function readPayload(body) {
           depositPaid: Number(order.updatedLineItem.depositPaid) || 0,
         }
         : null,
-      consolidated: order.consolidated && typeof order.consolidated === "object"
-        ? {
-          orderIds: Array.isArray(order.consolidated.orderIds)
-            ? order.consolidated.orderIds.map((id) => String(id || "").trim()).filter(Boolean).slice(0, 40)
-            : [],
-          items: Array.isArray(order.consolidated.items)
-            ? order.consolidated.items.slice(0, 40).map((item) => ({
-              name: item?.name ? String(item.name).slice(0, 200) : "Item",
-              newQty: Math.max(0, Number(item?.newQty) || 0),
-              newAmount: Number(item?.newAmount) || 0,
-            }))
-            : [],
-          totals: {
-            newTotal: Number(order.consolidated.totals?.newTotal) || 0,
-            totalDp: Number(order.consolidated.totals?.totalDp) || 0,
-            net: Number(order.consolidated.totals?.net) || 0,
-            netLabel: order.consolidated.totals?.netLabel
-              ? String(order.consolidated.totals.netLabel).slice(0, 40)
-              : "",
-          },
-        }
-        : null,
+      consolidated: readConsolidated(order.consolidated),
       statusAttachment: order.statusAttachment && typeof order.statusAttachment === "object"
         ? (() => {
           const raw = typeof order.statusAttachment.url === "string"
