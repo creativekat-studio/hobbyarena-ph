@@ -25,6 +25,7 @@ export const EMAIL_PLACEHOLDERS = [
   { token: "{{customer}}", description: "Customer name" },
   { token: "{{item}}", description: "Item name (with qty)" },
   { token: "{{order}}", description: "Order number" },
+  { token: "{{orders}}", description: "Consolidated order numbers" },
   { token: "{{balance}}", description: "Balance due" },
   { token: "{{refund}}", description: "Refund amount" },
   { token: "{{allocated}}", description: "Allocated qty" },
@@ -115,6 +116,8 @@ export const DEFAULT_EMAIL_BODIES = {
     "We have sent your full refund of {{refund}}. Please confirm once received.",
   payment_not_received:
     "We have not received your payment for this order, so we can no longer hold the stock for you — it has been released and may be purchased by other customers. If you still want the item, please place a new order while stock lasts. If you've already paid, upload proof via your account or Hobby Arena PH and we'll sort it out.",
+  consolidated_allocation:
+    "We reviewed your related orders ({{orders}}) and confirmed the allocated quantities below.",
   password_reset: DEFAULT_PASSWORD_RESET_BODY,
 };
 
@@ -156,6 +159,44 @@ export function getAllEmailBodyOverrides() {
 export function getEditableEmailBody(emailType) {
   const override = getEmailBodyOverride(emailType);
   return override || DEFAULT_EMAIL_BODIES[emailType] || "";
+}
+
+const SUBJECT_STORAGE_KEY = "hobbyarena:email-subjects";
+
+function readSubjectStore() {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(SUBJECT_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSubjectStore(map) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SUBJECT_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // ignore quota / serialization errors
+  }
+}
+
+/** Custom subject override, or "" to keep the built-in subject. */
+export function getEmailSubjectOverride(emailType) {
+  const stored = readSubjectStore()[emailType];
+  return typeof stored === "string" ? stored : "";
+}
+
+export function setEmailSubjectOverride(emailType, subject) {
+  const map = readSubjectStore();
+  const trimmed = String(subject ?? "").trim();
+  if (!trimmed) delete map[emailType];
+  else map[emailType] = trimmed;
+  writeSubjectStore(map);
+  return getEmailSubjectOverride(emailType);
 }
 
 export function setEmailBodyOverride(emailType, body) {

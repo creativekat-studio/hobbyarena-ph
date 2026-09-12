@@ -31,7 +31,6 @@ import {
   resolveOrderKindForItem,
   resolveOrderStatusForPayment,
 } from "../data/orderWorkflow.js";
-import { resolveOrderStatusEmailTypeForCurrentState } from "../lib/orderEmailTriggers.js";
 import {
   allocationRecordFromWorkbook,
   applyMergeSimulationToOrder,
@@ -344,8 +343,13 @@ function OrderDetailsTable({
     });
   }
 
+  const headerBg = theme.palette.background.paper;
+  const footerBg = theme.palette.mode === "dark"
+    ? alpha(theme.palette.primary.main, 0.16)
+    : alpha(theme.palette.primary.main, 0.08);
+
   return (
-    <Box sx={{ overflowX: "auto", border: "1px solid", borderColor: "divider" }}>
+    <Box sx={{ overflow: "auto", maxHeight: 360, border: "1px solid", borderColor: "divider" }}>
       <Box
         component="table"
         sx={{
@@ -364,7 +368,10 @@ function OrderDetailsTable({
                 sx={{
                   ...cellSx,
                   borderColor: "divider",
-                  bgcolor: alpha(theme.palette.text.primary, 0.03),
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 2,
+                  bgcolor: headerBg,
                   textAlign: column.align || "left",
                   fontFamily: MONO_FONT,
                   fontSize: "0.68rem",
@@ -504,7 +511,6 @@ function OrderDetailsTable({
           })}
           <Box component="tr">
             {ORDER_DETAIL_COLUMNS.map((column) => {
-              const footerBg = alpha(theme.palette.primary.main, 0.03);
               const value = {
                 unit: "Total",
                 dp: PESO.format(workbook.totals?.totalDp || 0),
@@ -517,6 +523,9 @@ function OrderDetailsTable({
                   sx={{
                     ...cellSx,
                     borderColor: "divider",
+                    position: "sticky",
+                    bottom: 0,
+                    zIndex: 2,
                     textAlign: column.align || "right",
                     fontFamily: MONO_FONT,
                     fontWeight: 800,
@@ -555,41 +564,6 @@ function MergeWorkbookView({
   return (
     <Stack spacing={2.5}>
       <Box>
-        <SectionTitle>Allocation Breakdown:</SectionTitle>
-        <Box sx={{ mt: 1 }}>
-          <ReportTable
-            minWidth={420}
-            columns={[
-              { key: "product", label: "Product" },
-              { key: "percent", label: "Allocation %", align: "center", width: "28%" },
-            ]}
-            rows={(workbook.breakdown || []).map((row) => ({
-              key: row.productKey,
-              cells: {
-                product: row.name,
-                percent: editable ? (
-                  <CompactField
-                    type="text"
-                    inputMode="decimal"
-                    value={percentByProduct[row.productKey] ?? ""}
-                    onChange={(value) => onPercentChange?.(row.productKey, value)}
-                    inputProps={{ "aria-label": `Allocation percent for ${row.name}` }}
-                    placeholder="0"
-                    InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
-                    sx={{ maxWidth: 96, mx: "auto" }}
-                  />
-                ) : (
-                  <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.8rem" }}>
-                    {Number(row.allocationPercent || 0).toFixed(2)}%
-                  </Typography>
-                ),
-              },
-            }))}
-          />
-        </Box>
-      </Box>
-
-      <Box>
         <SectionTitle>Order Details:</SectionTitle>
         <Box sx={{ mt: 1 }}>
           <OrderDetailsTable
@@ -605,13 +579,14 @@ function MergeWorkbookView({
         <SectionTitle>Consolidated Items:</SectionTitle>
         <Box sx={{ mt: 1 }}>
           <ReportTable
-            minWidth={640}
+            minWidth={760}
             columns={[
               { key: "product", label: "Product" },
-              { key: "qty", label: "Total Qty", align: "center", width: "12%" },
-              { key: "dp", label: "Total Downpayment", align: "right", width: "18%" },
-              { key: "newQty", label: "New Qty", align: "center", width: "14%" },
-              { key: "newAmount", label: "New Total Amount", align: "right", width: "18%" },
+              { key: "qty", label: "Total Qty", align: "center", width: "10%" },
+              { key: "dp", label: "Total Downpayment", align: "right", width: "16%" },
+              { key: "percent", label: "Alloc %", align: "center", width: "14%" },
+              { key: "newQty", label: "New Qty", align: "center", width: "12%" },
+              { key: "newAmount", label: "New Total Amount", align: "right", width: "16%" },
             ]}
             rows={(workbook.consolidated || []).map((row) => ({
               key: row.productKey,
@@ -625,6 +600,22 @@ function MergeWorkbookView({
                 dp: (
                   <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.8rem", textAlign: "right" }}>
                     {PESO.format(row.totalDp)}
+                  </Typography>
+                ),
+                percent: editable ? (
+                  <CompactField
+                    type="text"
+                    inputMode="decimal"
+                    value={percentByProduct[row.productKey] ?? ""}
+                    onChange={(value) => onPercentChange?.(row.productKey, value)}
+                    inputProps={{ "aria-label": `Allocation percent for ${row.name}` }}
+                    placeholder="0"
+                    InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+                    sx={{ maxWidth: 96, mx: "auto" }}
+                  />
+                ) : (
+                  <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.8rem", textAlign: "center" }}>
+                    {Number(row.allocationPercent || 0).toFixed(2)}%
                   </Typography>
                 ),
                 newQty: editable ? (
@@ -688,21 +679,9 @@ function MergeWorkbookView({
   );
 }
 
-async function sendMergedOrderEmails(orders, sendOrderStatusEmail) {
-  if (!sendOrderStatusEmail) return;
-  for (const order of orders || []) {
-    const groups = new Map();
-    for (const item of getOrderLineItems(order)) {
-      const emailType = resolveOrderStatusEmailTypeForCurrentState(item);
-      if (!emailType) continue;
-      const ids = groups.get(emailType) || [];
-      ids.push(item.id);
-      groups.set(emailType, ids);
-    }
-    for (const ids of groups.values()) {
-      await sendOrderStatusEmail(order.id, ids, order);
-    }
-  }
+async function sendMergedOrderEmails(orders, sendConsolidatedAllocationEmail) {
+  if (!sendConsolidatedAllocationEmail) return;
+  await sendConsolidatedAllocationEmail(orders);
 }
 
 function customerContactFromOrders(orders) {
@@ -715,16 +694,16 @@ function customerContactFromOrders(orders) {
 }
 
 function countMergedEmailsSent(orders) {
-  let count = 0;
+  const keys = new Set();
   for (const order of orders || []) {
     const since = order.mergedAt || "";
     for (const entry of order.trail || []) {
       if (entry.emailStatus !== "sent") continue;
       if (since && entry.at && entry.at < since) continue;
-      count += 1;
+      keys.add(`${entry.at || ""}|${entry.emailType || ""}|${entry.emailTo || ""}`);
     }
   }
-  return count;
+  return keys.size;
 }
 
 function totalItemQty(rows) {
@@ -773,7 +752,7 @@ export function MergeSimulateDialog({
   open,
   orders,
   updateOrder,
-  sendOrderStatusEmail,
+  sendConsolidatedAllocationEmail,
   surfaceBorderColor,
   onClose,
   onApplied,
@@ -860,7 +839,7 @@ export function MergeSimulateDialog({
     setSending(true);
     try {
       const patched = writeSimulation();
-      await sendMergedOrderEmails(patched, sendOrderStatusEmail);
+      await sendMergedOrderEmails(patched, sendConsolidatedAllocationEmail);
       setConfirmSend(false);
       onApplied?.();
     } catch (error) {
@@ -942,7 +921,7 @@ export function MergeSimulateDialog({
           </Button>
           <Button
             variant="outlined"
-            disabled={!mergeGate.canMerge || sending || !sendOrderStatusEmail || statusesNeedUpdate}
+            disabled={!mergeGate.canMerge || sending || !sendConsolidatedAllocationEmail || statusesNeedUpdate}
             onClick={() => setConfirmSend(true)}
             sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
           >
@@ -974,7 +953,7 @@ export function MergeSimulateDialog({
         onClose={() => !sending && setConfirmSend(false)}
         onConfirm={applyAndSend}
         title="Apply and send email"
-        description={`Write the allocation onto ${summary.orderCount} order${summary.orderCount === 1 ? "" : "s"} and send the matching status email to ${customer}.`}
+        description={`Write the allocation onto ${summary.orderCount} order${summary.orderCount === 1 ? "" : "s"} and send one consolidated email to ${customer}.`}
         confirmLabel="Send email"
         confirmWord="send"
         surfaceBorderColor={surfaceBorderColor}
@@ -986,7 +965,7 @@ export function MergeSimulateDialog({
 export function MergedOrdersPanel({
   orders,
   updateOrder,
-  sendOrderStatusEmail,
+  sendConsolidatedAllocationEmail,
   surfaceBorderColor,
   onBack,
 }) {
@@ -1008,7 +987,7 @@ export function MergedOrdersPanel({
     setSendError("");
     setSendingId(set.id);
     try {
-      await sendMergedOrderEmails(set.orders, sendOrderStatusEmail);
+      await sendMergedOrderEmails(set.orders, sendConsolidatedAllocationEmail);
     } catch (error) {
       setSendError(error?.message || "Could not send email.");
     } finally {
@@ -1064,7 +1043,7 @@ export function MergedOrdersPanel({
                 </Box>
                 <Button
                   variant="outlined"
-                  disabled={sendingId === set.id || !sendOrderStatusEmail}
+                  disabled={sendingId === set.id || !sendConsolidatedAllocationEmail}
                   onClick={() => handleSendSet(set)}
                   sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
                 >

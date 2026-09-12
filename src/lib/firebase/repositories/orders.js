@@ -146,6 +146,15 @@ export function compactOrderForFirestore(order) {
     notificationSeen: Boolean(slim.notificationSeen),
     manual: Boolean(slim.manual),
     archivedAt: slim.archivedAt ?? null,
+    ...(slim.mergedSetId
+      ? {
+        mergedSetId: String(slim.mergedSetId),
+        mergedAt: slim.mergedAt || null,
+        mergedAllocation: slim.mergedAllocation && typeof slim.mergedAllocation === "object"
+          ? slim.mergedAllocation
+          : {},
+      }
+      : {}),
     trail,
     ...(slim.refundDetails && typeof slim.refundDetails === "object"
       ? { refundDetails: slim.refundDetails }

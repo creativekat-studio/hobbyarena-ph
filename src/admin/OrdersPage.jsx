@@ -12,7 +12,6 @@ import {
   IconButton,
   InputAdornment,
   InputLabel,
-  Menu,
   MenuItem,
   Select,
   Stack,
@@ -454,7 +453,7 @@ export default function OrdersPage() {
   const navigate = useNavigate();
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
-  const { orders, ordersError, ordersReady, archiveOrders, restoreOrders, updateOrder, sendOrderStatusEmail } = useOrders();
+  const { orders, ordersError, ordersReady, archiveOrders, restoreOrders, updateOrder, sendConsolidatedAllocationEmail } = useOrders();
   const { items: inventoryItems } = useInventory();
   const { lines: catalogLines } = useCatalog();
   const costByProductId = useMemo(
@@ -470,7 +469,6 @@ export default function OrdersPage() {
   const [sort, setSort] = useState({ key: "order", dir: "desc" });
   const [archiveTargetIds, setArchiveTargetIds] = useState([]);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
-  const [actionsAnchor, setActionsAnchor] = useState(null);
   const [ordersView, setOrdersView] = useState("individual");
   const [simulateOpen, setSimulateOpen] = useState(false);
   const onMergedTab = ordersView === "merged";
@@ -516,14 +514,12 @@ export default function OrdersPage() {
       const order = orders.find((row) => row.id === id);
       return order && !isArchivedOrder(order);
     });
-    setActionsAnchor(null);
     if (!ids.length) return;
     setArchiveTargetIds(ids);
   }
 
   function openMergeSimulation() {
     const selected = orders.filter((order) => selectedIds.has(order.id) && !isArchivedOrder(order));
-    setActionsAnchor(null);
     if (!evaluateMergeSelection(selected).canMerge) return;
     setSimulateOpen(true);
   }
@@ -541,7 +537,6 @@ export default function OrdersPage() {
       const order = orders.find((row) => row.id === id);
       return order && isArchivedOrder(order);
     });
-    setActionsAnchor(null);
     if (!ids.length) return;
     restoreOrders(ids);
     setSelectedIds(new Set());
@@ -717,58 +712,6 @@ export default function OrdersPage() {
       {!onMergedTab ? (
         <Box sx={{ ...panelSx, ...ADMIN_LIST_FILTER_BAR_SX, flexShrink: 0 }}>
           <Stack spacing={1.25} sx={{ width: "100%", minWidth: 0 }}>
-            {selectedCount > 0 ? (
-              <Stack sx={ADMIN_LIST_BULK_BAR_SX}>
-                <Chip
-                  label={`${selectedCount} selected`}
-                  onDelete={() => setSelectedIds(new Set())}
-                  sx={{ fontWeight: 700 }}
-                />
-                <Tooltip title={!canMergeSelected ? mergeSelection.blockReason : ""}>
-                  <span>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      color="inherit"
-                      disabled={!canMergeSelected}
-                      onClick={openMergeSimulation}
-                      sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
-                    >
-                      Merge & simulate
-                    </Button>
-                  </span>
-                </Tooltip>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  color="inherit"
-                  onClick={(event) => setActionsAnchor(event.currentTarget)}
-                  sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
-                >
-                  Actions
-                </Button>
-                <Menu
-                  anchorEl={actionsAnchor}
-                  open={Boolean(actionsAnchor)}
-                  onClose={() => setActionsAnchor(null)}
-                >
-                  {viewingArchived ? (
-                    <MenuItem onClick={bulkRestore}>Restore</MenuItem>
-                  ) : [
-                    <MenuItem
-                      key="merge"
-                      disabled={!canMergeSelected}
-                      onClick={openMergeSimulation}
-                      title={mergeSelection.blockReason || undefined}
-                    >
-                      Merge & simulate
-                    </MenuItem>,
-                    <MenuItem key="archive" onClick={requestBulkArchive} sx={{ color: "error.main" }}>Archive…</MenuItem>,
-                  ]}
-                </Menu>
-              </Stack>
-            ) : null}
-
             <Stack
               direction="row"
               alignItems="center"
@@ -850,11 +793,66 @@ export default function OrdersPage() {
       ) : null}
 
       <Box sx={{ ...ADMIN_LIST_PANEL_SX, ...panelSx }}>
+        {!onMergedTab && selectedCount > 0 ? (
+          <Stack
+            sx={{
+              ...ADMIN_LIST_BULK_BAR_SX,
+              px: { xs: 1.25, md: 2 },
+              py: 1,
+              borderBottom: "1px solid",
+              borderColor: surfaceBorderColor,
+              flexShrink: 0,
+            }}
+          >
+            <Chip
+              label={`${selectedCount} selected`}
+              onDelete={() => setSelectedIds(new Set())}
+              sx={{ fontWeight: 700 }}
+            />
+            {!viewingArchived ? (
+              <Tooltip title={!canMergeSelected ? mergeSelection.blockReason : ""}>
+                <span>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="inherit"
+                    disabled={!canMergeSelected}
+                    onClick={openMergeSimulation}
+                    sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
+                  >
+                    Merge & simulate
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : null}
+            {viewingArchived ? (
+              <Button
+                size="small"
+                variant="outlined"
+                color="inherit"
+                onClick={bulkRestore}
+                sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
+              >
+                Restore
+              </Button>
+            ) : (
+              <Button
+                size="small"
+                variant="outlined"
+                color="error"
+                onClick={requestBulkArchive}
+                sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
+              >
+                Archive
+              </Button>
+            )}
+          </Stack>
+        ) : null}
         {onMergedTab ? (
           <MergedOrdersPanel
             orders={orders}
             updateOrder={updateOrder}
-            sendOrderStatusEmail={sendOrderStatusEmail}
+            sendConsolidatedAllocationEmail={sendConsolidatedAllocationEmail}
             surfaceBorderColor={surfaceBorderColor}
             onBack={showIndividualOrders}
           />
@@ -932,7 +930,7 @@ export default function OrdersPage() {
         open={simulateOpen}
         orders={selectedOrders}
         updateOrder={updateOrder}
-        sendOrderStatusEmail={sendOrderStatusEmail}
+        sendConsolidatedAllocationEmail={sendConsolidatedAllocationEmail}
         surfaceBorderColor={surfaceBorderColor}
         onClose={closeMergeSimulation}
         onApplied={() => {

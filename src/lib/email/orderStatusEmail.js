@@ -35,8 +35,92 @@ function balancePercentOf(order) {
   return Math.max(0, 100 - depositPercentOf(order));
 }
 
-function customerActionButtonsBlock(emailType) {
+function consolidatedNet(order) {
+  const net = Number(order?.consolidated?.totals?.net);
+  if (Number.isFinite(net)) return net;
+  const refund = Number(order?.refundAmount) || 0;
+  if (refund > 0) return -refund;
+  return Number(order?.balanceDue) || 0;
+}
+
+function consolidatedOrderIds(order) {
+  const ids = Array.isArray(order?.consolidated?.orderIds)
+    ? order.consolidated.orderIds.map((id) => String(id || "").trim()).filter(Boolean)
+    : [];
+  if (ids.length) return ids;
+  return order?.id ? [String(order.id)] : [];
+}
+
+function consolidatedItemsTable(order) {
+  const items = Array.isArray(order?.consolidated?.items) ? order.consolidated.items : [];
+  if (!items.length) return "";
+  const c = EMAIL_BRAND.colors;
+  const rows = items.map((item) => `
+    <tr>
+      <td style="padding:12px 12px 12px 16px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;line-height:1.45;color:${c.text};vertical-align:top">
+        ${escapeHtml(item.name || "Item")}
+      </td>
+      <td align="center" style="padding:12px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;color:${c.muted};vertical-align:top;width:56px;white-space:nowrap">
+        ${Math.max(0, Number(item.newQty) || 0)}
+      </td>
+      <td align="right" style="padding:12px 16px 12px 12px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:14px;color:${c.text};vertical-align:top;width:110px;white-space:nowrap">
+        ${formatPeso(item.newAmount)}
+      </td>
+    </tr>
+  `).join("");
+  return `
+    ${sectionHeading("Allocated items")}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px">
+      <tr>
+        <td style="padding:0 12px 8px 16px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted}">Item</td>
+        <td align="center" style="padding:0 8px 8px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted};width:56px">Qty</td>
+        <td align="right" style="padding:0 16px 8px 12px;border-bottom:1px solid ${c.border};font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.muted};width:110px">Amount</td>
+      </tr>
+      ${rows}
+    </table>
+  `;
+}
+
+function consolidatedTotalsBlock(order) {
+  const totals = order?.consolidated?.totals || {};
+  const net = consolidatedNet(order);
+  const rows = [
+    { label: "New total", value: formatPeso(totals.newTotal) },
+    { label: "Downpayment", value: formatPeso(totals.totalDp) },
+    {
+      label: `${totals.netLabel || (net < 0 ? "Refund" : net > 0 ? "Balance due" : "Settled")}:`,
+      value: formatPeso(Math.abs(net)),
+      strong: true,
+    },
+  ];
+  return `${totalsBlock(rows)}<div style="clear:both"></div>`;
+}
+
+function customerActionButtonsBlock(emailType, order) {
   const links = getEmailLinks();
+
+  if (emailType === "consolidated_allocation") {
+    const net = consolidatedNet(order);
+    if (net < 0) {
+      return customerResponseButtons({
+        caption: "Share your bank or e-wallet details using either option below.",
+        accountLabel: "Submit refund details",
+        accountHref: links.accountUrl,
+        messengerLabel: "Message Hobby Arena PH",
+        messengerHref: links.messengerUrl,
+      });
+    }
+    if (net > 0) {
+      return customerResponseButtons({
+        caption: "Pay the balance and send your proof using either option below.",
+        accountLabel: "Upload in my account",
+        accountHref: links.accountUrl,
+        messengerLabel: "Message Hobby Arena PH",
+        messengerHref: links.messengerUrl,
+      });
+    }
+    return "";
+  }
 
   if (BALANCE_ACTION_EMAIL_TYPES.has(emailType)) {
     return customerResponseButtons({
@@ -126,8 +210,10 @@ function statusAttachmentBlock(attachment) {
 }
 
 function orderMeta(order) {
+  const ids = consolidatedOrderIds(order);
+  const label = ids.length > 1 ? ids.join(", ") : (ids[0] || order.id);
   return metaLine(
-    `<strong style="color:${EMAIL_BRAND.colors.text}">${escapeHtml(order.id)}</strong> · ${escapeHtml(formatEmailDate(order.date))}`,
+    `<strong style="color:${EMAIL_BRAND.colors.text}">${escapeHtml(label)}</strong> · ${escapeHtml(formatEmailDate(order.date))}`,
   );
 }
 
@@ -287,6 +373,7 @@ function buildPlaceholderMap(order) {
     qty,
     allocation: allocationOfOrdered(item) || `${allocated} of ${qty}`,
     finalTotal: formatPeso(item ? itemFinalTotal(item) : 0),
+    orders: consolidatedOrderIds(order).join(", "),
   };
 }
 
@@ -709,6 +796,19 @@ const TEMPLATES = {
     },
     footer: "Stock is not reserved until payment is confirmed.",
   },
+  consolidated_allocation: {
+    subject: (order) => {
+      const net = consolidatedNet(order);
+      if (net < 0) return "Allocation update — refund due";
+      if (net > 0) return "Allocation update — balance due";
+      return "Allocation update";
+    },
+    preheader: "Your allocated quantities are confirmed.",
+    title: "Allocation update",
+    lead: (order) => `Hello <strong>${escapeHtml(order.customer)}</strong>,`,
+    body: () => "We reviewed your related orders and confirmed the allocated quantities below.",
+    footer: (order) => (consolidatedNet(order) < 0 ? getSupportContactHtml() : ""),
+  },
 };
 
 export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
@@ -720,6 +820,9 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
   const bodyOverride = typeof options.bodyOverride === "string" && options.bodyOverride.trim()
     ? options.bodyOverride
     : null;
+  const subjectOverride = typeof options.subjectOverride === "string" && options.subjectOverride.trim()
+    ? options.subjectOverride.trim()
+    : "";
   const showSummary = [
     "balance_due_full",
     "balance_due_partial",
@@ -742,17 +845,25 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     "full_refund_sent",
   ].includes(emailType);
 
+  const isConsolidated = emailType === "consolidated_allocation";
+  const net = consolidatedNet(order);
+  const consolidatedTitle = net < 0
+    ? "Allocation update — refund due"
+    : net > 0
+      ? "Allocation update — balance due"
+      : template.title;
   const bodyHtml = `
     <p style="margin:0 0 6px;font-family:Inter,Arial,sans-serif;font-size:22px;font-weight:700;line-height:1.3;color:${EMAIL_BRAND.colors.ink}">
-      ${template.title}
+      ${isConsolidated ? consolidatedTitle : template.title}
     </p>
     ${orderMeta(order)}
     ${bodyLead(template.lead(order))}
-    ${!showSummary ? itemFocusBlock(order) : ""}
+    ${!showSummary && !isConsolidated ? itemFocusBlock(order) : ""}
     ${bodyOverride ? renderOverrideBody(order, bodyOverride) : bodyText(template.body(order))}
-    ${showSummary ? invoiceSummary(order, emailType) : ""}
-    ${showMilestones ? preorderMilestones(item, emailType) : ""}
-    ${customerActionButtonsBlock(emailType)}
+    ${isConsolidated ? `${consolidatedItemsTable(order)}${consolidatedTotalsBlock(order)}` : ""}
+    ${showSummary && !isConsolidated ? invoiceSummary(order, emailType) : ""}
+    ${showMilestones && !isConsolidated ? preorderMilestones(item, emailType) : ""}
+    ${customerActionButtonsBlock(emailType, order)}
     ${order.statusAttachment ? statusAttachmentBlock(order.statusAttachment) : ""}
   `;
 
@@ -762,15 +873,27 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
 
   const links = getEmailLinks();
   const text = [
-    template.title,
+    isConsolidated ? consolidatedTitle : template.title,
     "",
-    `Order: ${order.id}`,
-    item ? `Item: ${itemLabel(item)}` : "",
+    isConsolidated ? `Orders: ${consolidatedOrderIds(order).join(", ")}` : `Order: ${order.id}`,
+    !isConsolidated && item ? `Item: ${itemLabel(item)}` : "",
     "",
     plainBody,
   ];
+  if (isConsolidated) {
+    for (const row of order.consolidated?.items || []) {
+      text.push(`${row.name} ×${Math.max(0, Number(row.newQty) || 0)} — ${formatPeso(row.newAmount)}`);
+    }
+    const totals = order.consolidated?.totals || {};
+    text.push(
+      "",
+      `New total: ${formatPeso(totals.newTotal)}`,
+      `Downpayment: ${formatPeso(totals.totalDp)}`,
+      `${totals.netLabel || "Settled"}: ${formatPeso(Math.abs(net))}`,
+    );
+  }
 
-  if (BALANCE_ACTION_EMAIL_TYPES.has(emailType)) {
+  if (BALANCE_ACTION_EMAIL_TYPES.has(emailType) || (isConsolidated && net > 0)) {
     text.push(
       "",
       "Upload in my account:",
@@ -778,7 +901,7 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
       "Message Hobby Arena PH:",
       links.messengerUrl,
     );
-  } else if (REFUND_ACTION_EMAIL_TYPES.has(emailType)) {
+  } else if (REFUND_ACTION_EMAIL_TYPES.has(emailType) || (isConsolidated && net < 0)) {
     text.push(
       "",
       "Submit refund details:",
@@ -822,8 +945,12 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     ? preorderReminderBlock(reminderOpts)
     : (typeof template.footer === "function" ? template.footer(order) : template.footer);
 
+  const resolvedSubject = subjectOverride
+    ? subjectOverride.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => buildPlaceholderMap(order)[key] ?? "")
+    : template.subject(order);
+
   return {
-    subject: template.subject(order),
+    subject: resolvedSubject,
     text: text.filter(Boolean).join("\n"),
     html: wrapSimpleEmail({
       preheader: template.preheader,

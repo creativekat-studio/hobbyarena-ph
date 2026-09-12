@@ -601,6 +601,43 @@ export function applyMergedLineStatus(order, lineItemId, status, paymentOverride
   };
 }
 
+export function buildConsolidatedEmailOrder(orders, workbook) {
+  const list = (orders || []).filter(Boolean);
+  const primary = list[0] || {};
+  const totals = workbook?.totals || {};
+  const net = Number(totals.net) || 0;
+  const orderIds = list.map((order) => order.id).filter(Boolean);
+  return {
+    id: primary.id || orderIds[0] || "",
+    customer: primary.customer || "Customer",
+    email: primary.email || "",
+    phone: primary.phone || "",
+    type: primary.type || "Pre-order",
+    payment: net < 0 ? "For Partial Refund" : net > 0 ? "Awaiting Balance Payment" : "Fully Paid",
+    status: net < 0 ? "Partially Fulfilled & For Refund" : net > 0 ? "Partially Fulfilled & Pay Balance" : "Ready for Pickup",
+    date: primary.mergedAt || primary.date || new Date().toISOString(),
+    depositPercent: primary.depositPercent || 30,
+    refundAmount: net < 0 ? Math.abs(net) : 0,
+    balanceDue: net > 0 ? net : 0,
+    items: (workbook?.consolidated || []).map((row) => row.name).filter(Boolean).join(", "),
+    lineItems: [],
+    consolidated: {
+      orderIds,
+      items: (workbook?.consolidated || []).map((row) => ({
+        name: row.name,
+        newQty: row.newQty,
+        newAmount: row.newAmount,
+      })),
+      totals: {
+        newTotal: Number(totals.newTotal) || 0,
+        totalDp: Number(totals.totalDp) || 0,
+        net,
+        netLabel: totals.netLabel || (net < 0 ? "Refund" : net > 0 ? "Balance due" : "Settled"),
+      },
+    },
+  };
+}
+
 export function describeMergeSelection(orders, sourceRows) {
   const customers = new Set(
     (orders || []).map((order) => String(order.email || order.customer || "").trim().toLowerCase())

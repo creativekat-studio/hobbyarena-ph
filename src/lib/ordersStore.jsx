@@ -52,7 +52,8 @@ import {
 } from "./orderProofStorage.js";
 import { queueOrderAcknowledgement, queueOrderStatusEmail } from "./emailService.js";
 import { resolveOrderStatusEmailTypeForCurrentState, ORDER_STATUS_EMAIL_LABELS } from "./orderEmailTriggers.js";
-import { getEmailBodyOverride, getPreorderReminderConfig } from "./emailTemplatesStore.js";
+import { buildConsolidatedEmailOrder, buildLiveMergeWorkbook } from "./orderMergeSimulation.js";
+import { getEmailBodyOverride, getEmailSubjectOverride, getPreorderReminderConfig } from "./emailTemplatesStore.js";
 import { normalizeProofDataUrl } from "./imageCompression.js";
 import { useInventory } from "./inventoryStore.jsx";
 
@@ -483,6 +484,7 @@ export function OrdersProvider({ children }) {
       return {
         emailType,
         bodyOverride: getEmailBodyOverride(emailType),
+        subjectOverride: getEmailSubjectOverride(emailType),
         reminder: getPreorderReminderConfig(),
         order: {
           id: order.id,
@@ -607,6 +609,63 @@ export function OrdersProvider({ children }) {
 
       const payload = buildStatusEmailPayload(order, selected, selected[0], emailType);
       return dispatchStatusEmail(order, payload);
+    };
+
+    const sendConsolidatedAllocationEmail = async (orders) => {
+      const list = (orders || []).filter(Boolean);
+      if (!list.length) throw new Error("No orders to email.");
+      const primary = list[0];
+      if (!primary.email) throw new Error("Customer email is missing.");
+      const workbook = buildLiveMergeWorkbook(list);
+      const payload = {
+        emailType: "consolidated_allocation",
+        bodyOverride: getEmailBodyOverride("consolidated_allocation"),
+        subjectOverride: getEmailSubjectOverride("consolidated_allocation"),
+        reminder: getPreorderReminderConfig(),
+        order: buildConsolidatedEmailOrder(list, workbook),
+      };
+      return new Promise((resolve, reject) => {
+        queueOrderStatusEmail(payload, ({ ok, result, error }) => {
+          const at = new Date().toISOString();
+          const ids = new Set(list.map((order) => order.id));
+          setOrders((current) => {
+            const next = current.map((row) => {
+              if (!ids.has(row.id)) return row;
+              const source = list.find((order) => order.id === row.id) || row;
+              const record = { ...buildStatusEmailRecord("consolidated_allocation", source.email, { ok, result, error }), at };
+              const trailEntry = {
+                ...buildStatusEmailTrailEntry(
+                  "consolidated_allocation",
+                  source.email,
+                  getOrderLineItems(source),
+                  { ok, result, error },
+                ),
+                at,
+                note: "Consolidated allocation email.",
+              };
+              const updated = {
+                ...row,
+                emails: [...(row.emails || []), record],
+                trail: [...(row.trail || []), trailEntry],
+              };
+              persistOrder(updated);
+              return updated;
+            });
+            return next;
+          });
+          notifyAdminEmailSent({
+            ok,
+            to: primary.email,
+            emailType: "consolidated_allocation",
+            messageId: result?.messageId ?? null,
+            skipped: Boolean(result?.skipped),
+            skipReason: result?.skipReason || null,
+            error: ok ? null : error,
+          });
+          if (!ok) reject(new Error(error || "Email failed."));
+          else resolve(result);
+        });
+      });
     };
 
     const placeOrder = async (payload) => {
@@ -1319,6 +1378,7 @@ export function OrdersProvider({ children }) {
       submitRefundDetails,
       uploadTrailProof,
       sendOrderStatusEmail,
+      sendConsolidatedAllocationEmail,
       markOrderSeen,
       markAllOrdersSeen,
       archiveOrders,

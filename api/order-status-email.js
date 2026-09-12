@@ -47,11 +47,12 @@ function readReminderConfig(raw) {
 
 function readPayload(body) {
   if (!body || typeof body !== "object") return null;
-  const { emailType, order, bodyOverride, reminder } = body;
+  const { emailType, order, bodyOverride, subjectOverride, reminder } = body;
   if (!emailType || !order?.id || !order?.customer || !isValidEmail(order.email)) return null;
   return {
     emailType: String(emailType),
     bodyOverride: typeof bodyOverride === "string" ? bodyOverride.slice(0, 4000) : "",
+    subjectOverride: typeof subjectOverride === "string" ? subjectOverride.slice(0, 200) : "",
     reminder: readReminderConfig(reminder),
     order: {
       id: String(order.id),
@@ -89,6 +90,28 @@ function readPayload(body) {
           depositPaid: Number(order.updatedLineItem.depositPaid) || 0,
         }
         : null,
+      consolidated: order.consolidated && typeof order.consolidated === "object"
+        ? {
+          orderIds: Array.isArray(order.consolidated.orderIds)
+            ? order.consolidated.orderIds.map((id) => String(id || "").trim()).filter(Boolean).slice(0, 40)
+            : [],
+          items: Array.isArray(order.consolidated.items)
+            ? order.consolidated.items.slice(0, 40).map((item) => ({
+              name: item?.name ? String(item.name).slice(0, 200) : "Item",
+              newQty: Math.max(0, Number(item?.newQty) || 0),
+              newAmount: Number(item?.newAmount) || 0,
+            }))
+            : [],
+          totals: {
+            newTotal: Number(order.consolidated.totals?.newTotal) || 0,
+            totalDp: Number(order.consolidated.totals?.totalDp) || 0,
+            net: Number(order.consolidated.totals?.net) || 0,
+            netLabel: order.consolidated.totals?.netLabel
+              ? String(order.consolidated.totals.netLabel).slice(0, 40)
+              : "",
+          },
+        }
+        : null,
       statusAttachment: order.statusAttachment && typeof order.statusAttachment === "object"
         ? (() => {
           const raw = typeof order.statusAttachment.url === "string"
@@ -123,6 +146,7 @@ export default async function handler(req, res) {
 
     const content = buildOrderStatusEmail(payload.order, payload.emailType, {
       bodyOverride: payload.bodyOverride,
+      ...(payload.subjectOverride ? { subjectOverride: payload.subjectOverride } : {}),
       ...(payload.reminder ? { reminder: payload.reminder } : {}),
     });
     if (!content) {

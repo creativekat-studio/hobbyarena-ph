@@ -70,21 +70,23 @@ async function adminFetch(path, options = {}) {
   return response;
 }
 
-export async function sendOrderStatusEmail({ emailType, order, bodyOverride, reminder }) {
+export async function sendOrderStatusEmail({ emailType, order, bodyOverride, subjectOverride, reminder }) {
   return postJson("/api/order-status-email", {
     emailType,
     order,
     ...(bodyOverride ? { bodyOverride } : {}),
+    ...(subjectOverride ? { subjectOverride } : {}),
     ...(reminder ? { reminder } : {}),
   }, { admin: true });
 }
 
-export async function previewOrderStatusEmail({ emailType, order, bodyOverride, reminder }) {
+export async function previewOrderStatusEmail({ emailType, order, bodyOverride, subjectOverride, reminder }) {
   return postJson("/api/order-status-email", {
     preview: true,
     emailType,
     order,
     ...(bodyOverride ? { bodyOverride } : {}),
+    ...(subjectOverride ? { subjectOverride } : {}),
     ...(reminder ? { reminder } : {}),
   }, { admin: true });
 }

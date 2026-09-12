@@ -45,7 +45,9 @@ import {
   PREORDER_REMINDER_PLACEHOLDERS,
   addEmailFooter,
   getEditableEmailBody,
+  getEmailSubjectOverride,
   getPreorderReminderConfig,
+  setEmailSubjectOverride,
   removeEmailFooter,
   setEmailBodyOverride,
   setEmailFooterAssignment,
@@ -67,11 +69,37 @@ const SAMPLE_STATES = {
   order_fulfilled: { payment: "Fully Paid", status: "Fulfilled", balanceDue: 0, refundAmount: 0, allocatedQty: 5 },
   full_refund_sent: { payment: "Refunded", status: "Refunded", balanceDue: 0, refundAmount: 450, allocatedQty: 0 },
   payment_not_received: { payment: "Unpaid", status: "Awaiting Stock", balanceDue: 0, refundAmount: 0, allocatedQty: 0 },
+  consolidated_allocation: { payment: "For Partial Refund", status: "Partially Fulfilled & For Refund", balanceDue: 0, refundAmount: 30360, allocatedQty: 2 },
 };
 
 function buildSampleOrder(recipientEmail, emailType) {
   const name = "One Piece Mini Tin Pack Set Vol. 4 [TS-04]";
   const state = SAMPLE_STATES[emailType] ?? SAMPLE_STATES.deposit_received;
+  if (emailType === "consolidated_allocation") {
+    return {
+      id: "HA-202609000356",
+      customer: "Hobby Arena",
+      email: recipientEmail,
+      phone: "",
+      type: "Pre-order",
+      payment: state.payment,
+      status: state.status,
+      total: 13800,
+      balanceDue: 0,
+      refundAmount: 30360,
+      date: new Date().toISOString(),
+      items: "Delta Reign 18ct, ME06 36ct",
+      lineItems: [],
+      consolidated: {
+        orderIds: ["HA-202609000356", "HA-202609000355", "HA-202609000354"],
+        items: [
+          { name: "[Pre-order] Pokemon TCG [ME06] Delta Reign 18ct Booster Box", newQty: 1, newAmount: 4600 },
+          { name: "[Pre-order] Pokemon TCG [ME06] 36ct Booster Box", newQty: 1, newAmount: 9200 },
+        ],
+        totals: { newTotal: 13800, totalDp: 44160, net: -30360, netLabel: "Refund" },
+      },
+    };
+  }
   return {
     id: "HA-202607040003",
     customer: "Hobby Arena",
@@ -117,7 +145,7 @@ function buildSampleOrder(recipientEmail, emailType) {
   };
 }
 
-function EmailPreview({ emailType, body, reminder, surfaceBorderColor }) {
+function EmailPreview({ emailType, body, subject, reminder, surfaceBorderColor }) {
   const [state, setState] = useState({ loading: true, html: "", subject: "", error: "" });
 
   useEffect(() => {
@@ -128,7 +156,7 @@ function EmailPreview({ emailType, body, reminder, surfaceBorderColor }) {
         const result = buildOrderStatusEmail(
           buildSampleOrder(PREVIEW_EMAIL, emailType),
           emailType,
-          { bodyOverride: body, reminder },
+          { bodyOverride: body, subjectOverride: subject, reminder },
         );
         if (cancelled) return;
         if (!result) {
@@ -145,7 +173,7 @@ function EmailPreview({ emailType, body, reminder, surfaceBorderColor }) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [emailType, body, reminder]);
+  }, [emailType, body, subject, reminder]);
 
   return (
     <Box>
@@ -194,6 +222,8 @@ function EmailEditor({
   emailType,
   draft,
   onDraftChange,
+  subject,
+  onSubjectChange,
   surfaceBorderColor,
   testEmail,
   onTestResult,
@@ -205,12 +235,15 @@ function EmailEditor({
   const [sending, setSending] = useState(false);
 
   const defaultBody = DEFAULT_EMAIL_BODIES[emailType] || "";
-  const isCustom = draft.trim() !== defaultBody.trim();
+  const isCustom = draft.trim() !== defaultBody.trim() || Boolean(String(subject || "").trim());
   const selectedFooterId = reminder?.assignmentByType?.[emailType] || "";
+  const isConsolidated = emailType === "consolidated_allocation";
 
   function handleSave() {
     setEmailBodyOverride(emailType, draft);
+    setEmailSubjectOverride(emailType, subject);
     onDraftChange(getEditableEmailBody(emailType));
+    onSubjectChange?.(getEmailSubjectOverride(emailType));
     setSaved(true);
   }
 
@@ -241,6 +274,7 @@ function EmailEditor({
         emailType,
         order: buildSampleOrder(testEmail, emailType),
         bodyOverride: draft,
+        subjectOverride: subject,
         reminder,
       });
       if (result?.simulated) {
@@ -262,6 +296,22 @@ function EmailEditor({
 
   return (
     <Stack spacing={1.5} sx={{ height: "100%" }}>
+      {isConsolidated ? (
+        <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", lineHeight: 1.5 }}>
+          Sent once for a consolidated order. Edit the subject and message. The allocated items table and totals stay in the email.
+        </Typography>
+      ) : null}
+
+      <TextField
+        fullWidth
+        size="small"
+        label="Subject"
+        value={subject || ""}
+        onChange={(e) => { onSubjectChange?.(e.target.value); setSaved(false); }}
+        placeholder={isConsolidated ? "Allocation update — refund due" : ""}
+        helperText={isConsolidated ? "Leave blank to keep the automatic refund / balance subject." : "Leave blank to keep the default subject."}
+      />
+
       <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
         <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", color: "text.secondary" }}>
           Message body
@@ -963,6 +1013,9 @@ export default function EmailTemplatesPage() {
     draftsRef.current = Object.fromEntries(EMAIL_TYPES.map((type) => [type, getEditableEmailBody(type)]));
   }
   const [drafts, setDrafts] = useState(() => draftsRef.current);
+  const [subjects, setSubjects] = useState(() => (
+    Object.fromEntries(EMAIL_TYPES.map((type) => [type, getEmailSubjectOverride(type)]))
+  ));
   const [reminderDraft, setReminderDraft] = useState(() => getPreorderReminderConfig());
   const [passwordResetDraft, setPasswordResetDraft] = useState(() => getEditableEmailBody(PASSWORD_RESET_EMAIL_TYPE));
 
@@ -972,6 +1025,10 @@ export default function EmailTemplatesPage() {
 
   function setDraftForActive(value) {
     setDrafts((prev) => ({ ...prev, [activeType]: value }));
+  }
+
+  function setSubjectForActive(value) {
+    setSubjects((prev) => ({ ...prev, [activeType]: value }));
   }
 
   function feedbackSeverity() {
@@ -1101,6 +1158,8 @@ export default function EmailTemplatesPage() {
                 emailType={activeType}
                 draft={draft}
                 onDraftChange={setDraftForActive}
+                subject={subjects[activeType] || ""}
+                onSubjectChange={setSubjectForActive}
                 surfaceBorderColor={surfaceBorderColor}
                 testEmail={testEmail}
                 onTestResult={setFeedback}
@@ -1120,6 +1179,7 @@ export default function EmailTemplatesPage() {
                 <EmailPreview
                   emailType={activeType}
                   body={draft}
+                  subject={subjects[activeType] || ""}
                   reminder={reminderDraft}
                   surfaceBorderColor={surfaceBorderColor}
                 />
