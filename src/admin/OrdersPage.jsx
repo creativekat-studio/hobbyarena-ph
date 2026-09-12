@@ -16,6 +16,8 @@ import {
   MenuItem,
   Select,
   Stack,
+  Tab,
+  Tabs,
   TextField,
   Tooltip,
   Typography,
@@ -70,8 +72,8 @@ import {
 } from "./adminTableHeader.jsx";
 import AddOrderDialog from "./AddOrderDialog.jsx";
 import ExportOrdersDialog from "./ExportOrdersDialog.jsx";
-import MergeOrdersGrid from "./MergeOrdersGrid.jsx";
-import { buildMergeSourceRows } from "../lib/orderMergeSimulation.js";
+import { MergeSimulateDialog, MergedOrdersPanel } from "./MergeOrdersGrid.jsx";
+import { evaluateMergeSelection } from "../lib/orderMergeSimulation.js";
 
 const ORDER_SORT_ACCESSORS = {
   order: (o) => resolveOrderPlacedAt(o)?.getTime() ?? 0,
@@ -88,6 +90,10 @@ const KIND_FILTERS = [
   { id: "all", label: "All kinds" },
   { id: "preorder", label: "Pre-orders" },
   { id: "instock", label: "In-stock" },
+];
+const ORDERS_VIEWS = [
+  { id: "individual", label: "Individual orders" },
+  { id: "merged", label: "Consolidated Orders" },
 ];
 
 const ORDER_SUMMARY_GRID = "36px 28px minmax(140px, 1.1fr) minmax(120px, 1fr) minmax(140px, 1.3fr) minmax(120px, 0.9fr) auto";
@@ -448,7 +454,7 @@ export default function OrdersPage() {
   const navigate = useNavigate();
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
-  const { orders, ordersError, ordersReady, archiveOrders, restoreOrders, updateOrder } = useOrders();
+  const { orders, ordersError, ordersReady, archiveOrders, restoreOrders, updateOrder, sendOrderStatusEmail } = useOrders();
   const { items: inventoryItems } = useInventory();
   const { lines: catalogLines } = useCatalog();
   const costByProductId = useMemo(
@@ -465,7 +471,9 @@ export default function OrdersPage() {
   const [archiveTargetIds, setArchiveTargetIds] = useState([]);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [actionsAnchor, setActionsAnchor] = useState(null);
-  const [mergeOpen, setMergeOpen] = useState(false);
+  const [ordersView, setOrdersView] = useState("individual");
+  const [simulateOpen, setSimulateOpen] = useState(false);
+  const onMergedTab = ordersView === "merged";
 
   function handleSort(key) {
     setSort((prev) => toggleSortState(prev, key, { defaultDir: key === "order" ? "desc" : "asc" }));
@@ -516,12 +524,16 @@ export default function OrdersPage() {
   function openMergeSimulation() {
     const selected = orders.filter((order) => selectedIds.has(order.id) && !isArchivedOrder(order));
     setActionsAnchor(null);
-    if (!buildMergeSourceRows(selected).length) return;
-    setMergeOpen(true);
+    if (!evaluateMergeSelection(selected).canMerge) return;
+    setSimulateOpen(true);
   }
 
   function closeMergeSimulation() {
-    setMergeOpen(false);
+    setSimulateOpen(false);
+  }
+
+  function showIndividualOrders() {
+    setOrdersView("individual");
   }
 
   function bulkRestore() {
@@ -587,27 +599,23 @@ export default function OrdersPage() {
   const rowIds = useMemo(() => new Set(rows.map((row) => row.id)), [rows]);
 
   useEffect(() => {
-    if (mergeOpen) return;
+    if (onMergedTab) return;
     setSelectedIds((prev) => {
       const next = new Set([...prev].filter((id) => rowIds.has(id)));
       return next.size === prev.size ? prev : next;
     });
-  }, [rowIds, mergeOpen]);
+  }, [rowIds, onMergedTab]);
 
   const selectedCount = selectedIds.size;
   const selectedOrders = useMemo(
     () => orders.filter((order) => selectedIds.has(order.id) && !isArchivedOrder(order)),
     [orders, selectedIds],
   );
-  const selectedMergeRows = useMemo(
-    () => buildMergeSourceRows(selectedOrders),
+  const mergeSelection = useMemo(
+    () => evaluateMergeSelection(selectedOrders),
     [selectedOrders],
   );
-  const canMergeSelected = selectedMergeRows.length > 0;
-
-  useEffect(() => {
-    if (mergeOpen && selectedOrders.length === 0) setMergeOpen(false);
-  }, [mergeOpen, selectedOrders.length]);
+  const canMergeSelected = mergeSelection.canMerge;
 
   const allLoadedSelected = visibleItems.length > 0 && visibleItems.every((row) => selectedIds.has(row.id));
   const someLoadedSelected = visibleItems.some((row) => selectedIds.has(row.id));
@@ -643,8 +651,8 @@ export default function OrdersPage() {
       <AdminPageHeader
         eyebrow="Sales"
         title="Orders"
-        subtitle={mergeOpen
-          ? "Selected orders stay on their own customers. This grid only simulates allocation and status — emails are not sent."
+        subtitle={onMergedTab
+          ? "Consolidated orders for the same customer."
           : "Work the pre-order pipeline: verify deposits, allocate stock, collect balance, then release for pickup."
         }
         action={(
@@ -680,7 +688,7 @@ export default function OrdersPage() {
         </Alert>
       ) : null}
 
-      {/* ── Sticky upper chrome: stat cards (md+) + compact filter bar ── */}
+      {/* ── KPIs, then CMS-style tabs; filters + grid live inside the tab ── */}
       <Stack spacing={{ xs: 1, md: ADMIN_PAGE_SPACING }} sx={{ flexShrink: 0 }}>
         <Grid container spacing={2} sx={ADMIN_LIST_STATS_SX}>
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={CardIcon} label="Total orders" value={stats.total} accent={accents[0]} /></Grid>
@@ -689,7 +697,25 @@ export default function OrdersPage() {
           <Grid size={{ xs: 6, md: 3 }}><StatCard panelSx={panelSx} icon={TruckIcon} label="Awaiting pickup" value={stats.pickup} accent={theme.palette.success.main} /></Grid>
         </Grid>
 
-        <Box sx={{ ...panelSx, ...ADMIN_LIST_FILTER_BAR_SX }}>
+        <Tabs
+          value={ordersView}
+          onChange={(_, value) => { if (value) setOrdersView(value); }}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{
+            borderBottom: "1px solid",
+            borderColor: surfaceBorderColor,
+            minHeight: 48,
+          }}
+        >
+          {ORDERS_VIEWS.map((item) => (
+            <Tab key={item.id} value={item.id} label={item.label} />
+          ))}
+        </Tabs>
+      </Stack>
+
+      {!onMergedTab ? (
+        <Box sx={{ ...panelSx, ...ADMIN_LIST_FILTER_BAR_SX, flexShrink: 0 }}>
           <Stack spacing={1.25} sx={{ width: "100%", minWidth: 0 }}>
             {selectedCount > 0 ? (
               <Stack sx={ADMIN_LIST_BULK_BAR_SX}>
@@ -698,16 +724,20 @@ export default function OrdersPage() {
                   onDelete={() => setSelectedIds(new Set())}
                   sx={{ fontWeight: 700 }}
                 />
-                <Button
-                  size="small"
-                  variant="outlined"
-                  color="inherit"
-                  disabled={!canMergeSelected}
-                  onClick={openMergeSimulation}
-                  sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
-                >
-                  Merge & simulate
-                </Button>
+                <Tooltip title={!canMergeSelected ? mergeSelection.blockReason : ""}>
+                  <span>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="inherit"
+                      disabled={!canMergeSelected}
+                      onClick={openMergeSimulation}
+                      sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
+                    >
+                      Merge & simulate
+                    </Button>
+                  </span>
+                </Tooltip>
                 <Button
                   size="small"
                   variant="outlined"
@@ -725,7 +755,12 @@ export default function OrdersPage() {
                   {viewingArchived ? (
                     <MenuItem onClick={bulkRestore}>Restore</MenuItem>
                   ) : [
-                    <MenuItem key="merge" disabled={!canMergeSelected} onClick={openMergeSimulation}>
+                    <MenuItem
+                      key="merge"
+                      disabled={!canMergeSelected}
+                      onClick={openMergeSimulation}
+                      title={mergeSelection.blockReason || undefined}
+                    >
                       Merge & simulate
                     </MenuItem>,
                     <MenuItem key="archive" onClick={requestBulkArchive} sx={{ color: "error.main" }}>Archive…</MenuItem>,
@@ -812,17 +847,16 @@ export default function OrdersPage() {
             </Stack>
           </Stack>
         </Box>
-      </Stack>
+      ) : null}
 
-      {/* ── Grid panel (internal scroll + sticky header) ── */}
       <Box sx={{ ...ADMIN_LIST_PANEL_SX, ...panelSx }}>
-        {mergeOpen ? (
-          <MergeOrdersGrid
-            orders={selectedOrders}
+        {onMergedTab ? (
+          <MergedOrdersPanel
+            orders={orders}
             updateOrder={updateOrder}
+            sendOrderStatusEmail={sendOrderStatusEmail}
             surfaceBorderColor={surfaceBorderColor}
-            stickyHeaderBg={stickyHeaderBg}
-            onClose={closeMergeSimulation}
+            onBack={showIndividualOrders}
           />
         ) : !ordersReady ? (
           <Stack spacing={1.5} alignItems="center" sx={{ py: 6, color: "text.secondary" }}>
@@ -892,6 +926,19 @@ export default function OrdersPage() {
         onCreated={(id) => navigate(`/admin/orders/${encodeURIComponent(id)}`, {
           state: { backTo: { path: "/admin/orders", label: "orders" } },
         })}
+      />
+
+      <MergeSimulateDialog
+        open={simulateOpen}
+        orders={selectedOrders}
+        updateOrder={updateOrder}
+        sendOrderStatusEmail={sendOrderStatusEmail}
+        surfaceBorderColor={surfaceBorderColor}
+        onClose={closeMergeSimulation}
+        onApplied={() => {
+          setSimulateOpen(false);
+          setOrdersView("merged");
+        }}
       />
 
       <ExportOrdersDialog

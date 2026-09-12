@@ -576,8 +576,8 @@ export function OrdersProvider({ children }) {
       });
     });
 
-    const sendOrderStatusEmail = async (orderId, lineItemIds) => {
-      let order = ordersRef.current.find((row) => row.id === orderId);
+    const sendOrderStatusEmail = async (orderId, lineItemIds, sourceOrder) => {
+      let order = sourceOrder || ordersRef.current.find((row) => row.id === orderId);
       if (!order) throw new Error("Order not found.");
 
       const ids = Array.isArray(lineItemIds) ? lineItemIds.filter(Boolean) : [];
