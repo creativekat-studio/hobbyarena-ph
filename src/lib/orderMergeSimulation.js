@@ -29,7 +29,7 @@ import {
   resolveOrderStatusForPayment,
   syncOrderRollup,
 } from "../data/orderWorkflow.js";
-import { compareOrdersByOrderNo } from "./orderIds.js";
+import { compareOrdersByOrderNo, makeConsolidatedOrderId } from "./orderIds.js";
 import { lineItemAmount, lineItemDepositPaid, lineItemEffectiveUnitPrice } from "./orderRevenue.js";
 import { roundMoney } from "./money.js";
 
@@ -476,8 +476,8 @@ export function simulateMergeTotals(simulatedRows) {
   };
 }
 
-export function createMergedSetId() {
-  return `merge-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+export function createMergedSetId(existingOrders = [], now = new Date()) {
+  return makeConsolidatedOrderId(existingOrders, now);
 }
 
 export function groupMergedOrderSets(orders) {
@@ -564,6 +564,7 @@ export function applyMergeSimulationToOrder(order, simulatedRows, { mergedSetId,
     lineItems,
     ...syncOrderRollup(lineItems),
     trail,
+    notificationSeen: true,
     ...(mergedSetId ? { mergedSetId, mergedAt: at } : {}),
     ...(mergedAllocation ? { mergedAllocation } : {}),
   };

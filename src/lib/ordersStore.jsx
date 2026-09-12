@@ -174,6 +174,8 @@ export function isUnseenOrder(order) {
   if (getOrderLineItems(order).some((item) => migratePaymentStatus(item.payment) === "Pending Verification")) {
     return true;
   }
+  // Admin already acted on these in a merge — don't keep the new-order alert
+  if (order.mergedSetId) return false;
   // Customer-initiated updates explicitly re-flag the order
   return order.notificationSeen === false;
 }

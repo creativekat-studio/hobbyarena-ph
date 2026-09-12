@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Chip,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -23,10 +24,16 @@ import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
 import {
   PAYMENT_COLOR,
   STATUS_COLOR,
+  allocationLabelForItem,
   getOrderLineItems,
   getOrderStatusOptionsForPayment,
   getPaymentOptionsForKind,
+  isPreorderOrder,
+  lineItemTrailLabel,
+  migrateOrderStatus,
+  migratePaymentStatus,
   optionsIncludingCurrent,
+  orderKindLabels,
   orderStatusLabel,
   resolveOrderKindForItem,
   resolveOrderStatusForPayment,
@@ -34,17 +41,29 @@ import {
 import {
   allocationRecordFromWorkbook,
   applyMergeSimulationToOrder,
-  applyMergedLineStatus,
-  buildLiveMergeWorkbook,
   buildMergeWorkbook,
   createMergedSetId,
   describeMergeSelection,
   evaluateMergeSelection,
   groupMergedOrderSets,
+  buildLiveMergeWorkbook,
   buildMergeSourceRows,
+  productKeyForItem,
 } from "../lib/orderMergeSimulation.js";
 import { isArchivedOrder } from "../lib/ordersStore.jsx";
+import { compareOrdersByOrderNo, displayConsolidatedOrderId, withConsolidatedDisplayIds } from "../lib/orderIds.js";
+import { lineItemAmount } from "../lib/orderRevenue.js";
+import { formatOrderTimestamp } from "../lib/orderTimestamps.js";
 import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
+import {
+  AdminGridHeaderLabel,
+  ADMIN_LIST_SCROLL_SX,
+  adminStickyHeaderRowSx,
+} from "./adminTableHeader.jsx";
+import {
+  lineItemGridSx,
+  orderSummaryGridSx,
+} from "./AdminOrderAccordionRow.jsx";
 
 const cellSx = {
   border: "1px solid",
@@ -349,7 +368,8 @@ function OrderDetailsTable({
     : alpha(theme.palette.primary.main, 0.08);
 
   return (
-    <Box sx={{ overflow: "auto", maxHeight: 360, border: "1px solid", borderColor: "divider" }}>
+    <Box sx={{ border: "1px solid", borderColor: "divider" }}>
+      <Box sx={{ overflow: "auto", maxHeight: 360, position: "relative" }}>
       <Box
         component="table"
         sx={{
@@ -509,6 +529,19 @@ function OrderDetailsTable({
               </Fragment>
             );
           })}
+        </Box>
+      </Box>
+      </Box>
+      <Box
+        component="table"
+        sx={{
+          width: "100%",
+          minWidth: 860,
+          borderCollapse: "collapse",
+          tableLayout: "auto",
+        }}
+      >
+        <Box component="tbody">
           <Box component="tr">
             {ORDER_DETAIL_COLUMNS.map((column) => {
               const value = {
@@ -523,9 +556,7 @@ function OrderDetailsTable({
                   sx={{
                     ...cellSx,
                     borderColor: "divider",
-                    position: "sticky",
-                    bottom: 0,
-                    zIndex: 2,
+                    borderTop: "1px solid",
                     textAlign: column.align || "right",
                     fontFamily: MONO_FONT,
                     fontWeight: 800,
@@ -710,6 +741,390 @@ function totalItemQty(rows) {
   return (rows || []).reduce((sum, row) => sum + (Number(row.qty) || 0), 0);
 }
 
+const CONSOLIDATED_SUMMARY_GRID = "28px minmax(148px, 1fr) minmax(120px, 1fr) minmax(160px, 0.85fr) minmax(110px, 0.85fr) minmax(130px, 0.95fr) minmax(120px, 0.85fr) auto";
+const CONSOLIDATED_TABLE_MIN_WIDTH = 980;
+const CONSOLIDATED_LINE_GRID = "minmax(180px, 1.4fr) minmax(72px, 0.6fr) minmax(88px, 0.65fr) minmax(110px, 0.85fr) minmax(110px, 0.85fr) auto";
+const CONSOLIDATED_LINE_MIN_WIDTH = 760;
+
+function consolidatedLineGridSx(overrides = {}) {
+  return lineItemGridSx({
+    gridTemplateColumns: CONSOLIDATED_LINE_GRID,
+    ...overrides,
+  });
+}
+
+function uniqueLabels(values) {
+  return [...new Set((values || []).map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function summarizeMergedSet(orders) {
+  const memberOrders = [...(orders || [])].sort(compareOrdersByOrderNo);
+  const kinds = new Set();
+  const byProduct = new Map();
+  let qty = 0;
+  for (const order of memberOrders) {
+    orderKindLabels(order).forEach((kind) => kinds.add(kind));
+    for (const item of getOrderLineItems(order)) {
+      const productKey = productKeyForItem(item);
+      const itemQty = Number(item.quantity ?? item.qty) || 0;
+      qty += itemQty;
+      const current = byProduct.get(productKey) || {
+        productKey,
+        name: item.name || "Item",
+        quantity: 0,
+        allocatedQty: 0,
+        amount: 0,
+        balanceDue: 0,
+        sources: [],
+      };
+      current.quantity += itemQty;
+      current.allocatedQty += Math.max(0, Number(item.allocatedQty) || 0);
+      current.amount += lineItemAmount(item);
+      current.balanceDue += Number(item.balanceDue) || 0;
+      current.sources.push({ order, item });
+      byProduct.set(productKey, current);
+    }
+  }
+  const productRows = [...byProduct.values()].map((row) => {
+    const primary = row.sources[0];
+    const payments = uniqueLabels(row.sources.map(({ item }) => migratePaymentStatus(item.payment)));
+    const statuses = uniqueLabels(row.sources.map(({ item }) => migrateOrderStatus(item.status)));
+    return {
+      ...row,
+      key: row.productKey,
+      item: {
+        ...primary.item,
+        name: row.name,
+        quantity: row.quantity,
+        allocatedQty: row.allocatedQty,
+        payment: payments[0] || primary.item.payment,
+        status: statuses[0] || primary.item.status,
+      },
+      order: primary.order,
+      payments,
+      statuses,
+    };
+  });
+  const names = productRows.map((row) => lineItemTrailLabel(row.item));
+  const workbook = buildLiveMergeWorkbook(orders);
+  const allocatedQty = productRows.reduce((sum, row) => sum + row.allocatedQty, 0);
+  return {
+    memberOrders,
+    kinds: [...kinds],
+    names,
+    productRows,
+    lineCount: productRows.length,
+    qty,
+    allocatedQty,
+    newest: memberOrders[0],
+    totals: workbook.totals,
+  };
+}
+
+function MergedSetAccordionRow({
+  set,
+  surfaceBorderColor,
+  open,
+  onToggle,
+  onOpenOrder,
+  sending,
+  onSend,
+  onView,
+}) {
+  const theme = useTheme();
+  const { customer, email } = customerContactFromOrders(set.orders);
+  const sentCount = countMergedEmailsSent(set.orders);
+  const sent = sentCount > 0;
+  const summary = useMemo(() => summarizeMergedSet(set.orders), [set.orders]);
+  const itemsLabel = summary.names.length === 1
+    ? summary.names[0]
+    : `${summary.names.length} items`;
+
+  return (
+    <Box sx={{ borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
+      <Box
+        onClick={() => onToggle(set.id)}
+        sx={{
+          ...orderSummaryGridSx({
+            showSelect: false,
+            gridTemplateColumns: CONSOLIDATED_SUMMARY_GRID,
+          }),
+          py: 1.25,
+          cursor: "pointer",
+          userSelect: "none",
+          bgcolor: open ? alpha(theme.palette.primary.main, 0.04) : "transparent",
+          "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.06) },
+        }}
+      >
+        <IconButton
+          size="small"
+          aria-label={open ? "Collapse consolidated order" : "Expand consolidated order"}
+          sx={{
+            transform: open ? "rotate(90deg)" : "none",
+            transition: "transform 0.2s ease",
+            color: "text.secondary",
+          }}
+        >
+          ▸
+        </IconButton>
+
+        <Box sx={{ minWidth: 0 }}>
+          <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap" }}>
+            {displayConsolidatedOrderId(set)}
+          </Typography>
+          <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", whiteSpace: "nowrap", fontFamily: MONO_FONT }}>
+            {formatOrderTimestamp({ createdAt: set.mergedAt || summary.newest?.createdAt })}
+          </Typography>
+        </Box>
+
+        <Box sx={{ minWidth: 0, maxWidth: "100%" }}>
+          <Typography sx={{ fontWeight: 600, fontSize: "0.88rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {customer}
+          </Typography>
+          {email ? (
+            <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", whiteSpace: "nowrap", fontFamily: MONO_FONT }}>
+              {email}
+            </Typography>
+          ) : null}
+        </Box>
+
+        <Stack
+          direction="row"
+          spacing={0.75}
+          alignItems="center"
+          sx={{ minWidth: 0, flexWrap: "nowrap" }}
+        >
+          <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, whiteSpace: "nowrap" }}>
+            {summary.memberOrders.length} order{summary.memberOrders.length === 1 ? "" : "s"}
+          </Typography>
+          {summary.kinds.map((kind) => (
+            <Chip
+              key={kind}
+              label={kind}
+              variant="outlined"
+              color={kind === "Pre-order" ? "secondary" : "default"}
+              sx={{ ...ADMIN_STATUS_CHIP_SX, flexShrink: 0 }}
+            />
+          ))}
+        </Stack>
+
+        <Box sx={{ minWidth: 0 }}>
+          <Typography sx={{ fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {itemsLabel}
+          </Typography>
+          <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", fontFamily: MONO_FONT }}>
+            {summary.allocatedQty} / {summary.qty} qty
+          </Typography>
+        </Box>
+
+        <Box sx={{ minWidth: 0 }}>
+          <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", color: moneyColor(summary.totals?.net || 0), whiteSpace: "nowrap" }}>
+            {summary.totals?.netLabel || "Settled"} {PESO.format(Math.abs(summary.totals?.net || 0))}
+          </Typography>
+          <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", fontFamily: MONO_FONT, whiteSpace: "nowrap" }}>
+            New {PESO.format(summary.totals?.newTotal || 0)}
+          </Typography>
+        </Box>
+
+        <Box sx={{ minWidth: 0 }}>
+          <Chip
+            label={sent
+              ? `Email sent (${sentCount})`
+              : "Pending email"}
+            color={sent ? "success" : "warning"}
+            variant="outlined"
+            sx={ADMIN_STATUS_CHIP_SX}
+          />
+        </Box>
+
+        <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end" onClick={(event) => event.stopPropagation()}>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={onView}
+            sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
+          >
+            View
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            disabled={sending || !onSend}
+            onClick={onSend}
+            sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
+          >
+            {sending ? "Sending…" : "Send email"}
+          </Button>
+        </Stack>
+      </Box>
+
+      <Collapse in={open}>
+        <Box sx={{ px: { xs: 1.25, md: 2 }, pt: 0.5, pb: 1.5 }}>
+          <Box
+            sx={{
+              border: "1px solid",
+              borderColor: alpha(surfaceBorderColor, 0.35),
+              borderRadius: 1,
+              overflow: "hidden",
+              overflowX: "auto",
+            }}
+          >
+            <Box sx={{ minWidth: CONSOLIDATED_LINE_MIN_WIDTH }}>
+              <Box
+                sx={{
+                  ...consolidatedLineGridSx(),
+                  py: 0.85,
+                  bgcolor: alpha(theme.palette.text.primary, 0.015),
+                  borderBottom: "1px solid",
+                  borderColor: alpha(surfaceBorderColor, 0.3),
+                }}
+              >
+                <AdminGridHeaderLabel>Item</AdminGridHeaderLabel>
+                <AdminGridHeaderLabel>Allocation</AdminGridHeaderLabel>
+                <AdminGridHeaderLabel sx={{ textAlign: "right" }}>Balance</AdminGridHeaderLabel>
+                <AdminGridHeaderLabel>Payment</AdminGridHeaderLabel>
+                <AdminGridHeaderLabel>Status</AdminGridHeaderLabel>
+                <Box />
+              </Box>
+
+              {summary.productRows.map((row, index) => {
+                const { item, order } = row;
+                const itemPayment = row.payments.length === 1 ? row.payments[0] : "Mixed";
+                const itemStatus = row.statuses.length === 1 ? row.statuses[0] : "Mixed";
+                const preorder = row.sources.some(({ order: source }) => isPreorderOrder(source));
+                const orderIds = uniqueLabels(row.sources.map(({ order: source }) => source.id));
+                return (
+                  <Box
+                    key={row.key}
+                    sx={{
+                      ...consolidatedLineGridSx(),
+                      py: 1,
+                      borderTop: index === 0 ? "none" : "1px dashed",
+                      borderColor: alpha(surfaceBorderColor, 0.3),
+                    }}
+                  >
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", lineHeight: 1.35 }}>
+                        {lineItemTrailLabel(item)}
+                      </Typography>
+                      <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontFamily: MONO_FONT }}>
+                        {PESO.format(row.amount)}
+                        {orderIds.length > 1 ? ` · ${orderIds.length} orders` : ""}
+                      </Typography>
+                    </Box>
+                    <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.78rem" }}>
+                      {preorder ? allocationLabelForItem(item) : "—"}
+                    </Typography>
+                    <Typography sx={{ fontWeight: 700, fontSize: "0.82rem", textAlign: "right" }}>
+                      {row.balanceDue > 0 ? PESO.format(row.balanceDue) : "—"}
+                    </Typography>
+                    <Box>
+                      <Chip
+                        label={itemPayment === "Mixed" ? "Mixed" : itemPayment}
+                        color={PAYMENT_COLOR[itemPayment] || "default"}
+                        variant="outlined"
+                        sx={ADMIN_STATUS_CHIP_SX}
+                      />
+                    </Box>
+                    <Box>
+                      <Chip
+                        label={itemStatus === "Mixed" ? "Mixed" : orderStatusLabel(itemStatus)}
+                        color={STATUS_COLOR[itemStatus] || "default"}
+                        variant="outlined"
+                        sx={ADMIN_STATUS_CHIP_SX}
+                      />
+                    </Box>
+                    <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => onOpenOrder?.(order.id)}
+                        sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
+                      >
+                        View
+                      </Button>
+                    </Stack>
+                  </Box>
+                );
+              })}
+            </Box>
+          </Box>
+        </Box>
+      </Collapse>
+    </Box>
+  );
+}
+
+function ConsolidatedOrderViewDialog({
+  open,
+  set,
+  onClose,
+  onSend,
+  sending,
+  sendEnabled,
+}) {
+  const workbook = useMemo(() => (set ? buildLiveMergeWorkbook(set.orders) : null), [set]);
+  const summary = useMemo(() => (set ? summarizeMergedSet(set.orders) : null), [set]);
+  const contact = customerContactFromOrders(set?.orders);
+  if (!set || !workbook || !summary) return null;
+  const consolidatedId = displayConsolidatedOrderId(set);
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="lg"
+      fullWidth
+      PaperProps={{
+        sx: {
+          maxHeight: "calc(100vh - 48px)",
+          display: "flex",
+          flexDirection: "column",
+        },
+      }}
+    >
+      <DialogTitle sx={{ px: 3, pt: 2.5, pb: 1.25 }}>
+        <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: "0.82rem", color: "text.secondary", mb: 0.75 }}>
+          {consolidatedId}
+        </Typography>
+        <ConsolidateHeader
+          customer={contact.customer}
+          email={contact.email}
+          itemCount={summary.lineCount}
+          qty={summary.qty}
+          sentCount={countMergedEmailsSent(set.orders)}
+        />
+      </DialogTitle>
+      <DialogContent
+        dividers
+        sx={{
+          px: 3,
+          py: 2.5,
+          display: "flex",
+          flexDirection: "column",
+          minHeight: 0,
+          flex: 1,
+        }}
+      >
+        <MergeWorkbookView workbook={workbook} orders={set.orders} />
+      </DialogContent>
+      <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
+        <Button onClick={onClose} color="inherit" sx={{ mr: "auto" }}>
+          Close
+        </Button>
+        <Button
+          variant="outlined"
+          disabled={!sendEnabled || sending}
+          onClick={onSend}
+          sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
+        >
+          {sending ? "Sending…" : "Send email"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 function ConsolidateHeader({ customer, email, itemCount, qty, sentCount, titleAs = "div" }) {
   const sent = sentCount > 0;
   return (
@@ -751,6 +1166,7 @@ function ConsolidateHeader({ customer, email, itemCount, qty, sentCount, titleAs
 export function MergeSimulateDialog({
   open,
   orders,
+  allOrders,
   updateOrder,
   sendConsolidatedAllocationEmail,
   surfaceBorderColor,
@@ -805,7 +1221,7 @@ export function MergeSimulateDialog({
   }
 
   function writeSimulation() {
-    const mergedSetId = createMergedSetId();
+    const mergedSetId = createMergedSetId(allOrders?.length ? allOrders : orders);
     const mergedAllocation = allocationRecordFromWorkbook(workbook);
     const mergedAt = new Date().toISOString();
     const patched = [];
@@ -813,7 +1229,7 @@ export function MergeSimulateDialog({
       const patch = applyMergeSimulationToOrder(order, workbook.orderDetails, {
         mergedSetId,
         mergedAllocation,
-      }) || { mergedSetId, mergedAt, mergedAllocation };
+      }) || { mergedSetId, mergedAt, mergedAllocation, notificationSeen: true };
       updateOrder(order.id, patch);
       patched.push({ ...order, ...patch });
     }
@@ -967,20 +1383,37 @@ export function MergedOrdersPanel({
   updateOrder,
   sendConsolidatedAllocationEmail,
   surfaceBorderColor,
+  stickyHeaderBg,
   onBack,
+  onOpenOrder,
 }) {
+  const theme = useTheme();
+  const headerBg = stickyHeaderBg || theme.palette.background.paper;
   const [sendingId, setSendingId] = useState("");
   const [sendError, setSendError] = useState("");
+  const [expandedSetId, setExpandedSetId] = useState(null);
+  const [viewingSetId, setViewingSetId] = useState("");
   const sets = useMemo(
-    () => groupMergedOrderSets((orders || []).filter((order) => !isArchivedOrder(order))),
+    () => withConsolidatedDisplayIds(
+      groupMergedOrderSets((orders || []).filter((order) => !isArchivedOrder(order))),
+    ),
     [orders],
   );
 
-  function handlePairChange(orderId, lineItemId, status, payment) {
-    const order = (orders || []).find((row) => row.id === orderId);
-    if (!order || !updateOrder) return;
-    const patch = applyMergedLineStatus(order, lineItemId, status, payment);
-    if (patch) updateOrder(order.id, patch);
+  useEffect(() => {
+    if (!updateOrder) return;
+    for (const set of sets) {
+      if (!set.displayId || set.displayId === set.id) continue;
+      for (const order of set.orders) {
+        if (order.mergedSetId === set.displayId) continue;
+        updateOrder(order.id, { mergedSetId: set.displayId });
+      }
+    }
+  }, [sets, updateOrder]);
+  const viewingSet = sets.find((set) => set.id === viewingSetId) || null;
+
+  function toggleSetAccordion(id) {
+    setExpandedSetId((current) => (current === id ? null : id));
   }
 
   async function handleSendSet(set) {
@@ -1011,66 +1444,54 @@ export function MergedOrdersPanel({
   }
 
   return (
-    <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", px: { xs: 1.5, md: 2 }, py: 2 }}>
-      <Stack spacing={2}>
-        {sets.map((set) => {
-          const workbook = buildLiveMergeWorkbook(set.orders);
-          return (
-            <Box
-              key={set.id}
-              sx={{
-                border: "1px solid",
-                borderColor: surfaceBorderColor,
-                borderRadius: 1,
-                overflow: "hidden",
-              }}
-            >
-              <Stack
-                direction={{ xs: "column", sm: "row" }}
-                spacing={1}
-                alignItems={{ xs: "flex-start", sm: "center" }}
-                justifyContent="space-between"
-                sx={{ px: { xs: 1.25, md: 2 }, py: 1.25, borderBottom: "1px solid", borderColor: surfaceBorderColor }}
-              >
-                <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <ConsolidateHeader
-                    customer={set.customer}
-                    email={customerContactFromOrders(set.orders).email}
-                    itemCount={workbook.orderDetails?.length || 0}
-                    qty={totalItemQty(workbook.orderDetails)}
-                    sentCount={countMergedEmailsSent(set.orders)}
-                  />
-                </Box>
-                <Button
-                  variant="outlined"
-                  disabled={sendingId === set.id || !sendConsolidatedAllocationEmail}
-                  onClick={() => handleSendSet(set)}
-                  sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
-                >
-                  {sendingId === set.id ? "Sending…" : "Send email"}
-                </Button>
-              </Stack>
-              {sendError && sendingId === "" ? (
-                <Alert severity="error" sx={{ mx: 2, mt: 1.5 }}>{sendError}</Alert>
-              ) : null}
-              <Box sx={{ px: { xs: 1.25, md: 2 }, py: 2 }}>
-                <MergeWorkbookView
-                  workbook={workbook}
-                  orders={set.orders}
-                  onPaymentChange={(row, payment) => {
-                    const kind = row.tag === "Pre-order" ? "Pre-order" : "In-stock";
-                    const status = resolveOrderStatusForPayment(payment, row.status, kind);
-                    handlePairChange(row.orderId, row.lineItemId, status, payment);
-                  }}
-                  onStatusChange={(row, status) => {
-                    handlePairChange(row.orderId, row.lineItemId, status, row.payment);
-                  }}
-                />
-              </Box>
-            </Box>
-          );
-        })}
-      </Stack>
+    <Box sx={ADMIN_LIST_SCROLL_SX}>
+      {sendError ? (
+        <Alert severity="error" sx={{ mx: 2, mt: 1.5 }}>{sendError}</Alert>
+      ) : null}
+      <Box sx={{ minWidth: CONSOLIDATED_TABLE_MIN_WIDTH }}>
+        <Box
+          sx={{
+            ...orderSummaryGridSx({
+              showSelect: false,
+              gridTemplateColumns: CONSOLIDATED_SUMMARY_GRID,
+            }),
+            py: 1.25,
+            ...adminStickyHeaderRowSx(headerBg, surfaceBorderColor),
+          }}
+        >
+          <Box />
+          <AdminGridHeaderLabel>Consolidated</AdminGridHeaderLabel>
+          <AdminGridHeaderLabel>Customer</AdminGridHeaderLabel>
+          <AdminGridHeaderLabel>Orders</AdminGridHeaderLabel>
+          <AdminGridHeaderLabel>Items</AdminGridHeaderLabel>
+          <AdminGridHeaderLabel>Settlement</AdminGridHeaderLabel>
+          <AdminGridHeaderLabel>Status</AdminGridHeaderLabel>
+          <Box />
+        </Box>
+        {sets.map((set) => (
+          <MergedSetAccordionRow
+            key={set.id}
+            set={set}
+            surfaceBorderColor={surfaceBorderColor}
+            open={expandedSetId === set.id}
+            onToggle={toggleSetAccordion}
+            onOpenOrder={onOpenOrder}
+            sending={sendingId === set.id}
+            onSend={sendConsolidatedAllocationEmail ? () => handleSendSet(set) : undefined}
+            onView={() => setViewingSetId(set.id)}
+          />
+        ))}
+      </Box>
+      <ConsolidatedOrderViewDialog
+        open={Boolean(viewingSet)}
+        set={viewingSet}
+        onClose={() => setViewingSetId("")}
+        sending={Boolean(viewingSet && sendingId === viewingSet.id)}
+        sendEnabled={Boolean(sendConsolidatedAllocationEmail)}
+        onSend={viewingSet && sendConsolidatedAllocationEmail
+          ? () => handleSendSet(viewingSet)
+          : undefined}
+      />
     </Box>
   );
 }

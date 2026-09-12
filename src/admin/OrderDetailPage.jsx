@@ -43,7 +43,7 @@ function resolveBackNavigation(locationState) {
   return {
     path: "/admin/orders",
     label: "Back to orders",
-    state: undefined,
+    state: backTo?.ordersView ? { ordersView: backTo.ordersView } : undefined,
   };
 }
 

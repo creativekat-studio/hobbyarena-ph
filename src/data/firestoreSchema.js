@@ -48,7 +48,7 @@ export const SCHEMA = {
     date: "string",
     createdAt: "timestamp",
     updatedAt: "timestamp",
-    mergedSetId: "string | undefined — shared id for a consolidated set",
+    mergedSetId: "string | undefined — HA-C-yyyymm###### shared id for a consolidated set",
     mergedAt: "string | undefined",
     mergedAllocation: "{ [productKey]: { percent, newQty } } | undefined",
   },

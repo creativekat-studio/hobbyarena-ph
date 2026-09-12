@@ -6,10 +6,8 @@ import {
   Checkbox,
   Chip,
   CircularProgress,
-  Collapse,
   FormControl,
   Grid,
-  IconButton,
   InputAdornment,
   InputLabel,
   MenuItem,
@@ -22,32 +20,20 @@ import {
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
-import { useNavigate, useOutletContext } from "react-router-dom";
+import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import { MONO_FONT, getStatAccents } from "../theme.js";
-import { PESO } from "../components/ProductCard.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
-import { ArchiveIcon, BoxIcon, CardIcon, RestoreIcon, SearchIcon, SparkleIcon, TruckIcon } from "../components/icons.jsx";
-import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
+import { BoxIcon, CardIcon, SearchIcon, SparkleIcon, TruckIcon } from "../components/icons.jsx";
 import {
   ORDER_QUEUES,
-  PAYMENT_COLOR,
-  STATUS_COLOR,
-  allocationLabelForItem,
-  getOrderLineItems,
-  getOrderStage,
-  isPreorderOrder,
-  lineItemTrailLabel,
-  migratePaymentStatus,
   migrateOrderStatus,
-  orderKindLabels,
   orderMatchesKind,
   orderStatusLabel,
-  resolveOrderKindForItem,
 } from "../data/orderWorkflow.js";
 import { isArchivedOrder, isUnseenOrder, useOrders } from "../lib/ordersStore.jsx";
 import { compareOrdersByOrderNo } from "../lib/orderIds.js";
-import { buildCostByProductId, lineItemAmount } from "../lib/orderRevenue.js";
-import { formatOrderTimestamp, resolveOrderPlacedAt } from "../lib/orderTimestamps.js";
+import { buildCostByProductId } from "../lib/orderRevenue.js";
+import { resolveOrderPlacedAt } from "../lib/orderTimestamps.js";
 import { useInventory } from "../lib/inventoryStore.jsx";
 import { useCatalog } from "../lib/catalogStore.jsx";
 import { sortRowsBy, toggleSortState } from "../lib/tableSort.js";
@@ -55,7 +41,6 @@ import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
 import { InfiniteScrollSentinel } from "../components/InfiniteScrollSentinel.jsx";
 import { useInfiniteScroll } from "../lib/useInfiniteScroll.js";
 import {
-  AdminGridHeaderLabel,
   AdminGridSortHeader,
   AdminListFilterTabs,
   ADMIN_LIST_BULK_BAR_SX,
@@ -73,6 +58,10 @@ import AddOrderDialog from "./AddOrderDialog.jsx";
 import ExportOrdersDialog from "./ExportOrdersDialog.jsx";
 import { MergeSimulateDialog, MergedOrdersPanel } from "./MergeOrdersGrid.jsx";
 import { evaluateMergeSelection } from "../lib/orderMergeSimulation.js";
+import AdminOrderAccordionRow, {
+  ORDER_TABLE_MIN_WIDTH,
+  orderSummaryGridSx,
+} from "./AdminOrderAccordionRow.jsx";
 
 const ORDER_SORT_ACCESSORS = {
   order: (o) => resolveOrderPlacedAt(o)?.getTime() ?? 0,
@@ -95,47 +84,10 @@ const ORDERS_VIEWS = [
   { id: "merged", label: "Consolidated Orders" },
 ];
 
-const ORDER_SUMMARY_GRID = "36px 28px minmax(140px, 1.1fr) minmax(120px, 1fr) minmax(140px, 1.3fr) minmax(120px, 0.9fr) auto";
-const LINEITEM_GRID = "minmax(160px, 1.25fr) minmax(100px, 0.85fr) minmax(72px, 0.6fr) minmax(88px, 0.65fr) minmax(110px, 0.85fr) minmax(110px, 0.85fr)";
-const ORDER_TABLE_MIN_WIDTH = 760;
-
-
-const LINEITEM_TABLE_MIN_WIDTH = 720;
-
-function orderSummaryGridSx(overrides = {}) {
-  return {
-    display: "grid",
-    gridTemplateColumns: ORDER_SUMMARY_GRID,
-    columnGap: { xs: 1, md: 1.5 },
-    alignItems: "center",
-    width: "100%",
-    boxSizing: "border-box",
-    px: { xs: 1.25, md: 2 },
-    ...overrides,
-  };
-}
-
-function lineItemGridSx(overrides = {}) {
-  return {
-    display: "grid",
-    gridTemplateColumns: LINEITEM_GRID,
-    columnGap: { xs: 1, md: 1.5 },
-    alignItems: "center",
-    width: "100%",
-    boxSizing: "border-box",
-    px: { xs: 1.25, md: 1.5 },
-    ...overrides,
-  };
-}
-
 function SortableGridHeader({ label, sortKey, sort, onSort, sx }) {
   return (
     <AdminGridSortHeader label={label} sortKey={sortKey} sort={sort} onSort={onSort} sx={sx} />
   );
-}
-
-function GridHeaderCell({ children, sx }) {
-  return <AdminGridHeaderLabel sx={sx}>{children}</AdminGridHeaderLabel>;
 }
 
 function StatCard({ panelSx, icon, label, value, accent }) {
@@ -157,300 +109,12 @@ function StatCard({ panelSx, icon, label, value, accent }) {
   );
 }
 
-/** Terminal line statuses shown as a status chip in the main orders grid. */
-const DONE_STATUSES = new Set(["Fulfilled", "Refunded", "Unpaid"]);
-
-function isLineItemDone(item) {
-  return DONE_STATUSES.has(migrateOrderStatus(item.status));
-}
-
-function AdminOrderAccordionRow({
-  order,
-  surfaceBorderColor,
-  onOpen,
-  open,
-  onToggle,
-  onArchive,
-  onRestore,
-  selected,
-  onToggleSelect,
-}) {
-  const theme = useTheme();
-  const lineItems = getOrderLineItems(order);
-  const multiItem = lineItems.length > 1;
-  const preorder = isPreorderOrder(order);
-  const status = migrateOrderStatus(order.status);
-  const archived = isArchivedOrder(order);
-  const hasUnseenActivity = !archived && isUnseenOrder(order);
-
-  const doneCount = lineItems.filter(isLineItemDone).length;
-  const allDone = lineItems.length > 0 && doneCount === lineItems.length;
-
-  return (
-    <Box sx={{ borderBottom: "1px solid", borderColor: surfaceBorderColor, opacity: archived ? 0.72 : 1 }}>
-      <Box
-        onClick={() => onToggle(order.id)}
-        sx={{
-          ...orderSummaryGridSx(),
-          py: 1.25,
-          cursor: "pointer",
-          userSelect: "none",
-          bgcolor: selected
-            ? alpha(theme.palette.primary.main, 0.08)
-            : open
-              ? alpha(theme.palette.primary.main, 0.04)
-              : "transparent",
-          "&:hover": { bgcolor: alpha(theme.palette.primary.main, selected ? 0.1 : 0.06) },
-        }}
-      >
-        <Checkbox
-          size="small"
-          checked={selected}
-          onClick={(event) => event.stopPropagation()}
-          onChange={() => onToggleSelect(order.id)}
-          inputProps={{ "aria-label": `Select ${order.id}` }}
-          sx={{ p: 0.5, justifySelf: "center" }}
-        />
-        <IconButton
-          size="small"
-          aria-label={open ? "Collapse order" : "Expand order"}
-          sx={{
-            transform: open ? "rotate(90deg)" : "none",
-            transition: "transform 0.2s ease",
-            color: "text.secondary",
-          }}
-        >
-          ▸
-        </IconButton>
-
-        <Box sx={{ minWidth: 0 }}>
-          <Stack direction="row" spacing={0.75} alignItems="center">
-            {hasUnseenActivity ? (
-              <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "warning.main", flexShrink: 0 }} title="New activity" />
-            ) : null}
-            <Box sx={{ minWidth: 0 }}>
-              <Stack direction="row" spacing={0.75} alignItems="center">
-                <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap" }}>{order.id}</Typography>
-                {archived ? (
-                  <Chip
-                    label="Archived"
-                    color="default"
-                    variant="outlined"
-                    sx={{ ...ADMIN_STATUS_CHIP_SX, height: 22, fontSize: "0.62rem", "& .MuiChip-label": { px: 0.75 } }}
-                  />
-                ) : null}
-              </Stack>
-              <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", whiteSpace: "nowrap", fontFamily: MONO_FONT }}>
-                {formatOrderTimestamp(order)}
-              </Typography>
-            </Box>
-          </Stack>
-        </Box>
-
-        <Box sx={{ minWidth: 0, maxWidth: "100%" }}>
-          <Typography sx={{ fontWeight: 600, fontSize: "0.88rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {order.customer}
-          </Typography>
-          <Stack
-            direction="row"
-            spacing={0.5}
-            alignItems="center"
-            sx={{ mt: 0.5, flexWrap: "wrap", rowGap: 0.5 }}
-          >
-            {orderKindLabels(order).map((kind) => (
-              <Chip
-                key={kind}
-                label={kind}
-                variant="outlined"
-                color={kind === "Pre-order" ? "secondary" : "default"}
-                sx={ADMIN_STATUS_CHIP_SX}
-              />
-            ))}
-          </Stack>
-        </Box>
-
-        <Box sx={{ minWidth: 0 }}>
-          {multiItem ? (
-            <Typography sx={{ fontSize: "0.85rem", fontWeight: 600 }}>{lineItems.length} items</Typography>
-          ) : (
-            <Typography sx={{ fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{order.items}</Typography>
-          )}
-        </Box>
-
-        <Box sx={{ minWidth: 0 }}>
-          {allDone ? (
-            <Chip
-              label={orderStatusLabel(status)}
-              color={STATUS_COLOR[status] || "default"}
-              variant="outlined"
-              sx={ADMIN_STATUS_CHIP_SX}
-            />
-          ) : (
-            <Tooltip
-              arrow
-              title={(
-                <Box sx={{ py: 0.5 }}>
-                  <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, mb: 0.5 }}>
-                    {doneCount} of {lineItems.length} items closed
-                  </Typography>
-                  <Stack spacing={0.25}>
-                    {lineItems.map((item) => (
-                      <Typography key={item.id} sx={{ fontSize: "0.7rem" }}>
-                        {isLineItemDone(item) ? "✓" : "•"} {lineItemTrailLabel(item)} — {orderStatusLabel(item.status)}
-                      </Typography>
-                    ))}
-                  </Stack>
-                </Box>
-              )}
-            >
-              <Stack direction="row" spacing={0.5} alignItems="center" sx={{ cursor: "help", width: "fit-content" }}>
-                <Chip
-                  label={`${doneCount}/${lineItems.length}`}
-                  variant="outlined"
-                  color={doneCount > 0 ? "warning" : "default"}
-                  sx={ADMIN_STATUS_CHIP_SX}
-                />
-                <Box
-                  component="span"
-                  sx={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 18,
-                    height: 18,
-                    borderRadius: "50%",
-                    border: "1px solid",
-                    borderColor: "text.disabled",
-                    color: "text.secondary",
-                    fontSize: "0.68rem",
-                    fontWeight: 700,
-                    fontStyle: "italic",
-                  }}
-                >
-                  i
-                </Box>
-              </Stack>
-            </Tooltip>
-          )}
-        </Box>
-
-        <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end" onClick={(event) => event.stopPropagation()}>
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={onOpen}
-            sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
-          >
-            View
-          </Button>
-          {archived ? (
-            <Tooltip title="Restore">
-              <IconButton size="small" aria-label={`Restore ${order.id}`} onClick={onRestore} color="primary">
-                <RestoreIcon sx={{ fontSize: 18 }} />
-              </IconButton>
-            </Tooltip>
-          ) : (
-            <Tooltip title="Archive">
-              <IconButton size="small" aria-label={`Archive ${order.id}`} onClick={onArchive} sx={{ color: "text.secondary" }}>
-                <ArchiveIcon sx={{ fontSize: 18 }} />
-              </IconButton>
-            </Tooltip>
-          )}
-        </Stack>
-      </Box>
-
-      <Collapse in={open}>
-        <Box sx={{ px: { xs: 1.25, md: 2 }, pt: 0.5, pb: 1.5 }}>
-          <Box
-            sx={{
-              border: "1px solid",
-              borderColor: alpha(surfaceBorderColor, 0.35),
-              borderRadius: 1,
-              overflow: "hidden",
-              overflowX: "auto",
-            }}
-          >
-            <Box sx={{ minWidth: LINEITEM_TABLE_MIN_WIDTH }}>
-              <Box
-                sx={{
-                  ...lineItemGridSx(),
-                  py: 0.85,
-                  bgcolor: alpha(theme.palette.text.primary, 0.015),
-                  borderBottom: "1px solid",
-                  borderColor: alpha(surfaceBorderColor, 0.3),
-                }}
-              >
-                <GridHeaderCell>Item</GridHeaderCell>
-                <GridHeaderCell>Stage</GridHeaderCell>
-                <GridHeaderCell>Allocation</GridHeaderCell>
-                <GridHeaderCell sx={{ textAlign: "right" }}>Balance</GridHeaderCell>
-                <GridHeaderCell>Payment</GridHeaderCell>
-                <GridHeaderCell>Status</GridHeaderCell>
-              </Box>
-
-              {lineItems.map((item, index) => {
-                const itemPayment = migratePaymentStatus(item.payment);
-                const itemStatus = migrateOrderStatus(item.status);
-                const itemStage = getOrderStage({ ...order, payment: item.payment, status: item.status, lineItems: [item] });
-                const lineTotal = lineItemAmount(item);
-                return (
-                  <Box
-                    key={item.id}
-                    sx={{
-                      ...lineItemGridSx(),
-                      py: 1,
-                      borderTop: index === 0 ? "none" : "1px dashed",
-                      borderColor: alpha(surfaceBorderColor, 0.3),
-                    }}
-                  >
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", lineHeight: 1.35 }}>
-                        {lineItemTrailLabel(item)}
-                      </Typography>
-                      <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontFamily: MONO_FONT }}>
-                        {PESO.format(lineTotal)}
-                      </Typography>
-                    </Box>
-                    <Typography sx={{ fontSize: "0.82rem", fontWeight: 700 }}>
-                      {itemStage}
-                    </Typography>
-                    <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.78rem" }}>
-                      {preorder ? allocationLabelForItem(item) : "—"}
-                    </Typography>
-                    <Typography sx={{ fontWeight: 700, fontSize: "0.82rem", textAlign: "right" }}>
-                      {(item.balanceDue ?? 0) > 0 ? PESO.format(item.balanceDue) : "—"}
-                    </Typography>
-                    <Box>
-                      <Chip
-                        label={itemPayment}
-                        color={PAYMENT_COLOR[itemPayment] || "default"}
-                        variant="outlined"
-                        sx={ADMIN_STATUS_CHIP_SX}
-                      />
-                    </Box>
-                    <Box>
-                      <Chip
-                        label={orderStatusLabel(itemStatus)}
-                        color={STATUS_COLOR[itemStatus] || "default"}
-                        variant="outlined"
-                        sx={ADMIN_STATUS_CHIP_SX}
-                      />
-                    </Box>
-                  </Box>
-                );
-              })}
-            </Box>
-          </Box>
-        </Box>
-      </Collapse>
-    </Box>
-  );
-}
 
 export default function OrdersPage() {
   const theme = useTheme();
   const accents = getStatAccents(theme);
   const navigate = useNavigate();
+  const location = useLocation();
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
   const { orders, ordersError, ordersReady, archiveOrders, restoreOrders, updateOrder, sendConsolidatedAllocationEmail } = useOrders();
@@ -469,9 +133,17 @@ export default function OrdersPage() {
   const [sort, setSort] = useState({ key: "order", dir: "desc" });
   const [archiveTargetIds, setArchiveTargetIds] = useState([]);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
-  const [ordersView, setOrdersView] = useState("individual");
+  const [ordersView, setOrdersView] = useState(
+    () => (location.state?.ordersView === "merged" ? "merged" : "individual"),
+  );
   const [simulateOpen, setSimulateOpen] = useState(false);
   const onMergedTab = ordersView === "merged";
+
+  useEffect(() => {
+    if (location.state?.ordersView === "merged" || location.state?.ordersView === "individual") {
+      setOrdersView(location.state.ordersView);
+    }
+  }, [location.state]);
 
   function handleSort(key) {
     setSort((prev) => toggleSortState(prev, key, { defaultDir: key === "order" ? "desc" : "asc" }));
@@ -483,7 +155,7 @@ export default function OrdersPage() {
 
   function openOrder(id) {
     navigate(`/admin/orders/${encodeURIComponent(id)}`, {
-      state: { backTo: { path: "/admin/orders", label: "orders" } },
+      state: { backTo: { path: "/admin/orders", label: "orders", ordersView } },
     });
   }
 
@@ -854,7 +526,9 @@ export default function OrdersPage() {
             updateOrder={updateOrder}
             sendConsolidatedAllocationEmail={sendConsolidatedAllocationEmail}
             surfaceBorderColor={surfaceBorderColor}
+            stickyHeaderBg={stickyHeaderBg}
             onBack={showIndividualOrders}
+            onOpenOrder={openOrder}
           />
         ) : !ordersReady ? (
           <Stack spacing={1.5} alignItems="center" sx={{ py: 6, color: "text.secondary" }}>
@@ -929,6 +603,7 @@ export default function OrdersPage() {
       <MergeSimulateDialog
         open={simulateOpen}
         orders={selectedOrders}
+        allOrders={orders}
         updateOrder={updateOrder}
         sendConsolidatedAllocationEmail={sendConsolidatedAllocationEmail}
         surfaceBorderColor={surfaceBorderColor}
