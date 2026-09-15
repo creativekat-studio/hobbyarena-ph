@@ -14,7 +14,6 @@ import {
   escapeHtml,
   formatEmailDate,
   invoiceTable,
-  messengerButton,
   metaLine,
   preorderReminderBlock,
   preorderReminderText,
@@ -40,27 +39,17 @@ function customerActionButtonsBlock(emailType) {
 
   if (BALANCE_ACTION_EMAIL_TYPES.has(emailType)) {
     return customerResponseButtons({
-      caption: "Pay the balance and send your proof using either option below.",
+      caption: "Pay the balance and send your proof using the option below.",
       accountLabel: "Upload in my account",
       accountHref: links.accountUrl,
-      messengerLabel: "Message Hobby Arena PH",
-      messengerHref: links.messengerUrl,
     });
   }
 
   if (REFUND_ACTION_EMAIL_TYPES.has(emailType)) {
     return customerResponseButtons({
-      caption: "Share your bank or e-wallet details using either option below.",
+      caption: "Share your bank or e-wallet details using the option below.",
       accountLabel: "Submit refund details",
       accountHref: links.accountUrl,
-      messengerLabel: "Message Hobby Arena PH",
-      messengerHref: links.messengerUrl,
-    });
-  }
-
-  if (emailType === "ready_for_pickup" || emailType === "partial_refund_sent") {
-    return messengerButton({
-      label: "Message Hobby Arena PH",
     });
   }
 
@@ -771,23 +760,9 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
   ];
 
   if (BALANCE_ACTION_EMAIL_TYPES.has(emailType)) {
-    text.push(
-      "",
-      "Upload in my account:",
-      links.accountUrl,
-      "Message Hobby Arena PH:",
-      links.messengerUrl,
-    );
+    text.push("", "Upload in my account:", links.accountUrl);
   } else if (REFUND_ACTION_EMAIL_TYPES.has(emailType)) {
-    text.push(
-      "",
-      "Submit refund details:",
-      links.accountUrl,
-      "Message Hobby Arena PH:",
-      links.messengerUrl,
-    );
-  } else if (emailType === "ready_for_pickup" || emailType === "partial_refund_sent") {
-    text.push("", "Message Hobby Arena PH:", links.messengerUrl);
+    text.push("", "Submit refund details:", links.accountUrl);
   }
 
   if (order.statusAttachment) {
