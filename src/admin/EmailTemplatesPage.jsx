@@ -312,6 +312,28 @@ function EmailEditor({
         ))}
       </Stack>
 
+      <FormControlLabel
+        sx={{ ml: 0, mr: 0, alignItems: "center" }}
+        control={(
+          <Switch
+            size="small"
+            color="primary"
+            checked={Boolean(showMessengerButton)}
+            onChange={(e) => handleMessengerToggle(e.target.checked)}
+          />
+        )}
+        label={(
+          <Box>
+            <Typography sx={{ fontSize: "0.78rem", fontWeight: 700, lineHeight: 1.3 }}>
+              Message Hobby Arena button
+            </Typography>
+            <Typography sx={{ fontSize: "0.7rem", color: "text.secondary", lineHeight: 1.3 }}>
+              {showMessengerButton ? "Shown in this template" : "Hidden in this template"}
+            </Typography>
+          </Box>
+        )}
+      />
+
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }} flexWrap="wrap" useFlexGap>
         <Button
           variant="contained"
@@ -348,27 +370,6 @@ function EmailEditor({
         >
           Reset
         </Button>
-        <FormControlLabel
-          sx={{ ml: 0.5, mr: 0, alignItems: "center" }}
-          control={(
-            <Switch
-              size="small"
-              color="primary"
-              checked={Boolean(showMessengerButton)}
-              onChange={(e) => handleMessengerToggle(e.target.checked)}
-            />
-          )}
-          label={(
-            <Box>
-              <Typography sx={{ fontSize: "0.78rem", fontWeight: 700, lineHeight: 1.3 }}>
-                Message Hobby Arena button
-              </Typography>
-              <Typography sx={{ fontSize: "0.7rem", color: "text.secondary", lineHeight: 1.3 }}>
-                {showMessengerButton ? "Shown in this template" : "Hidden in this template"}
-              </Typography>
-            </Box>
-          )}
-        />
         <Box sx={{ flex: 1 }} />
         <Button
           variant="outlined"
