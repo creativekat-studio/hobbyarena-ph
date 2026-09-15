@@ -52,7 +52,7 @@ import {
 } from "./orderProofStorage.js";
 import { queueOrderAcknowledgement, queueOrderStatusEmail } from "./emailService.js";
 import { resolveOrderStatusEmailTypeForCurrentState, ORDER_STATUS_EMAIL_LABELS } from "./orderEmailTriggers.js";
-import { getEmailBodyOverride, getPreorderReminderConfig } from "./emailTemplatesStore.js";
+import { getEmailBodyOverride, getPreorderReminderConfig, getShowMessengerButton } from "./emailTemplatesStore.js";
 import { normalizeProofDataUrl } from "./imageCompression.js";
 import { useInventory } from "./inventoryStore.jsx";
 
@@ -484,6 +484,7 @@ export function OrdersProvider({ children }) {
         emailType,
         bodyOverride: getEmailBodyOverride(emailType),
         reminder: getPreorderReminderConfig(),
+        showMessengerButton: getShowMessengerButton(emailType),
         order: {
           id: order.id,
           customer: order.customer,

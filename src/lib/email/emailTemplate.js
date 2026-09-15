@@ -233,13 +233,16 @@ function resolveReminderLines(lines, placeholders = {}) {
 }
 
 /**
- * Account CTA for balance payment or refund detail submission.
- * @param {{ caption?: string; accountLabel: string; accountHref: string }} options
+ * Account CTA, with an optional Message Hobby Arena button.
+ * @param {{ caption?: string; accountLabel: string; accountHref: string; messengerLabel?: string; messengerHref?: string; showMessenger?: boolean }} options
  */
 export function customerResponseButtons({
   caption = "",
   accountLabel,
   accountHref,
+  messengerLabel = "Message Hobby Arena PH",
+  messengerHref = "",
+  showMessenger = false,
 }) {
   const c = EMAIL_BRAND.colors;
   const buttonBase = `display:block;width:100%;padding:12px 14px;border-radius:8px;font-family:${FONT};font-size:13px;font-weight:700;line-height:1.35;text-align:center;text-decoration:none;box-sizing:border-box`;
@@ -250,16 +253,36 @@ export function customerResponseButtons({
       ${escapeHtml(accountLabel)}
     </a>
   `;
+  const secondaryButton = `
+    <a href="${escapeHtml(messengerHref)}" ${linkAttrs} style="${buttonBase};background:${c.gold};color:${c.ink};border:1px solid ${c.gold}">
+      ${escapeHtml(messengerLabel)}
+    </a>
+  `;
 
-  return `
-    <div style="margin:16px 0 20px;padding:16px;border-radius:10px;background:${c.page};border:1px solid ${c.border}">
-      ${caption ? `<p style="margin:0 0 12px;font-family:${FONT};font-size:14px;line-height:1.6;color:${c.muted};text-align:center">${escapeHtml(caption)}</p>` : ""}
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+  const buttonsRow = showMessenger
+    ? `
+        <tr>
+          <td width="50%" align="center" valign="top" style="padding:0 6px 0 0">
+            ${primaryButton}
+          </td>
+          <td width="50%" align="center" valign="top" style="padding:0 0 0 6px">
+            ${secondaryButton}
+          </td>
+        </tr>
+      `
+    : `
         <tr>
           <td align="center" valign="top">
             ${primaryButton}
           </td>
         </tr>
+      `;
+
+  return `
+    <div style="margin:16px 0 20px;padding:16px;border-radius:10px;background:${c.page};border:1px solid ${c.border}">
+      ${caption ? `<p style="margin:0 0 12px;font-family:${FONT};font-size:14px;line-height:1.6;color:${c.muted};text-align:center">${escapeHtml(caption)}</p>` : ""}
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        ${buttonsRow}
       </table>
     </div>
   `;

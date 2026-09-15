@@ -10,11 +10,13 @@ import {
   DialogContent,
   DialogTitle,
   FormControl,
+  FormControlLabel,
   IconButton,
   InputLabel,
   MenuItem,
   Select,
   Stack,
+  Switch,
   Tab,
   Table,
   TableBody,
@@ -46,10 +48,12 @@ import {
   addEmailFooter,
   getEditableEmailBody,
   getPreorderReminderConfig,
+  getShowMessengerButton,
   removeEmailFooter,
   setEmailBodyOverride,
   setEmailFooterAssignment,
   setPreorderReminderConfig,
+  setShowMessengerButton,
 } from "../lib/emailTemplatesStore.js";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import EmailSimInbox from "./EmailSimInbox.jsx";
@@ -117,7 +121,7 @@ function buildSampleOrder(recipientEmail, emailType) {
   };
 }
 
-function EmailPreview({ emailType, body, reminder, surfaceBorderColor }) {
+function EmailPreview({ emailType, body, reminder, showMessengerButton, surfaceBorderColor }) {
   const [state, setState] = useState({ loading: true, html: "", subject: "", error: "" });
 
   useEffect(() => {
@@ -128,7 +132,7 @@ function EmailPreview({ emailType, body, reminder, surfaceBorderColor }) {
         const result = buildOrderStatusEmail(
           buildSampleOrder(PREVIEW_EMAIL, emailType),
           emailType,
-          { bodyOverride: body, reminder },
+          { bodyOverride: body, reminder, showMessengerButton },
         );
         if (cancelled) return;
         if (!result) {
@@ -145,7 +149,7 @@ function EmailPreview({ emailType, body, reminder, surfaceBorderColor }) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [emailType, body, reminder]);
+  }, [emailType, body, reminder, showMessengerButton]);
 
   return (
     <Box>
@@ -199,6 +203,8 @@ function EmailEditor({
   onTestResult,
   reminder,
   onReminderChange,
+  showMessengerButton,
+  onShowMessengerChange,
 }) {
   const theme = useTheme();
   const [saved, setSaved] = useState(false);
@@ -230,6 +236,10 @@ function EmailEditor({
     onReminderChange(next);
   }
 
+  function handleMessengerToggle(checked) {
+    onShowMessengerChange(setShowMessengerButton(emailType, checked));
+  }
+
   async function handleSendTest() {
     if (!testEmail) {
       onTestResult({ ok: false, error: "Enter a test recipient email above." });
@@ -242,6 +252,7 @@ function EmailEditor({
         order: buildSampleOrder(testEmail, emailType),
         bodyOverride: draft,
         reminder,
+        showMessengerButton,
       });
       if (result?.simulated) {
         onTestResult({
@@ -337,6 +348,27 @@ function EmailEditor({
         >
           Reset
         </Button>
+        <FormControlLabel
+          sx={{ ml: 0.5, mr: 0, alignItems: "center" }}
+          control={(
+            <Switch
+              size="small"
+              color="primary"
+              checked={Boolean(showMessengerButton)}
+              onChange={(e) => handleMessengerToggle(e.target.checked)}
+            />
+          )}
+          label={(
+            <Box>
+              <Typography sx={{ fontSize: "0.78rem", fontWeight: 700, lineHeight: 1.3 }}>
+                Message Hobby Arena button
+              </Typography>
+              <Typography sx={{ fontSize: "0.7rem", color: "text.secondary", lineHeight: 1.3 }}>
+                {showMessengerButton ? "Shown in this template" : "Hidden in this template"}
+              </Typography>
+            </Box>
+          )}
+        />
         <Box sx={{ flex: 1 }} />
         <Button
           variant="outlined"
@@ -965,6 +997,9 @@ export default function EmailTemplatesPage() {
   const [drafts, setDrafts] = useState(() => draftsRef.current);
   const [reminderDraft, setReminderDraft] = useState(() => getPreorderReminderConfig());
   const [passwordResetDraft, setPasswordResetDraft] = useState(() => getEditableEmailBody(PASSWORD_RESET_EMAIL_TYPE));
+  const [messengerByType, setMessengerByType] = useState(() => (
+    Object.fromEntries(EMAIL_TYPES.map((type) => [type, getShowMessengerButton(type)]))
+  ));
 
   const draft = drafts[activeType] ?? "";
 
@@ -972,6 +1007,10 @@ export default function EmailTemplatesPage() {
 
   function setDraftForActive(value) {
     setDrafts((prev) => ({ ...prev, [activeType]: value }));
+  }
+
+  function setMessengerForActive(value) {
+    setMessengerByType((prev) => ({ ...prev, [activeType]: value }));
   }
 
   function feedbackSeverity() {
@@ -1106,6 +1145,8 @@ export default function EmailTemplatesPage() {
                 onTestResult={setFeedback}
                 reminder={reminderDraft}
                 onReminderChange={setReminderDraft}
+                showMessengerButton={Boolean(messengerByType[activeType])}
+                onShowMessengerChange={setMessengerForActive}
               />
 
               <Box
@@ -1121,6 +1162,7 @@ export default function EmailTemplatesPage() {
                   emailType={activeType}
                   body={draft}
                   reminder={reminderDraft}
+                  showMessengerButton={Boolean(messengerByType[activeType])}
                   surfaceBorderColor={surfaceBorderColor}
                 />
               </Box>
