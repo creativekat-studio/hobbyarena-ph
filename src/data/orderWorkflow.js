@@ -941,12 +941,46 @@ export function refundedAmountForLineItem(item, depositPercent = 30) {
   return 0;
 }
 
-export function refundedAmountForOrder(order) {
+/** Refund already sent on this line (do not fold into remaining refund due). */
+export function itemRefundIsCompleted(item) {
+  const payment = migratePaymentStatus(item?.payment);
+  const status = migrateOrderStatus(item?.status);
+  return payment === "Refunded"
+    || payment === "Partially Refunded"
+    || status === "Refunded";
+}
+
+export function pendingRefundAmountForLineItem(item, depositPercent = 30) {
+  if (itemRefundIsCompleted(item) || !itemNeedsRefundDetails(item)) return 0;
+  return refundedAmountForLineItem(item, depositPercent);
+}
+
+export function completedRefundAmountForLineItem(item, depositPercent = 30) {
+  if (!itemRefundIsCompleted(item)) return 0;
+  return refundedAmountForLineItem(item, depositPercent);
+}
+
+function sumLineRefunds(order, amountForItem) {
   const depositPercent = getDepositPercent(order);
   return getOrderLineItems(order).reduce(
-    (sum, item) => sum + refundedAmountForLineItem(item, depositPercent),
+    (sum, item) => sum + (amountForItem(item, depositPercent) || 0),
     0,
   );
+}
+
+/** Remaining refund still to send — excludes lines already Refunded / Partially Refunded. */
+export function pendingRefundAmountForOrder(order) {
+  return sumLineRefunds(order, pendingRefundAmountForLineItem);
+}
+
+/** Money already returned — excludes lines still For Full / Partial Refund. */
+export function completedRefundAmountForOrder(order) {
+  return sumLineRefunds(order, completedRefundAmountForLineItem);
+}
+
+/** All refund amounts on the order (pending + completed). Used for stored rollup. */
+export function refundedAmountForOrder(order) {
+  return sumLineRefunds(order, refundedAmountForLineItem);
 }
 
 export function validateAllocationForStatus(lineItem, status) {
