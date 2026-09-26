@@ -16,6 +16,9 @@ import {
   isPreorderOrder,
   itemNeedsBalanceProof,
   itemNeedsRefundDetails,
+  itemRefundIsCompleted,
+  pendingRefundAmountForLineItem,
+  completedRefundAmountForLineItem,
   lineItemTrailLabel,
   migrateOrderStatus,
   migratePaymentStatus,
@@ -449,7 +452,27 @@ export function OrdersProvider({ children }) {
       const rollup = syncOrderRollup(lineItems);
       const multi = lineItems.length > 1;
       const sumBalance = lineItems.reduce((sum, row) => sum + (row.balanceDue ?? 0), 0);
-      const sumRefund = lineItems.reduce((sum, row) => sum + (row.refundAmount ?? 0), 0);
+      const depositPercent = order.depositPercent ?? 30;
+      const refundLines = lineItems.filter((row) => {
+        if (emailType === "partial_refund_pending" || emailType === "full_refund_pending") {
+          return itemNeedsRefundDetails(row) && !itemRefundIsCompleted(row);
+        }
+        if (emailType === "partial_refund_sent" || emailType === "full_refund_sent") {
+          return itemRefundIsCompleted(row);
+        }
+        return true;
+      });
+      const sumRefund = refundLines.reduce((sum, row) => {
+        const stored = Number(row.refundAmount);
+        if (Number.isFinite(stored) && stored > 0) return sum + stored;
+        if (itemRefundIsCompleted(row)) return sum + (completedRefundAmountForLineItem(row, depositPercent) || 0);
+        return sum + (pendingRefundAmountForLineItem(row, depositPercent) || 0);
+      }, 0);
+      const primaryRefund = Number(primaryItem.refundAmount) > 0
+        ? Number(primaryItem.refundAmount)
+        : (itemRefundIsCompleted(primaryItem)
+          ? completedRefundAmountForLineItem(primaryItem, depositPercent)
+          : pendingRefundAmountForLineItem(primaryItem, depositPercent));
       const sumAllocated = lineItems.reduce((sum, row) => sum + (row.allocatedQty ?? 0), 0);
       const sumQty = lineItems.reduce((sum, row) => sum + (row.quantity ?? 1), 0);
       const serializedLineItems = lineItems.map((item) => ({
@@ -499,7 +522,7 @@ export function OrdersProvider({ children }) {
           status: rollup.status ?? primaryItem.status,
           total: order.total,
           balanceDue: multi ? sumBalance : (primaryItem.balanceDue ?? rollup.balanceDue ?? order.balanceDue),
-          refundAmount: multi ? sumRefund : (primaryItem.refundAmount ?? order.refundAmount ?? 0),
+          refundAmount: multi ? sumRefund : (primaryRefund || 0),
           allocatedQty: multi ? sumAllocated : (primaryItem.allocatedQty ?? rollup.allocatedQty ?? order.allocatedQty),
           qty: multi ? sumQty : (primaryItem.quantity ?? order.qty),
           depositPercent: order.depositPercent ?? 30,
@@ -519,7 +542,7 @@ export function OrdersProvider({ children }) {
             payment: primaryItem.payment,
             status: primaryItem.status,
             balanceDue: primaryItem.balanceDue ?? 0,
-            refundAmount: primaryItem.refundAmount ?? 0,
+            refundAmount: primaryRefund || 0,
             allocatedQty: primaryItem.allocatedQty ?? 0,
             depositPaid: primaryItem.depositPaid ?? 0,
             creditAmount: primaryItem.creditAmount ?? 0,

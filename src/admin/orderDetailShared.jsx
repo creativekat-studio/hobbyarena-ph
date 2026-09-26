@@ -60,6 +60,12 @@ import {
   migratePaymentStatus,
   optionsIncludingCurrent,
   orderStatusLabel,
+  itemNeedsRefundDetails,
+  itemRefundIsCompleted,
+  pendingRefundAmountForLineItem,
+  completedRefundAmountForLineItem,
+  pendingRefundAmountForOrder,
+  completedRefundAmountForOrder,
   refundedAmountForLineItem,
   refundedAmountForOrder,
   resolveOrderKind,
@@ -2008,7 +2014,13 @@ function isItemEmailDisabled(item) {
 }
 
 function defaultEmailItemSelection(lineItems) {
-  return new Set(lineItems.filter((item) => !isItemEmailDisabled(item)).map((item) => item.id));
+  const eligible = lineItems.filter((item) => !isItemEmailDisabled(item));
+  const pendingRefund = eligible.filter((item) => itemNeedsRefundDetails(item) && !itemRefundIsCompleted(item));
+  // Don't pre-select already-refunded siblings when another line still needs a refund.
+  const source = pendingRefund.length && pendingRefund.length < eligible.length
+    ? pendingRefund
+    : eligible;
+  return new Set(source.map((item) => item.id));
 }
 
 function findPreviousSentEmailEntry(order, emailType) {
@@ -2066,6 +2078,8 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
       payment: item.payment,
       status: item.status,
       emailDisabled: isItemEmailDisabled(item),
+      refundDueAmount: pendingRefundAmountForLineItem(item, depositPercent),
+      refundedAmount: completedRefundAmountForLineItem(item, depositPercent),
     };
   });
 
@@ -2105,9 +2119,11 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
     else balancePaidAmount += portion;
   });
 
-  const refundedAmount = refundedAmountForOrder(order);
+  const refundDueAmount = pendingRefundAmountForOrder(order);
+  const refundedAmount = completedRefundAmountForOrder(order);
+  const anyRefundAmount = refundDueAmount + refundedAmount || refundedAmountForOrder(order);
   // Full refund / 0 keep on pre-order lines → ₱0; else final / collected gross.
-  const total = (hasPreorderLine && preorderAllocatedUnits <= 0 && (preorderRefundPath || refundedAmount > 0) && !hasInstock)
+  const total = (hasPreorderLine && preorderAllocatedUnits <= 0 && (preorderRefundPath || anyRefundAmount > 0) && !hasInstock)
     ? 0
     : (hasPreorderLine || isMixedOrder)
       ? paidSoFar
@@ -2128,12 +2144,20 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
   // (including when every line is fully paid).
   const showSplitTotals = isMixedOrder;
 
+  const preorderRefundDue = preorderLines.reduce(
+    (sum, item) => sum + (pendingRefundAmountForLineItem(item, depositPercent) || 0),
+    0,
+  );
+  const instockRefundDue = instockLines.reduce(
+    (sum, item) => sum + (pendingRefundAmountForLineItem(item, depositPercent) || 0),
+    0,
+  );
   const preorderRefunded = preorderLines.reduce(
-    (sum, item) => sum + (refundedAmountForLineItem(item, depositPercent) || 0),
+    (sum, item) => sum + (completedRefundAmountForLineItem(item, depositPercent) || 0),
     0,
   );
   const instockRefunded = instockLines.reduce(
-    (sum, item) => sum + (refundedAmountForLineItem(item, depositPercent) || 0),
+    (sum, item) => sum + (completedRefundAmountForLineItem(item, depositPercent) || 0),
     0,
   );
 
@@ -2151,6 +2175,7 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
         balanceDue: balanceAwaiting,
         balancePaid: balancePaidAmount,
         balanceSettled: balanceSettled,
+        refundDueAmount: preorderRefundDue,
         refundedAmount: preorderRefunded,
         creditAmount: preorderCredit,
         total: preorderGross,
@@ -2164,6 +2189,7 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
         subtotal: instockPaid,
         balanceDue: 0,
         balancePaid: 0,
+        refundDueAmount: instockRefundDue,
         refundedAmount: instockRefunded,
         creditAmount: instockCredit,
         total: instockPaid,
@@ -2254,6 +2280,7 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
       balanceDue={balanceAwaiting}
       balancePaid={balancePaidAmount}
       balanceSettled={balanceSettled}
+      refundDueAmount={refundDueAmount}
       refundedAmount={refundedAmount}
       creditAmount={openCredit}
       hasPreorder={hasPreorderLine}
@@ -2279,6 +2306,11 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
             item.payment,
             item.status,
             item.allocatedQty > 0 ? `${item.allocatedQty} of ${item.quantity} allocated` : null,
+            item.refundedAmount > 0
+              ? `Refunded ${PESO.format(item.refundedAmount)}`
+              : item.refundDueAmount > 0
+                ? `Refund due ${PESO.format(item.refundDueAmount)}`
+                : null,
           ].filter(Boolean)}
         />
       )}

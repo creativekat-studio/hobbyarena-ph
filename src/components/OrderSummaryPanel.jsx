@@ -112,6 +112,7 @@ function TotalsSection({
   balanceDue = 0,
   balancePaid = 0,
   balanceSettled = false,
+  refundDueAmount = 0,
   refundedAmount = 0,
   creditAmount = 0,
   hasPreorder,
@@ -172,6 +173,14 @@ function TotalsSection({
           <Typography sx={{ color: "success.main", fontWeight: 600 }}>Balance paid</Typography>
           <Typography sx={{ color: "success.main", fontWeight: 700, flexShrink: 0 }}>
             +{PESO.format(paidAmount)}
+          </Typography>
+        </Stack>
+      ) : null}
+      {refundDueAmount > 0 ? (
+        <Stack direction="row" justifyContent="space-between" spacing={2}>
+          <Typography sx={{ color: "error.main", fontWeight: 600 }}>Refund due</Typography>
+          <Typography sx={{ color: "error.main", fontWeight: 700, flexShrink: 0 }}>
+            −{PESO.format(refundDueAmount)}
           </Typography>
         </Stack>
       ) : null}
@@ -427,6 +436,7 @@ export function OrderSummaryPanel({
   balanceDue = 0,
   balancePaid = 0,
   balanceSettled = false,
+  refundDueAmount = 0,
   refundedAmount = 0,
   creditAmount = 0,
   hasPreorder = false,
@@ -512,6 +522,7 @@ export function OrderSummaryPanel({
       balanceDue={balanceDue}
       balancePaid={balancePaid}
       balanceSettled={balanceSettled}
+      refundDueAmount={refundDueAmount}
       refundedAmount={refundedAmount}
       creditAmount={creditAmount}
       hasPreorder={hasPreorder}
