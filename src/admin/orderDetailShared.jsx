@@ -2309,7 +2309,7 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
             item.refundedAmount > 0
               ? `Refunded ${PESO.format(item.refundedAmount)}`
               : item.refundDueAmount > 0
-                ? `Refund due ${PESO.format(item.refundDueAmount)}`
+                ? `For Refund ${PESO.format(item.refundDueAmount)}`
                 : null,
           ].filter(Boolean)}
         />
