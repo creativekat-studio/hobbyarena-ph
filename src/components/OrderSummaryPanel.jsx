@@ -178,7 +178,7 @@ function TotalsSection({
       ) : null}
       {refundDueAmount > 0 ? (
         <Stack direction="row" justifyContent="space-between" spacing={2}>
-          <Typography sx={{ color: "error.main", fontWeight: 600 }}>Refund due</Typography>
+          <Typography sx={{ color: "error.main", fontWeight: 600 }}>For Refund</Typography>
           <Typography sx={{ color: "error.main", fontWeight: 700, flexShrink: 0 }}>
             −{PESO.format(refundDueAmount)}
           </Typography>
