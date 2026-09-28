@@ -458,14 +458,16 @@ function StatCard({ panelSx, icon, label, value, accent }) {
   );
 }
 
-function ProfileSection({ title, subtitle, headerAction, surfaceBorderColor, children }) {
+function ProfileSection({ title, subtitle, headerAction, surfaceBorderColor, id, children }) {
   return (
     <Box
+      id={id}
       sx={{
         borderRadius: 1,
         border: "1px solid",
         borderColor: surfaceBorderColor,
         overflow: "hidden",
+        scrollMarginTop: 16,
       }}
     >
       <Box
@@ -766,6 +768,7 @@ function ProfileTab({
       </Box>
 
       <ProfileSection
+        id="bank-details"
         title="Bank details"
         subtitle="Save a bank account or QR code for refunds. Mark one as primary."
         surfaceBorderColor={surfaceBorderColor}
@@ -786,13 +789,27 @@ function ProfileTab({
 function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
   const theme = useTheme();
   const accents = getStatAccents(theme);
+  const [searchParams] = useSearchParams();
   const { user, signOutCustomer } = useAuth();
   const { orders: allOrders, ordersReady } = useOrders();
   const { items: wishlistItems, remove: removeFromWishlist } = useWishlist();
   const { addItem } = useCart();
   const { tiers } = useClientTiers();
-  const [tab, setTab] = useState(0);
+  const openProfile = searchParams.get("tab") === "profile";
+  const [tab, setTab] = useState(openProfile ? 2 : 0);
   const [orderQuery, setOrderQuery] = useState("");
+
+  useEffect(() => {
+    if (openProfile) setTab(2);
+  }, [openProfile]);
+
+  useEffect(() => {
+    if (tab !== 2) return;
+    if (window.location.hash !== "#bank-details") return;
+    const el = document.getElementById("bank-details");
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [tab, openProfile]);
 
   const customerOrders = useMemo(() => getOrdersForEmail(allOrders, user?.email), [allOrders, user?.email]);
   const filteredCustomerOrders = useMemo(() => {
