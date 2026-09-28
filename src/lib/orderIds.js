@@ -152,6 +152,18 @@ export function clusterOrdersByMergedSet(orders) {
   return groups;
 }
 
+export function findCustomerConsolidatedSet(orders, setId) {
+  const needle = String(setId || "").trim();
+  if (!needle) return null;
+  const members = (orders || []).filter((order) => {
+    const id = String(order.mergedSetId || "").trim();
+    return id === needle || displayConsolidatedOrderId(id) === needle;
+  });
+  if (!members.length) return null;
+  const id = String(members[0].mergedSetId || needle).trim();
+  return { id, displayId: displayConsolidatedOrderId(id), orders: members };
+}
+
 /** Next ID for `now`: current month stamp, sequence = max in that month + 1. */
 export function makeOrderId(orders, now = new Date()) {
   const y = now.getFullYear();

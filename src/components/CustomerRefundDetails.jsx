@@ -10,14 +10,17 @@ import { itemNeedsRefundDetails, refundedAmountForLineItem } from "../data/order
 
 const BANK_DETAILS_HREF = "/account?tab=profile#bank-details";
 
-export default function CustomerRefundDetails({ order, item }) {
+export default function CustomerRefundDetails({ order, item, amount, active = false }) {
   const theme = useTheme();
   const { user } = useAuth();
   const { getCustomerProfile } = useCustomers();
 
-  if (!itemNeedsRefundDetails(item)) return null;
+  const fromItem = item ? itemNeedsRefundDetails(item) : false;
+  if (!fromItem && !active) return null;
 
-  const refundAmount = item.refundAmount ?? refundedAmountForLineItem(item, order.depositPercent ?? 30);
+  const refundAmount = amount ?? (item
+    ? (item.refundAmount ?? refundedAmountForLineItem(item, order.depositPercent ?? 30))
+    : 0);
   const profile = getCustomerProfile(user?.email);
   const primary = resolvePrimaryPayoutMethod(profile);
   const primaryLabel = formatPayoutMethodLabel(primary);
