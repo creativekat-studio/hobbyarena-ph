@@ -566,7 +566,17 @@ function TierQuestCard({ clientTier, tierProgress, fulfilledSpend }) {
   );
 }
 
-function ProfileTab({ panelSx, surfaceBorderColor, clientTier, tierProgress, fulfilledSpend }) {
+function ProfileTab({
+  panelSx,
+  surfaceBorderColor,
+  clientTier,
+  tierProgress,
+  fulfilledSpend,
+  email,
+  displayName,
+  ownerUid,
+  customerOrders,
+}) {
   const { user, updateCustomerProfileDetails } = useAuth();
   const { customers } = useCustomers();
   const saved = useMemo(() => {
@@ -624,7 +634,8 @@ function ProfileTab({ panelSx, surfaceBorderColor, clientTier, tierProgress, ful
   }
 
   return (
-    <Box component="form" onSubmit={handleSave} sx={{ p: { xs: 2.5, md: 3 } }}>
+    <Stack spacing={3} sx={{ p: { xs: 2.5, md: 3 } }}>
+      <Box component="form" onSubmit={handleSave}>
       <TierQuestCard
         clientTier={clientTier}
         tierProgress={tierProgress}
@@ -709,6 +720,24 @@ function ProfileTab({ panelSx, surfaceBorderColor, clientTier, tierProgress, ful
         {status === "saving" ? "Saving…" : "Save details"}
       </Button>
     </Box>
+
+      <Box sx={{ pt: 1, borderTop: "1px solid", borderColor: surfaceBorderColor }}>
+        <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", mb: 0.5 }}>
+          Bank details
+        </Typography>
+        <Typography sx={{ color: "text.secondary", fontSize: "0.82rem", mb: 2 }}>
+          Save a bank account or QR code for refunds. Mark one as primary.
+        </Typography>
+        <CustomerPayoutMethodsEditor
+          email={email}
+          customerName={displayName}
+          ownerUid={ownerUid}
+          orderPayouts={collectCustomerPayouts(customerOrders)}
+          surfaceBorderColor={surfaceBorderColor}
+          variant="storefront"
+        />
+      </Box>
+    </Stack>
   );
 }
 
@@ -801,7 +830,6 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
           <Tab label={`Orders (${customerOrders.length})`} />
           <Tab label={`Wishlist (${wishlistItems.length})`} />
           <Tab label="Profile" />
-          <Tab label="Bank details" />
         </Tabs>
 
         <Box>
@@ -895,31 +923,18 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
                 })}
               </Stack>
             )
-          ) : tab === 2 ? (
+          ) : (
             <ProfileTab
               panelSx={panelSx}
               surfaceBorderColor={surfaceBorderColor}
               clientTier={clientTier}
               tierProgress={tierProgress}
               fulfilledSpend={fulfilledSpend}
+              email={email}
+              displayName={displayName}
+              ownerUid={user?.uid}
+              customerOrders={customerOrders}
             />
-          ) : (
-            <Box sx={{ p: { xs: 2.5, md: 3 } }}>
-              <Typography sx={{ fontWeight: 700, fontSize: "0.95rem", mb: 0.5 }}>
-                Bank details
-              </Typography>
-              <Typography sx={{ color: "text.secondary", fontSize: "0.82rem", mb: 2 }}>
-                Save a bank account or QR code for refunds. Mark one as primary.
-              </Typography>
-              <CustomerPayoutMethodsEditor
-                email={email}
-                customerName={displayName}
-                ownerUid={user?.uid}
-                orderPayouts={collectCustomerPayouts(customerOrders)}
-                surfaceBorderColor={surfaceBorderColor}
-                variant="storefront"
-              />
-            </Box>
           )}
         </Box>
       </Box>
