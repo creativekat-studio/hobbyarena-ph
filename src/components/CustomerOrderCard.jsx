@@ -44,7 +44,7 @@ function OrderThumb({ item, surfaceBorderColor }) {
   );
 }
 
-export function CustomerOrderCard({ order, surfaceBorderColor }) {
+export function CustomerOrderCard({ order, surfaceBorderColor, consolidatedId = "", nested = false }) {
   const theme = useTheme();
   const lineItems = order.lineItems ?? [];
   const status = migrateOrderStatus(order.status);
@@ -58,6 +58,7 @@ export function CustomerOrderCard({ order, surfaceBorderColor }) {
   const summaryText = lineItems.length > 1
     ? `${primaryLabel} + ${lineItems.length - 1} more`
     : primaryLabel;
+  const setLabel = String(consolidatedId || order.mergedSetId || "").trim();
 
   return (
     <Box
@@ -67,10 +68,11 @@ export function CustomerOrderCard({ order, surfaceBorderColor }) {
         display: "block",
         textDecoration: "none",
         color: "inherit",
-        p: 2.5,
+        p: nested ? 2 : 2.5,
         borderRadius: 1.5,
         border: "1px solid",
         borderColor: surfaceBorderColor,
+        bgcolor: nested ? alpha(theme.palette.background.paper, 0.7) : undefined,
         transition: "border-color 160ms ease, background-color 160ms ease, transform 160ms ease",
         "&:hover": {
           borderColor: alpha(theme.palette.primary.main, 0.5),
@@ -84,6 +86,24 @@ export function CustomerOrderCard({ order, surfaceBorderColor }) {
           <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", mt: 0.25 }}>
             {(lineItems.length || 1)} {(lineItems.length || 1) === 1 ? "product" : "products"} · {formatOrderTimestamp(order)}
           </Typography>
+          {setLabel && !nested ? (
+            <Chip
+              size="small"
+              variant="outlined"
+              label={`Part of ${setLabel}`}
+              sx={{
+                mt: 0.75,
+                height: 22,
+                fontFamily: MONO_FONT,
+                fontWeight: 800,
+                fontSize: "0.62rem",
+                letterSpacing: 0.3,
+                color: "primary.main",
+                borderColor: alpha(theme.palette.primary.main, 0.4),
+                bgcolor: alpha(theme.palette.primary.main, 0.06),
+              }}
+            />
+          ) : null}
         </Box>
         <Chip
           label={orderStatusLabel(status)}
@@ -182,6 +202,54 @@ export function CustomerOrderCard({ order, surfaceBorderColor }) {
         >
           View status →
         </Typography>
+      </Stack>
+    </Box>
+  );
+}
+
+export function CustomerConsolidatedOrderGroup({ setId, orders, surfaceBorderColor }) {
+  const theme = useTheme();
+  const count = orders.length;
+  return (
+    <Box
+      sx={{
+        borderRadius: 1.5,
+        border: "1px solid",
+        borderColor: alpha(theme.palette.primary.main, 0.35),
+        bgcolor: alpha(theme.palette.primary.main, 0.04),
+        overflow: "hidden",
+      }}
+    >
+      <Box sx={{ px: 2.25, pt: 1.75, pb: 1.5 }}>
+        <Typography
+          sx={{
+            fontFamily: MONO_FONT,
+            fontWeight: 800,
+            fontSize: "0.62rem",
+            letterSpacing: 1,
+            color: "primary.main",
+            textTransform: "uppercase",
+          }}
+        >
+          Consolidated
+        </Typography>
+        <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: "0.95rem", mt: 0.35 }}>
+          {setId}
+        </Typography>
+        <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", mt: 0.4, lineHeight: 1.45 }}>
+          {count} {count === 1 ? "order" : "orders"} grouped for allocation. Each original ID below still tracks its own items and status.
+        </Typography>
+      </Box>
+      <Stack spacing={1.25} sx={{ px: 1.5, pb: 1.5 }}>
+        {orders.map((order) => (
+          <CustomerOrderCard
+            key={order.id}
+            order={order}
+            surfaceBorderColor={surfaceBorderColor}
+            consolidatedId={setId}
+            nested
+          />
+        ))}
       </Stack>
     </Box>
   );

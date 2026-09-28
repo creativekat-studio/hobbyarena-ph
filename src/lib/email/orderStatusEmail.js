@@ -187,8 +187,8 @@ function consolidatedTotalsBlock(order) {
 function dualCtaCaption(kind, showMessenger) {
   if (kind === "refund") {
     return showMessenger
-      ? "Add or update your bank details in your account using either option below."
-      : "Add or update your bank details in your account using the option below.";
+      ? "Refunds go to the Primary payout account on your profile. Add or update it using either option below."
+      : "Refunds go to the Primary payout account on your profile. Add or update it using the option below.";
   }
   return showMessenger
     ? "Pay the balance and send your proof using either option below."
@@ -208,7 +208,7 @@ function customerActionButtonsBlock(emailType, order, { showMessenger = true } =
     if (net < 0) {
       return customerResponseButtons({
         caption: dualCtaCaption("refund", showMessenger),
-        accountLabel: "Add bank details",
+        accountLabel: "Set Primary account",
         accountHref: links.bankDetailsUrl,
         ...messengerOpts,
       });
@@ -236,7 +236,7 @@ function customerActionButtonsBlock(emailType, order, { showMessenger = true } =
   if (REFUND_ACTION_EMAIL_TYPES.has(emailType)) {
     return customerResponseButtons({
       caption: dualCtaCaption("refund", showMessenger),
-      accountLabel: "Add bank details",
+      accountLabel: "Set Primary account",
       accountHref: links.bankDetailsUrl,
       ...messengerOpts,
     });
@@ -1061,7 +1061,7 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     text.push("", "Upload in my account:", links.accountUrl);
     if (showMessengerButton) text.push("Message Hobby Arena PH:", links.messengerUrl);
   } else if (REFUND_ACTION_EMAIL_TYPES.has(emailType) || (isConsolidated && net < 0)) {
-    text.push("", "Add bank details:", links.bankDetailsUrl);
+    text.push("", "Set Primary account:", links.bankDetailsUrl);
     if (showMessengerButton) text.push("Message Hobby Arena PH:", links.messengerUrl);
   } else if (showMessengerButton) {
     text.push("", "Message Hobby Arena PH:", links.messengerUrl);

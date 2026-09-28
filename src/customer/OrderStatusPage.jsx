@@ -31,6 +31,7 @@ import { orderOpenCredit } from "../lib/orderCredit.js";
 import { formatOrderTimestamp } from "../lib/orderTimestamps.js";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { useOrders, getOrdersForEmail } from "../lib/ordersStore.jsx";
+import { displayConsolidatedOrderId } from "../lib/orderIds.js";
 import { setAuthSurface } from "../auth/authSurface.js";
 import CustomerBalanceProofUpload from "../components/CustomerBalanceProofUpload.jsx";
 import CustomerRefundDetails from "../components/CustomerRefundDetails.jsx";
@@ -227,6 +228,7 @@ function OrderLineItem({ order, item, surfaceBorderColor }) {
 }
 
 export default function OrderStatusPage() {
+  const theme = useTheme();
   const { orderId } = useParams();
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
@@ -237,10 +239,21 @@ export default function OrderStatusPage() {
     setAuthSurface("customer");
   }, []);
 
-  const order = useMemo(() => {
-    const mine = getOrdersForEmail(allOrders, user?.email);
-    return mine.find((o) => o.id === orderId) || null;
-  }, [allOrders, user?.email, orderId]);
+  const customerOrders = useMemo(
+    () => getOrdersForEmail(allOrders, user?.email),
+    [allOrders, user?.email],
+  );
+  const order = useMemo(
+    () => customerOrders.find((entry) => entry.id === orderId) || null,
+    [customerOrders, orderId],
+  );
+  const consolidatedId = String(order?.mergedSetId || "").trim();
+  const siblingOrders = useMemo(() => {
+    if (!consolidatedId) return [];
+    return customerOrders.filter((entry) => (
+      entry.id !== order?.id && String(entry.mergedSetId || "").trim() === consolidatedId
+    ));
+  }, [customerOrders, consolidatedId, order?.id]);
 
   const lineItems = order?.lineItems ?? [];
 
@@ -281,6 +294,57 @@ export default function OrderStatusPage() {
                 </Typography>
                 {order.type ? (
                   <Chip label={order.type} size="small" variant="outlined" color={order.type === "Pre-order" ? "secondary" : "default"} sx={{ mt: 1, fontFamily: MONO_FONT, fontSize: "0.65rem" }} />
+                ) : null}
+                {consolidatedId ? (
+                  <Box
+                    sx={{
+                      mt: 1.5,
+                      p: 1.25,
+                      borderRadius: 1,
+                      border: "1px solid",
+                      borderColor: alpha(theme.palette.primary.main, 0.3),
+                      bgcolor: alpha(theme.palette.primary.main, 0.05),
+                    }}
+                  >
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={`Part of ${displayConsolidatedOrderId(consolidatedId)}`}
+                      sx={{
+                        height: 22,
+                        fontFamily: MONO_FONT,
+                        fontWeight: 800,
+                        fontSize: "0.62rem",
+                        letterSpacing: 0.3,
+                        color: "primary.main",
+                        borderColor: alpha(theme.palette.primary.main, 0.4),
+                      }}
+                    />
+                    <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", mt: 0.75, lineHeight: 1.45 }}>
+                      This order was grouped for allocation. Your original order ID still tracks these items — it was not replaced.
+                    </Typography>
+                    {siblingOrders.length ? (
+                      <Typography sx={{ fontSize: "0.76rem", mt: 0.75, lineHeight: 1.5 }}>
+                        Also in this set:{" "}
+                        {siblingOrders.map((entry, index) => (
+                          <Box
+                            key={entry.id}
+                            component={RouterLink}
+                            to={`/account/orders/${entry.id}`}
+                            sx={{
+                              fontFamily: MONO_FONT,
+                              fontWeight: 700,
+                              color: "primary.main",
+                              textDecoration: "none",
+                              "&:hover": { textDecoration: "underline" },
+                            }}
+                          >
+                            {entry.id}{index < siblingOrders.length - 1 ? " · " : ""}
+                          </Box>
+                        ))}
+                      </Typography>
+                    ) : null}
+                  </Box>
                 ) : null}
               </Box>
               <Box sx={{ textAlign: { xs: "left", sm: "right" } }}>

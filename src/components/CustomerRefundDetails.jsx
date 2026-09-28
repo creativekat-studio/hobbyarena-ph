@@ -1,11 +1,11 @@
-import { Box, Button, Stack, Typography } from "@mui/material";
+import { Box, Button, Chip, Stack, Typography } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { Link as RouterLink } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "./ProductCard.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { useCustomers } from "../lib/customersStore.jsx";
-import { resolvePrimaryPayoutMethod } from "../lib/customerPayoutMethods.js";
+import { formatPayoutMethodLabel, resolvePrimaryPayoutMethod } from "../lib/customerPayoutMethods.js";
 import { itemNeedsRefundDetails, refundedAmountForLineItem } from "../data/orderWorkflow.js";
 
 const BANK_DETAILS_HREF = "/account?tab=profile#bank-details";
@@ -19,7 +19,8 @@ export default function CustomerRefundDetails({ order, item }) {
 
   const refundAmount = item.refundAmount ?? refundedAmountForLineItem(item, order.depositPercent ?? 30);
   const profile = getCustomerProfile(user?.email);
-  const saved = resolvePrimaryPayoutMethod(profile);
+  const primary = resolvePrimaryPayoutMethod(profile);
+  const primaryLabel = formatPayoutMethodLabel(primary);
 
   return (
     <Box
@@ -37,11 +38,33 @@ export default function CustomerRefundDetails({ order, item }) {
           <Typography sx={{ fontWeight: 800, fontSize: "0.82rem" }}>
             Refund of {refundAmount > 0 ? PESO.format(refundAmount) : "your payment"} is being processed
           </Typography>
-          <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", mt: 0.35, lineHeight: 1.45 }}>
-            {saved
-              ? "We'll send it using the bank or QR details saved on your profile. Update them anytime if you want it sent somewhere else."
-              : "Add your bank account or QR code on your profile so we can send it."}
-          </Typography>
+          {primary ? (
+            <>
+              <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", mt: 0.35, lineHeight: 1.45 }}>
+                We'll send it to your Primary payout account — the one you've chosen on your profile for refunds.
+              </Typography>
+              <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.85, flexWrap: "wrap", rowGap: 0.5 }}>
+                <Chip
+                  size="small"
+                  color="primary"
+                  label="Primary"
+                  sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: "0.62rem", letterSpacing: 0.5 }}
+                />
+                {primaryLabel ? (
+                  <Typography sx={{ fontSize: "0.78rem", fontWeight: 700 }}>
+                    {primaryLabel}
+                  </Typography>
+                ) : null}
+              </Stack>
+              <Typography sx={{ fontSize: "0.74rem", color: "text.secondary", mt: 0.7, lineHeight: 1.4 }}>
+                Change which account is Primary anytime if you want this sent somewhere else.
+              </Typography>
+            </>
+          ) : (
+            <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", mt: 0.35, lineHeight: 1.45 }}>
+              We'll send it to the Primary payout account you choose on your profile. Add a bank or QR and mark it as Primary so we know where to send this refund.
+            </Typography>
+          )}
         </Box>
         <Button
           component={RouterLink}
@@ -50,7 +73,7 @@ export default function CustomerRefundDetails({ order, item }) {
           variant="outlined"
           sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
         >
-          {saved ? "View bank details" : "Add bank details"}
+          {primary ? "Manage Primary account" : "Set Primary account"}
         </Button>
       </Stack>
     </Box>

@@ -416,6 +416,12 @@ export default function CustomerPayoutMethodsEditor({
           </Stack>
         ) : null}
 
+        {variant === "storefront" ? (
+          <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", lineHeight: 1.45 }}>
+            Refunds are sent to the account marked Primary.
+          </Typography>
+        ) : null}
+
         {importable.length ? (
           <Box>
             <FieldLabel>{variant === "storefront" ? "Submitted on an order" : "Submitted on orders"}</FieldLabel>

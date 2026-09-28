@@ -37,9 +37,9 @@ import { useOrders, getOrdersForEmail } from "../lib/ordersStore.jsx";
 import { useWishlist } from "../lib/wishlistStore.jsx";
 import { useCart } from "../lib/cartStore.jsx";
 import { productTracksStock } from "../lib/quantityLimits.js";
-import { CustomerOrderCard } from "../components/CustomerOrderCard.jsx";
+import { CustomerConsolidatedOrderGroup, CustomerOrderCard } from "../components/CustomerOrderCard.jsx";
 import { setAuthSurface } from "../auth/authSurface.js";
-import { sortOrdersByOrderNo } from "../lib/orderIds.js";
+import { clusterOrdersByMergedSet, sortOrdersByOrderNo } from "../lib/orderIds.js";
 import { useClientTiers } from "../lib/clientTiersStore.jsx";
 import { computeFulfilledSpendForEmail, getNextTierProgress, resolveClientTier } from "../lib/clientTier.js";
 import { formatPhPhoneInput, isValidPhPhone } from "../lib/phone.js";
@@ -770,7 +770,7 @@ function ProfileTab({
       <ProfileSection
         id="bank-details"
         title="Bank details"
-        subtitle="Save a bank account or QR code for refunds. Mark one as primary."
+        subtitle="Refunds are sent to the Primary payout account you choose. Save a bank or QR and mark one as Primary."
         surfaceBorderColor={surfaceBorderColor}
       >
         <CustomerPayoutMethodsEditor
@@ -818,11 +818,16 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
       ? customerOrders
       : customerOrders.filter((o) =>
         o.id.toLowerCase().includes(q)
+        || String(o.mergedSetId || "").toLowerCase().includes(q)
         || (o.items || "").toLowerCase().includes(q)
         || (o.lineItems || []).some((item) => (item.name || "").toLowerCase().includes(q)),
       );
     return sortOrdersByOrderNo(list);
   }, [customerOrders, orderQuery]);
+  const customerOrderGroups = useMemo(
+    () => clusterOrdersByMergedSet(filteredCustomerOrders),
+    [filteredCustomerOrders],
+  );
   const fulfilledSpend = useMemo(
     () => computeFulfilledSpendForEmail(allOrders, user?.email),
     [allOrders, user?.email],
@@ -925,12 +930,22 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
                 <Stack spacing={1.5} alignItems="center" sx={{ py: 4, textAlign: "center", color: "text.secondary" }}>
                   <Typography>No orders match your search.</Typography>
                 </Stack>
-              ) : filteredCustomerOrders.map((order) => (
-                <CustomerOrderCard
-                  key={order.id}
-                  order={order}
-                  surfaceBorderColor={surfaceBorderColor}
-                />
+              ) : customerOrderGroups.map((group) => (
+                group.kind === "consolidated" ? (
+                  <CustomerConsolidatedOrderGroup
+                    key={group.setId}
+                    setId={group.displayId || group.setId}
+                    orders={group.orders}
+                    surfaceBorderColor={surfaceBorderColor}
+                  />
+                ) : (
+                  <CustomerOrderCard
+                    key={group.orders[0].id}
+                    order={group.orders[0]}
+                    surfaceBorderColor={surfaceBorderColor}
+                    consolidatedId={group.displayId}
+                  />
+                )
               ))}
             </Stack>
           ) : tab === 1 ? (
