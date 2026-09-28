@@ -584,6 +584,28 @@ export function applyMergeSimulationToOrder(order, simulatedRows, { mergedSetId,
   };
 }
 
+export function removeOrderFromMergedSet(order, setId) {
+  const at = new Date().toISOString();
+  const label = String(setId || "").trim();
+  return {
+    ...order,
+    mergedSetId: "",
+    mergedAt: null,
+    mergedAllocation: null,
+    trail: [
+      ...(order.trail || []),
+      {
+        id: `trail-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        at,
+        title: label ? `Removed from consolidated order ${label}` : "Removed from a consolidated order",
+        note: label
+          ? `This order is no longer part of ${label}.`
+          : "This order is no longer part of a consolidated set.",
+      },
+    ],
+  };
+}
+
 export function applyMergedLineStatus(order, lineItemId, status, paymentOverride) {
   const current = getOrderLineItems(order).find((item) => item.id === lineItemId);
   if (!current) return null;

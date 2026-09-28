@@ -21,6 +21,7 @@ import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHead
 import { useOrders } from "../lib/ordersStore.jsx";
 import { useCustomers } from "../lib/customersStore.jsx";
 import { compareOrdersByOrderNo, displayConsolidatedOrderId } from "../lib/orderIds.js";
+import { removeOrderFromMergedSet } from "../lib/orderMergeSimulation.js";
 import { formatDateTime, formatOrderTimestamp } from "../lib/orderTimestamps.js";
 import {
   getActiveStepForItem,
@@ -89,7 +90,7 @@ export default function ConsolidatedOrderDetailPage() {
 
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
-  const { orders, ordersReady, sendConsolidatedAllocationEmail, saveConsolidatedEmailExtras, addTrailEntry, uploadTrailProof, setPaymentAndStatus } = useOrders();
+  const { orders, ordersReady, sendConsolidatedAllocationEmail, saveConsolidatedEmailExtras, addTrailEntry, uploadTrailProof, setPaymentAndStatus, updateOrder } = useOrders();
   const { customers } = useCustomers();
   const [tab, setTab] = useState("details");
   const [trailOrderId, setTrailOrderId] = useState("");
@@ -105,6 +106,8 @@ export default function ConsolidatedOrderDetailPage() {
   const [saveError, setSaveError] = useState("");
   const [lineDrafts, setLineDrafts] = useState({});
   const [confirmTransition, setConfirmTransition] = useState(null);
+  const [confirmRemove, setConfirmRemove] = useState(null);
+  const [selectionResetKey, setSelectionResetKey] = useState(0);
 
   const set = findConsolidatedSet(orders, setId);
   const contact = customerContactFromOrders(set?.orders);
@@ -263,30 +266,60 @@ export default function ConsolidatedOrderDetailPage() {
     setAttachmentError("");
     setLineDrafts({});
     setConfirmTransition(null);
+    setConfirmRemove(null);
     setSaveError("");
+    setSelectionResetKey((value) => value + 1);
   }
 
-  async function handleSave() {
+  async function performSave(removedIds = []) {
     if (!set) return;
     setSaveError("");
     setSaving(true);
+    const removed = new Set(removedIds);
     try {
       for (const draft of Object.values(lineDrafts)) {
-        if (!draft?.orderId) continue;
+        if (!draft?.orderId || removed.has(draft.orderId)) continue;
         await setPaymentAndStatus?.(draft.orderId, draft.payment, draft.status, draft.lineItemId);
       }
-      if (saveConsolidatedEmailExtras) {
-        const saved = await saveConsolidatedEmailExtras(set.orders, { note, attachment });
+      const remainingOrders = (set.orders || []).filter((order) => !removed.has(order.id));
+      if (saveConsolidatedEmailExtras && remainingOrders.length) {
+        const saved = await saveConsolidatedEmailExtras(remainingOrders, { note, attachment });
         setNote(saved.note || "");
         setAttachment(saved.attachment || null);
         setAttachmentError("");
       }
+      for (const order of set.orders || []) {
+        if (!removed.has(order.id)) continue;
+        const next = removeOrderFromMergedSet(order, consolidatedId);
+        updateOrder?.(order.id, {
+          mergedSetId: next.mergedSetId,
+          mergedAt: next.mergedAt,
+          mergedAllocation: next.mergedAllocation,
+          trail: next.trail,
+        });
+      }
       setLineDrafts({});
+      if (removed.size && remainingOrders.length === 0) {
+        goToOrdersList("merged");
+      }
     } catch (error) {
       setSaveError(error?.message || "Could not save changes.");
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleSave() {
+    if (!set) return;
+    const removedIds = [...(payload?.removedOrderIds || [])].sort(compareOrdersByOrderNo);
+    if (removedIds.length) {
+      setConfirmRemove({
+        orderIds: removedIds,
+        dissolve: removedIds.length === (set.orders || []).length,
+      });
+      return;
+    }
+    await performSave();
   }
 
   if (!ordersReady) {
@@ -327,7 +360,9 @@ export default function ConsolidatedOrderDetailPage() {
   const savedExtras = emailExtrasFromOrders(set.orders);
   const savedAt = (set.orders || []).find((order) => order.mergedEmailSavedAt)?.mergedEmailSavedAt || "";
   const lineDirty = Object.keys(lineDrafts).length > 0;
+  const removedOrderIds = payload?.removedOrderIds || [];
   const dirty = lineDirty
+    || removedOrderIds.length > 0
     || note !== savedExtras.note
     || attachmentSignature(attachment) !== attachmentSignature(savedExtras.attachment);
 
@@ -448,6 +483,7 @@ export default function ConsolidatedOrderDetailPage() {
               setAttachmentError(error || "");
             }}
             lineDrafts={lineDrafts}
+            selectionResetKey={selectionResetKey}
             onPaymentChange={handlePaymentChange}
             onStatusChange={handleStatusChange}
             onPayloadChange={handlePayloadChange}
@@ -514,7 +550,9 @@ export default function ConsolidatedOrderDetailPage() {
             }}
           >
             {dirty
-              ? "Unsaved changes"
+              ? removedOrderIds.length
+                ? `Unsaved changes · remove ${removedOrderIds.length === 1 ? removedOrderIds[0] : `${removedOrderIds.length} orders`}`
+                : "Unsaved changes"
               : savedAt
                 ? `Saved ${formatDateTime(savedAt)}`
                 : "No changes saved"}
@@ -593,6 +631,55 @@ export default function ConsolidatedOrderDetailPage() {
                 sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase" }}
               >
                 Continue
+              </Button>
+            </DialogActions>
+          </>
+        ) : null}
+      </Dialog>
+
+      <Dialog open={Boolean(confirmRemove)} onClose={() => setConfirmRemove(null)} maxWidth="sm" fullWidth>
+        {confirmRemove ? (
+          <>
+            <DialogTitle sx={{ fontWeight: 800 }}>
+              {confirmRemove.dissolve ? "Dissolve this consolidated order?" : "Remove from consolidated order?"}
+            </DialogTitle>
+            <DialogContent>
+              {confirmRemove.dissolve ? (
+                <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
+                  Are you sure you want to remove all orders from consolidated order{" "}
+                  <strong>{consolidatedId}</strong>? This set will be dissolved.
+                </Typography>
+              ) : confirmRemove.orderIds.length === 1 ? (
+                <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
+                  Are you sure you want to remove <strong>{confirmRemove.orderIds[0]}</strong> from
+                  consolidated order <strong>{consolidatedId}</strong>?
+                </Typography>
+              ) : (
+                <>
+                  <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
+                    Are you sure you want to remove these orders from consolidated order{" "}
+                    <strong>{consolidatedId}</strong>?
+                  </Typography>
+                  <Typography sx={{ mt: 1.5, fontFamily: MONO_FONT, fontWeight: 700, lineHeight: 1.6 }}>
+                    {confirmRemove.orderIds.join(" · ")}
+                  </Typography>
+                </>
+              )}
+              <Typography sx={{ mt: 2.5, fontWeight: 700 }}>Do you wish to continue?</Typography>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2 }}>
+              <Button color="inherit" onClick={() => setConfirmRemove(null)}>Cancel</Button>
+              <Button
+                variant="contained"
+                color="warning"
+                onClick={async () => {
+                  const ids = confirmRemove.orderIds;
+                  setConfirmRemove(null);
+                  await performSave(ids);
+                }}
+                sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase" }}
+              >
+                {confirmRemove.dissolve ? "Dissolve set" : confirmRemove.orderIds.length === 1 ? "Remove order" : "Remove orders"}
               </Button>
             </DialogActions>
           </>

@@ -1649,6 +1649,23 @@ function MergedSetAccordionRow({
   );
 }
 
+export function orderIdsPendingRemoval(orderDetails, selectedKeys) {
+  const byOrder = new Map();
+  for (const row of orderDetails || []) {
+    const orderId = String(row?.orderId || "").trim();
+    if (!orderId) continue;
+    if (!byOrder.has(orderId)) byOrder.set(orderId, []);
+    byOrder.get(orderId).push(row.key);
+  }
+  const removed = [];
+  for (const [orderId, keys] of byOrder) {
+    if (keys.length && keys.every((key) => !selectedKeys?.has(key))) {
+      removed.push(orderId);
+    }
+  }
+  return removed;
+}
+
 export function findConsolidatedSet(orders, setId) {
   const needle = String(setId || "").trim();
   if (!needle) return null;
@@ -1677,6 +1694,7 @@ export function ConsolidatedOrderView({
   onNoteChange,
   onAttachmentChange,
   lineDrafts = {},
+  selectionResetKey = 0,
 }) {
   const detailWorkbook = useMemo(() => (set ? buildLiveMergeWorkbook(set.orders) : null), [set]);
   const detailKeys = useMemo(
@@ -1709,7 +1727,7 @@ export function ConsolidatedOrderView({
     }
     setSelectedState({ sig: detailKeySig, keys: new Set(detailKeys) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [set?.id, detailKeySig]);
+  }, [set?.id, detailKeySig, selectionResetKey]);
 
   const workbook = useMemo(
     () => (set ? buildLiveMergeWorkbook(set.orders, { includeKeys: selectedKeys }) : null),
@@ -1720,8 +1738,9 @@ export function ConsolidatedOrderView({
     onPayloadChange?.({
       workbook,
       selectedCount: selectedKeys.size,
+      removedOrderIds: orderIdsPendingRemoval(detailWorkbook?.orderDetails, selectedKeys),
     });
-  }, [workbook, selectedKeys, onPayloadChange]);
+  }, [workbook, selectedKeys, detailWorkbook, onPayloadChange]);
 
   if (!set || !detailWorkbook || !workbook) return null;
 
