@@ -207,10 +207,11 @@ export function getStatusOptionsForKind(kind) {
 /** Visible order statuses for a selected payment status (admin dropdown). */
 export function getOrderStatusOptionsForPayment(payment, kind = "In-stock") {
   const normalized = migratePaymentStatus(payment);
-  const map = kind === "Pre-order" ? ORDER_STATUSES_BY_PAYMENT : INSTOCK_ORDER_STATUSES_BY_PAYMENT;
-  const allowed = map[normalized];
-  if (!allowed?.length) return getStatusOptionsForKind(kind);
-  return allowed;
+  const primary = kind === "Pre-order" ? ORDER_STATUSES_BY_PAYMENT : INSTOCK_ORDER_STATUSES_BY_PAYMENT;
+  const secondary = kind === "Pre-order" ? INSTOCK_ORDER_STATUSES_BY_PAYMENT : ORDER_STATUSES_BY_PAYMENT;
+  if (primary[normalized]?.length) return primary[normalized];
+  if (secondary[normalized]?.length) return secondary[normalized];
+  return getStatusOptionsForKind(kind);
 }
 
 /** Pick a valid order status for the given payment (coerces mismatched pairs). */
@@ -772,11 +773,19 @@ export function buildTrailAttachment(url, label = "Attachment", kind = null) {
   };
 }
 
+/** True only for files attached on the consolidated set, not per-order trail uploads. */
+export function isSetLevelMergedAttachment(attachment) {
+  if (!attachment || typeof attachment !== "object") return false;
+  if (!attachment.url && !attachment.dataUrl) return false;
+  return attachment.source === "consolidated" || attachment.kind === "consolidated";
+}
+
 /** Latest admin attachment on the order trail (for emails + customer UI). */
 export function findLatestAdminTrailAttachment(order, lineItemId = null) {
   const entries = [...(order.trail ?? [])]
     .filter((entry) => {
       if (entry.attachment?.kind !== "admin") return false;
+      if (entry.emailType === "consolidated_allocation") return false;
       if (lineItemId && entry.lineItemId && entry.lineItemId !== lineItemId) return false;
       const url = entry.attachment.storageUrl || entry.attachment.url;
       return Boolean(url && (String(url).startsWith("http") || String(url).startsWith("data:")));
@@ -796,7 +805,11 @@ export function findLatestAdminTrailAttachment(order, lineItemId = null) {
 /** Admin trail attachments for a line item (newest first). */
 export function adminTrailAttachmentsForLineItem(order, lineItemId) {
   return [...(order.trail ?? [])]
-    .filter((entry) => entry.lineItemId === lineItemId && entry.attachment?.kind === "admin")
+    .filter((entry) => (
+      entry.lineItemId === lineItemId
+      && entry.attachment?.kind === "admin"
+      && entry.emailType !== "consolidated_allocation"
+    ))
     .sort((a, b) => new Date(b.at) - new Date(a.at));
 }
 

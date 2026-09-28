@@ -10,6 +10,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
+import { isOrdersListPath, useGoToOrdersList } from "./ordersListNavigation.js";
 import { MONO_FONT } from "../theme.js";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import { ArchiveIcon, RestoreIcon } from "../components/icons.jsx";
@@ -40,10 +41,20 @@ function resolveBackNavigation(locationState) {
         : undefined,
     };
   }
+  if (String(backTo?.path || "").startsWith("/admin/orders/consolidated/")) {
+    return {
+      path: backTo.path,
+      label: `Back to ${backTo.label || "consolidated order"}`,
+      state: backTo.state || {
+        ordersView: backTo.ordersView || "merged",
+        ...(Array.isArray(backTo.orderIds) ? { orderIds: backTo.orderIds } : {}),
+      },
+    };
+  }
   return {
     path: "/admin/orders",
     label: "Back to orders",
-    state: backTo?.ordersView ? { ordersView: backTo.ordersView } : undefined,
+    state: { ordersView: backTo?.ordersView || "individual" },
   };
 }
 
@@ -51,6 +62,7 @@ export default function OrderDetailPage() {
   const { orderId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const goToOrdersList = useGoToOrdersList();
   const backNav = resolveBackNavigation(location.state);
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
@@ -58,7 +70,6 @@ export default function OrderDetailPage() {
     orders,
     setPaymentAndStatus,
     setAllocation,
-    markOrderSeen,
     addTrailEntry,
     uploadTrailProof,
     sendOrderStatusEmail,
@@ -70,10 +81,6 @@ export default function OrderDetailPage() {
 
   const order = orders.find((row) => row.id === orderId) ?? null;
   const archived = order ? isArchivedOrder(order) : false;
-
-  useEffect(() => {
-    if (orderId) markOrderSeen(orderId);
-  }, [orderId, markOrderSeen]);
 
   useEffect(() => {
     function onEmailSent(event) {
@@ -88,7 +95,13 @@ export default function OrderDetailPage() {
       <Stack spacing={ADMIN_PAGE_SPACING}>
         <Button
           startIcon={<BackIcon />}
-          onClick={() => navigate(backNav.path, { state: backNav.state })}
+          onClick={() => {
+            if (isOrdersListPath(backNav.path)) {
+              goToOrdersList(backNav.state?.ordersView || "individual");
+              return;
+            }
+            navigate(backNav.path, { state: backNav.state });
+          }}
           sx={{ alignSelf: "flex-start", fontFamily: MONO_FONT, fontSize: "0.82rem" }}
         >
           {backNav.label}
@@ -96,7 +109,7 @@ export default function OrderDetailPage() {
         <Box sx={{ ...panelSx, p: 4, textAlign: "center" }}>
           <Typography sx={{ fontWeight: 800, mb: 1 }}>Order not found</Typography>
           <Typography color="text.secondary" sx={{ mb: 2 }}>This order may have been removed or the link is invalid.</Typography>
-          <Button variant="contained" onClick={() => navigate("/admin/orders")}>View all orders</Button>
+          <Button variant="contained" onClick={() => goToOrdersList("individual")}>View all orders</Button>
         </Box>
       </Stack>
     );
@@ -125,7 +138,13 @@ export default function OrderDetailPage() {
 
       <Button
         startIcon={<BackIcon />}
-        onClick={() => navigate(backNav.path, { state: backNav.state })}
+        onClick={() => {
+          if (isOrdersListPath(backNav.path)) {
+            goToOrdersList(backNav.state?.ordersView || "individual");
+            return;
+          }
+          navigate(backNav.path, { state: backNav.state });
+        }}
         sx={{ alignSelf: "flex-start", fontFamily: MONO_FONT, fontSize: "0.82rem", color: "text.secondary" }}
       >
         {backNav.label}

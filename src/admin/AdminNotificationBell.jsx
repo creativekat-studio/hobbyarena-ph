@@ -17,7 +17,8 @@ import { MONO_FONT } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
 import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
 import { BellIcon, BoxIcon, MailIcon } from "../components/icons.jsx";
-import { INQUIRY_STATUS, useInquiries } from "../lib/inquiriesStore.jsx";
+import { useGoToOrdersList } from "./ordersListNavigation.js";
+import { isUnseenInquiry, useInquiries } from "../lib/inquiriesStore.jsx";
 import { isUnseenOrder, useOrders } from "../lib/ordersStore.jsx";
 import { sortOrdersByOrderNo } from "../lib/orderIds.js";
 import { formatDateTime, resolveOrderPlacedAt } from "../lib/orderTimestamps.js";
@@ -45,8 +46,9 @@ function SectionHeader({ icon: Icon, label, count }) {
 
 export default function AdminNotificationBell({ surfaceBorderColor }) {
   const navigate = useNavigate();
-  const { inquiries, unreadCount, setStatus } = useInquiries();
-  const { orders, notificationCount, markOrderSeen } = useOrders();
+  const goToOrdersList = useGoToOrdersList();
+  const { inquiries, unreadCount, markInquirySeen } = useInquiries();
+  const { orders, notificationCount } = useOrders();
   const [anchor, setAnchor] = useState(null);
 
   const unseenOrders = useMemo(
@@ -55,7 +57,7 @@ export default function AdminNotificationBell({ surfaceBorderColor }) {
   );
 
   const newInquiries = useMemo(
-    () => inquiries.filter((q) => q.status === INQUIRY_STATUS.NEW).slice(0, 5),
+    () => inquiries.filter(isUnseenInquiry).slice(0, 5),
     [inquiries],
   );
 
@@ -75,13 +77,14 @@ export default function AdminNotificationBell({ surfaceBorderColor }) {
   }
 
   function goToOrder(orderId) {
-    markOrderSeen(orderId);
     setAnchor(null);
-    navigate(`/admin/orders/${encodeURIComponent(orderId)}`);
+    navigate(`/admin/orders/${encodeURIComponent(orderId)}`, {
+      state: { backTo: { path: "/admin/orders", label: "orders", ordersView: "individual" } },
+    });
   }
 
   function goToInquiry(inquiryId) {
-    setStatus(inquiryId, INQUIRY_STATUS.READ);
+    markInquirySeen(inquiryId);
     setAnchor(null);
     navigate("/admin/inquiries", { state: { openInquiryId: inquiryId } });
   }
@@ -124,7 +127,7 @@ export default function AdminNotificationBell({ surfaceBorderColor }) {
           <Typography variant="caption" color="text.secondary">
             {isEmpty
               ? "You're all caught up"
-              : "Tap an item to review — other alerts stay until you open them"}
+              : "Order alerts stay until you update an item — inquiries clear when you open them"}
           </Typography>
         </Box>
         <Divider />
@@ -142,10 +145,13 @@ export default function AdminNotificationBell({ surfaceBorderColor }) {
               : (order.payment === "Pending Verification" ? "New order — verify payment" : "Customer update");
             return (
             <MenuItem key={order.id} onClick={() => goToOrder(order.id)} sx={{ whiteSpace: "normal", alignItems: "flex-start", py: 1.5 }}>
-              <Stack spacing={0.25} sx={{ minWidth: 0 }}>
-                <Typography sx={{ fontWeight: 700, fontSize: "0.88rem", fontFamily: MONO_FONT }}>{order.id}</Typography>
-                <Typography sx={{ fontSize: "0.82rem" }}>{order.customer} · {PESO.format(order.total)}</Typography>
-                <Typography variant="caption" color="text.secondary">{hint} · {formatOrderWhen(order)}</Typography>
+              <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ minWidth: 0 }}>
+                <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "warning.main", flexShrink: 0, mt: 0.7 }} />
+                <Stack spacing={0.25} sx={{ minWidth: 0 }}>
+                  <Typography sx={{ fontWeight: 700, fontSize: "0.88rem", fontFamily: MONO_FONT }}>{order.id}</Typography>
+                  <Typography sx={{ fontSize: "0.82rem" }}>{order.customer} · {PESO.format(order.total)}</Typography>
+                  <Typography variant="caption" color="text.secondary">{hint} · {formatOrderWhen(order)}</Typography>
+                </Stack>
               </Stack>
             </MenuItem>
             );
@@ -162,9 +168,12 @@ export default function AdminNotificationBell({ surfaceBorderColor }) {
         ) : (
           newInquiries.map((inquiry) => (
             <MenuItem key={inquiry.id} onClick={() => goToInquiry(inquiry.id)} sx={{ whiteSpace: "normal", alignItems: "flex-start", py: 1.5 }}>
-              <Stack spacing={0.25} sx={{ minWidth: 0 }}>
-                <Typography sx={{ fontWeight: 700, fontSize: "0.88rem" }}>{inquiry.subject || "(no subject)"}</Typography>
-                <Typography variant="caption" color="text.secondary">{inquiry.name} · {formatWhen(inquiry.date || inquiry.createdAt)}</Typography>
+              <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ minWidth: 0 }}>
+                <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "warning.main", flexShrink: 0, mt: 0.7 }} />
+                <Stack spacing={0.25} sx={{ minWidth: 0 }}>
+                  <Typography sx={{ fontWeight: 700, fontSize: "0.88rem" }}>{inquiry.subject || "(no subject)"}</Typography>
+                  <Typography variant="caption" color="text.secondary">{inquiry.name} · {formatWhen(inquiry.date || inquiry.createdAt)}</Typography>
+                </Stack>
               </Stack>
             </MenuItem>
           ))
@@ -177,7 +186,10 @@ export default function AdminNotificationBell({ surfaceBorderColor }) {
             size="small"
             variant="outlined"
             color="inherit"
-            onClick={() => goTo("/admin/orders")}
+            onClick={() => {
+              setAnchor(null);
+              goToOrdersList();
+            }}
             sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.68rem" }}
           >
             All orders

@@ -11,6 +11,7 @@ import {
   upsertCustomerDocument,
 } from "./firebase/repositories/customers.js";
 import { isValidEmail } from "./email/emailUtils.js";
+import { normalizePayoutMethods, resolvePrimaryPayoutMethodId } from "./customerPayoutMethods.js";
 
 const STORAGE_KEY = "hobbyarena:customers";
 
@@ -110,6 +111,8 @@ function localProfilesToRows(profilesByEmail) {
     photoURL: profile.photoURL || "",
     joined: profile.joined || new Date().toISOString().slice(0, 10),
     updatedAt: profile.updatedAt || null,
+    payoutMethods: normalizePayoutMethods(profile.payoutMethods),
+    primaryPayoutMethodId: profile.primaryPayoutMethodId || "",
   }));
 }
 
@@ -224,6 +227,23 @@ function mergeProfile(existing, input) {
     joined: existing?.joined || input.joined || new Date().toISOString().slice(0, 10),
     updatedAt: new Date().toISOString(),
   };
+  const payoutMethods = Array.isArray(input.payoutMethods)
+    ? normalizePayoutMethods(input.payoutMethods)
+    : normalizePayoutMethods(existing?.payoutMethods);
+  if (payoutMethods.length) {
+    merged.payoutMethods = payoutMethods;
+    merged.primaryPayoutMethodId = resolvePrimaryPayoutMethodId(
+      payoutMethods,
+      input.primaryPayoutMethodId !== undefined
+        ? input.primaryPayoutMethodId
+        : existing?.primaryPayoutMethodId,
+    );
+  } else if (Object.prototype.hasOwnProperty.call(input, "payoutMethods")) {
+    merged.payoutMethods = [];
+    merged.primaryPayoutMethodId = "";
+  } else if (existing?.primaryPayoutMethodId) {
+    merged.primaryPayoutMethodId = existing.primaryPayoutMethodId;
+  }
   const consent = input.consent ?? existing?.consent;
   if (consent != null) {
     merged.consent = consent;
@@ -279,6 +299,18 @@ export async function upsertCustomerProfile(input) {
   }
 
   return next;
+}
+
+export async function saveCustomerPayoutMethods(email, { methods, primaryPayoutMethodId, name, uid } = {}) {
+  const key = normalizeEmail(email);
+  if (!key) throw new Error("A customer email is required to save payout details.");
+  const payoutMethods = normalizePayoutMethods(methods);
+  return updateCustomerProfile(key, {
+    payoutMethods,
+    primaryPayoutMethodId: resolvePrimaryPayoutMethodId(payoutMethods, primaryPayoutMethodId),
+    ...(name ? { name: String(name).trim() } : {}),
+    ...(uid ? { uid } : {}),
+  });
 }
 
 export async function updateCustomerProfile(email, patch) {
@@ -450,10 +482,14 @@ export function CustomersProvider({ children }) {
 
   useEffect(() => {
     if (!firebaseEnabled) {
-      const local = readLocalProfiles();
-      setCacheFromMap(local);
-      setCustomers(localProfilesToRows(local));
-      return undefined;
+      const refreshLocal = () => {
+        const local = readLocalProfiles();
+        setCacheFromMap(local);
+        setCustomers(localProfilesToRows(local));
+      };
+      refreshLocal();
+      cacheListeners.add(refreshLocal);
+      return () => cacheListeners.delete(refreshLocal);
     }
 
     const auth = getFirebaseAuth();
@@ -531,6 +567,7 @@ export function CustomersProvider({ children }) {
       customers,
       getCustomerProfile,
       listCustomerProfiles: () => customers,
+      saveCustomerPayoutMethods,
     }),
     [customers],
   );

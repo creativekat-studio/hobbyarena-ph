@@ -81,6 +81,7 @@ export function compactOrderForFirestore(order) {
         ...(entry.emailType ? { emailType: entry.emailType } : {}),
         ...(entry.emailTo ? { emailTo: entry.emailTo } : {}),
         ...(entry.emailStatus ? { emailStatus: entry.emailStatus } : {}),
+        ...(entry.mergedSetId ? { mergedSetId: String(entry.mergedSetId) } : {}),
         ...(Array.isArray(entry.emailLineItems) && entry.emailLineItems.length
           ? {
               emailLineItems: entry.emailLineItems.map((row) => ({
@@ -153,7 +154,8 @@ export function compactOrderForFirestore(order) {
         mergedAllocation: slim.mergedAllocation && typeof slim.mergedAllocation === "object"
           ? slim.mergedAllocation
           : {},
-        ...(slim.mergedEmailNote ? { mergedEmailNote: String(slim.mergedEmailNote) } : {}),
+        mergedEmailNote: String(slim.mergedEmailNote || ""),
+        ...(slim.mergedEmailSavedAt ? { mergedEmailSavedAt: String(slim.mergedEmailSavedAt) } : {}),
         ...(slim.mergedEmailAttachment && typeof slim.mergedEmailAttachment === "object"
           ? { mergedEmailAttachment: slim.mergedEmailAttachment }
           : {}),

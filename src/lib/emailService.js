@@ -70,17 +70,18 @@ async function adminFetch(path, options = {}) {
   return response;
 }
 
-export async function sendOrderStatusEmail({ emailType, order, bodyOverride, subjectOverride, reminder }) {
+export async function sendOrderStatusEmail({ emailType, order, bodyOverride, subjectOverride, reminder, showMessengerButton }) {
   return postJson("/api/order-status-email", {
     emailType,
     order,
     ...(bodyOverride ? { bodyOverride } : {}),
     ...(subjectOverride ? { subjectOverride } : {}),
     ...(reminder ? { reminder } : {}),
+    ...(typeof showMessengerButton === "boolean" ? { showMessengerButton } : {}),
   }, { admin: true });
 }
 
-export async function previewOrderStatusEmail({ emailType, order, bodyOverride, subjectOverride, reminder }) {
+export async function previewOrderStatusEmail({ emailType, order, bodyOverride, subjectOverride, reminder, showMessengerButton }) {
   return postJson("/api/order-status-email", {
     preview: true,
     emailType,
@@ -88,6 +89,7 @@ export async function previewOrderStatusEmail({ emailType, order, bodyOverride, 
     ...(bodyOverride ? { bodyOverride } : {}),
     ...(subjectOverride ? { subjectOverride } : {}),
     ...(reminder ? { reminder } : {}),
+    ...(typeof showMessengerButton === "boolean" ? { showMessengerButton } : {}),
   }, { admin: true });
 }
 
