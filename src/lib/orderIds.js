@@ -123,6 +123,35 @@ export function displayConsolidatedOrderId(setOrId) {
   return String(setOrId || "—");
 }
 
+/**
+ * Keep original order cards, but cluster members of the same HA-C set
+ * so the list can show they belong together.
+ */
+export function clusterOrdersByMergedSet(orders) {
+  const groups = [];
+  const seen = new Set();
+  for (const order of orders || []) {
+    if (!order?.id || seen.has(order.id)) continue;
+    const setId = String(order.mergedSetId || "").trim();
+    if (!setId) {
+      seen.add(order.id);
+      groups.push({ kind: "single", setId: "", displayId: "", orders: [order] });
+      continue;
+    }
+    const members = (orders || []).filter((entry) => String(entry?.mergedSetId || "").trim() === setId);
+    members.forEach((entry) => {
+      if (entry?.id) seen.add(entry.id);
+    });
+    groups.push({
+      kind: members.length > 1 ? "consolidated" : "single",
+      setId,
+      displayId: displayConsolidatedOrderId(setId),
+      orders: members,
+    });
+  }
+  return groups;
+}
+
 /** Next ID for `now`: current month stamp, sequence = max in that month + 1. */
 export function makeOrderId(orders, now = new Date()) {
   const y = now.getFullYear();

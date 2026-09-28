@@ -60,6 +60,20 @@ export function payoutMethodHasBank(method) {
   return Boolean(method?.bankName || method?.accountName || method?.accountNumber);
 }
 
+/** Short customer-facing line for the Primary payout account. */
+export function formatPayoutMethodLabel(method) {
+  if (!method) return "";
+  const parts = [];
+  if (method.bankName) parts.push(method.bankName);
+  if (method.accountName) parts.push(method.accountName);
+  if (method.accountNumber) {
+    const number = String(method.accountNumber).replace(/\s+/g, "");
+    parts.push(number.length > 4 ? `····${number.slice(-4)}` : number);
+  }
+  if (method.qrUrl) parts.push(payoutMethodHasBank(method) ? "QR" : "QR code");
+  return parts.join(" · ");
+}
+
 export function orderPayoutMethodId(payout) {
   return `order_${String(payout?.key || payout?.orderId || Date.now()).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 }
