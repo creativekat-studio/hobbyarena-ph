@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteField,
   doc,
   onSnapshot,
   query,
@@ -294,10 +295,20 @@ export async function upsertOrder(order) {
 
   const withProofs = await uploadOrderProofAttachments(order);
 
+  const patch = {
+    ...prepareOrderDoc(withProofs),
+    updatedAt: serverTimestamp(),
+  };
+  if (withProofs.mergedSetId === "") {
+    patch.mergedSetId = deleteField();
+    patch.mergedAt = deleteField();
+    patch.mergedAllocation = deleteField();
+  }
+
   await withTimeout(
     setDoc(
       orderRef(db, withProofs.id),
-      { ...prepareOrderDoc(withProofs), updatedAt: serverTimestamp() },
+      patch,
       { merge: true },
     ),
     SAVE_TIMEOUT_MS,
@@ -349,9 +360,18 @@ export async function upsertOrders(orders) {
   const batch = writeBatch(db);
   orders.forEach((order) => {
     if (!order?.id) return;
+    const patch = {
+      ...prepareOrderDoc(order),
+      updatedAt: serverTimestamp(),
+    };
+    if (order.mergedSetId === "") {
+      patch.mergedSetId = deleteField();
+      patch.mergedAt = deleteField();
+      patch.mergedAllocation = deleteField();
+    }
     batch.set(
       orderRef(db, order.id),
-      { ...prepareOrderDoc(order), updatedAt: serverTimestamp() },
+      patch,
       { merge: true },
     );
   });

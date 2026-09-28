@@ -25,12 +25,10 @@ import { formatOrderTimestamp } from "../lib/orderTimestamps.js";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { useOrders, getOrdersForEmail } from "../lib/ordersStore.jsx";
 import { setAuthSurface } from "../auth/authSurface.js";
-import CustomerRefundDetails from "../components/CustomerRefundDetails.jsx";
+import CustomerRefundDetails, { CustomerBalanceDueNotice } from "../components/CustomerRefundDetails.jsx";
 import {
-  BalanceDueBadge,
   formatDeliverTo,
   OrderLineItem,
-  SummaryRow,
 } from "../components/customerOrderStatus.jsx";
 
 function summarizeSet(orders) {
@@ -144,38 +142,28 @@ export default function CustomerConsolidatedOrderPage() {
                   {PESO.format(summary.total)}
                 </Typography>
                 <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>Combined total</Typography>
-                {summary.outstanding > 0 ? (
-                  <BalanceDueBadge
-                    amount={summary.outstanding}
-                    urgent={summary.needsPay}
-                    sx={{ mt: 0.75 }}
-                  />
-                ) : null}
               </Box>
             </Stack>
 
             {fulfillmentOrder ? (
-              <Box sx={{ mt: 2 }}>
-                <SummaryRow label={fulfillmentOrder.fulfillment === "pickup" ? "Collection" : "Deliver to"}>
-                  <Stack direction="row" spacing={0.75} alignItems="flex-start">
-                    <TruckIcon sx={{ fontSize: 18, color: "text.secondary", mt: 0.15, flexShrink: 0 }} />
-                    <Typography sx={{ fontSize: "0.88rem" }}>{formatDeliverTo(fulfillmentOrder)}</Typography>
-                  </Stack>
-                </SummaryRow>
-                {summary.credit > 0 ? (
-                  <SummaryRow label="Order credit">
-                    <Typography sx={{ fontSize: "0.88rem", fontWeight: 700, color: "warning.main" }}>
-                      {PESO.format(summary.credit)}
-                    </Typography>
-                  </SummaryRow>
-                ) : null}
-              </Box>
+              <Stack direction="row" spacing={0.75} alignItems="flex-start" sx={{ mt: 0.85 }}>
+                <TruckIcon sx={{ fontSize: 16, color: "text.secondary", mt: 0.15, flexShrink: 0 }} />
+                <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>
+                  {fulfillmentOrder.fulfillment === "pickup" ? "Pickup" : "Deliver to"} · {formatDeliverTo(fulfillmentOrder)}
+                  {summary.credit > 0 ? ` · Credit ${PESO.format(summary.credit)}` : ""}
+                </Typography>
+              </Stack>
             ) : null}
 
-            {summary.needsRefund ? (
-              <Box sx={{ mt: 2 }}>
-                <CustomerRefundDetails amount={summary.refund} active embedded />
-              </Box>
+            {summary.needsRefund || (summary.outstanding > 0 && summary.needsPay) ? (
+              <Stack spacing={1} sx={{ mt: 1.5 }}>
+                {summary.needsRefund ? (
+                  <CustomerRefundDetails amount={summary.refund} active embedded />
+                ) : null}
+                {summary.outstanding > 0 && summary.needsPay ? (
+                  <CustomerBalanceDueNotice amount={summary.outstanding} embedded />
+                ) : null}
+              </Stack>
             ) : null}
           </Box>
 
