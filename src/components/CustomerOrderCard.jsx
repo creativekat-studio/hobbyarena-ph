@@ -44,25 +44,38 @@ function OrderThumb({ item, surfaceBorderColor }) {
   );
 }
 
-export function CustomerOrderCard({ order, surfaceBorderColor }) {
+export function CustomerOrderCard({
+  order,
+  surfaceBorderColor,
+  to,
+  badge,
+  title,
+  meta,
+  total,
+  outstanding: outstandingOverride,
+  needsPay: needsPayOverride,
+}) {
   const theme = useTheme();
   const lineItems = order.lineItems ?? [];
   const status = migrateOrderStatus(order.status);
   const thumbs = lineItems.slice(0, MAX_THUMBS);
   const extra = Math.max(0, lineItems.length - MAX_THUMBS);
-  const outstanding = orderOutstandingBalance(order);
-  const needsPay = orderNeedsBalancePayment(order);
+  const outstanding = outstandingOverride != null ? outstandingOverride : orderOutstandingBalance(order);
+  const needsPay = needsPayOverride != null ? needsPayOverride : orderNeedsBalancePayment(order);
+  const displayTotal = total != null ? total : orderCustomerDisplayTotal(order);
   const primaryLabel = lineItems.length
     ? lineItemTrailLabel(lineItems[0])
     : order.items || "Order";
   const summaryText = lineItems.length > 1
     ? `${primaryLabel} + ${lineItems.length - 1} more`
     : primaryLabel;
+  const href = to || `/account/orders/${encodeURIComponent(order.id)}`;
+  const productCount = lineItems.length || 1;
 
   return (
     <Box
       component={RouterLink}
-      to={`/account/orders/${order.id}`}
+      to={href}
       sx={{
         display: "block",
         textDecoration: "none",
@@ -80,9 +93,22 @@ export function CustomerOrderCard({ order, surfaceBorderColor }) {
     >
       <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2} sx={{ mb: 1.75 }}>
         <Box sx={{ minWidth: 0 }}>
-          <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: "0.95rem" }}>{order.id}</Typography>
+          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: "wrap", rowGap: 0.5 }}>
+            <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: "0.95rem" }}>
+              {title || order.id}
+            </Typography>
+            {badge ? (
+              <Chip
+                label={badge}
+                size="small"
+                variant="outlined"
+                color="primary"
+                sx={{ fontWeight: 800, fontSize: "0.6rem", height: 20, letterSpacing: 0.4 }}
+              />
+            ) : null}
+          </Stack>
           <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", mt: 0.25 }}>
-            {(lineItems.length || 1)} {(lineItems.length || 1) === 1 ? "product" : "products"} · {formatOrderTimestamp(order)}
+            {meta || `${productCount} ${productCount === 1 ? "product" : "products"} · ${formatOrderTimestamp(order)}`}
           </Typography>
         </Box>
         <Chip
@@ -140,7 +166,7 @@ export function CustomerOrderCard({ order, surfaceBorderColor }) {
       <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
         <Box>
           <Typography sx={{ fontWeight: 800, color: "primary.main", fontSize: "1rem" }}>
-            {PESO.format(orderCustomerDisplayTotal(order))}
+            {PESO.format(displayTotal)}
           </Typography>
           {outstanding > 0 ? (
             needsPay ? (
