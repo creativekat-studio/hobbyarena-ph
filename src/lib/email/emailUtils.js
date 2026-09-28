@@ -30,6 +30,7 @@ export function getEmailLinks() {
     messengerUrl: env("MESSENGER_URL", "https://m.me/hobbyarena.ph"),
     facebookUrl: env("FACEBOOK_URL", "https://www.facebook.com/hobbyarena.ph"),
     accountUrl: `${displaySiteUrl}/account`,
+    bankDetailsUrl: `${displaySiteUrl}/account?tab=profile#bank-details`,
   };
 }
 
