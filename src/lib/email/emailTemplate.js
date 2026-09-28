@@ -234,7 +234,7 @@ function resolveReminderLines(lines, placeholders = {}) {
 
 /**
  * Side-by-side CTA buttons for balance payment or refund detail submission.
- * @param {{ caption?: string; accountLabel: string; accountHref: string; messengerLabel: string; messengerHref: string }} options
+ * @param {{ caption?: string; accountLabel: string; accountHref: string; messengerLabel: string; messengerHref: string; showMessenger?: boolean }} options
  */
 export function customerResponseButtons({
   caption = "",
@@ -242,6 +242,7 @@ export function customerResponseButtons({
   accountHref,
   messengerLabel,
   messengerHref,
+  showMessenger = true,
 }) {
   const c = EMAIL_BRAND.colors;
   const buttonBase = `display:block;width:100%;padding:12px 14px;border-radius:8px;font-family:${FONT};font-size:13px;font-weight:700;line-height:1.35;text-align:center;text-decoration:none;box-sizing:border-box`;
@@ -258,10 +259,8 @@ export function customerResponseButtons({
     </a>
   `;
 
-  return `
-    <div style="margin:16px 0 20px;padding:16px;border-radius:10px;background:${c.page};border:1px solid ${c.border}">
-      ${caption ? `<p style="margin:0 0 12px;font-family:${FONT};font-size:14px;line-height:1.6;color:${c.muted};text-align:center">${escapeHtml(caption)}</p>` : ""}
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+  const buttonsRow = showMessenger
+    ? `
         <tr>
           <td width="50%" align="center" valign="top" style="padding:0 6px 0 0">
             ${primaryButton}
@@ -270,6 +269,20 @@ export function customerResponseButtons({
             ${secondaryButton}
           </td>
         </tr>
+      `
+    : `
+        <tr>
+          <td align="center" valign="top">
+            ${primaryButton}
+          </td>
+        </tr>
+      `;
+
+  return `
+    <div style="margin:16px 0 20px;padding:16px;border-radius:10px;background:${c.page};border:1px solid ${c.border}">
+      ${caption ? `<p style="margin:0 0 12px;font-family:${FONT};font-size:14px;line-height:1.6;color:${c.muted};text-align:center">${escapeHtml(caption)}</p>` : ""}
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        ${buttonsRow}
       </table>
     </div>
   `;

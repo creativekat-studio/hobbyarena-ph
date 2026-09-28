@@ -381,7 +381,42 @@ function resolveEmailTrailLineItems(entry, orderLineItems, trail = []) {
   });
 }
 
+function trailMergedSetId(entry, order) {
+  const fromEntry = String(entry?.mergedSetId || "").trim();
+  if (fromEntry) return fromEntry;
+  const title = entry?.title || "";
+  const note = entry?.note || "";
+  const looksMerged = /^Grid allocation →/i.test(title)
+    || /^Added to (a )?consolidated order/i.test(title)
+    || /merged allocation on the orders grid/i.test(note)
+    || /included in (a consolidated set|HA-C-)/i.test(note);
+  if (!looksMerged && entry?.emailType !== "consolidated_allocation") return "";
+  return String(order?.mergedSetId || "").trim();
+}
+
+function trailEntryTitle(entry, order) {
+  const setId = trailMergedSetId(entry, order);
+  if (setId && /^Grid allocation →/i.test(entry.title || "")) {
+    const alloc = String(entry.title).replace(/^Grid allocation →\s*/i, "").trim();
+    return alloc
+      ? `Added to consolidated order ${setId} · ${alloc}`
+      : `Added to consolidated order ${setId}`;
+  }
+  return entry.title;
+}
+
 function emailTrailHeadline(entry) {
+  if (entry.emailType === "consolidated_allocation") {
+    const verb = entry.emailStatus === "failed"
+      ? "Failed"
+      : entry.emailStatus === "skipped"
+        ? "Skipped"
+        : "Sent";
+    const email = entry.emailTo
+      || String(entry.title || "").replace(/^(Consolidated )?Email (Sent|Failed|Skipped) to /i, "")
+      || "";
+    return email ? `Consolidated email ${verb} to ${email}` : `Consolidated email ${verb}`;
+  }
   if (/^Email (Sent|Failed|Skipped) to /i.test(entry.title || "")) {
     return entry.title;
   }
@@ -395,10 +430,13 @@ function emailTrailHeadline(entry) {
   return email ? `Email ${verb} to ${email}` : `Email ${verb}`;
 }
 
-function emailTrailStatusLine(entry, emailLineItems) {
+function emailTrailStatusLine(entry, emailLineItems, order) {
   const payment = migratePaymentStatus(entry.payment || emailLineItems[0]?.payment);
   const status = orderStatusLabel(migrateOrderStatus(entry.status || emailLineItems[0]?.status));
-  return [payment, status].filter(Boolean).join(" · ");
+  const setId = entry.emailType === "consolidated_allocation"
+    ? trailMergedSetId(entry, order)
+    : "";
+  return [payment, status, setId].filter(Boolean).join(" · ");
 }
 
 function emailTrailLineItemText(row) {
@@ -467,7 +505,7 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
   const meta = trailMetaLine(entry);
   const isEmailEntry = isEmailTrailEntry(entry);
   const emailLineItems = isEmailEntry ? resolveEmailTrailLineItems(entry, lineItems, trail) : [];
-  const emailStatusLine = isEmailEntry ? emailTrailStatusLine(entry, emailLineItems) : "";
+  const emailStatusLine = isEmailEntry ? emailTrailStatusLine(entry, emailLineItems, order) : "";
   const timeLabel = formatDateTime(entry.at);
   const showAttachment = trailEntryShowsAttachment(entry);
   const proofPurged = Boolean(entry.attachment?.purged);
@@ -532,7 +570,7 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
         }}
       >
         <Typography sx={{ fontWeight: 700, fontSize: { xs: "0.8rem", sm: "0.84rem" }, lineHeight: 1.35 }}>
-          {isEmailEntry ? emailTrailHeadline(entry) : entry.title}
+          {isEmailEntry ? emailTrailHeadline(entry) : trailEntryTitle(entry, order)}
           {meta && !isEmailEntry ? (
             <Typography component="span" sx={{ fontWeight: 500, color: "text.secondary", fontFamily: MONO_FONT, fontSize: "0.72rem" }}>
               {" "}· {meta}
@@ -1801,11 +1839,11 @@ export function OrderTrailPanel({
           ...(scrollable ? {
             display: "flex",
             flexDirection: "column",
-            flex: { xs: "0 0 auto", lg: 1 },
+            flex: { xs: "0 0 auto", md: 1 },
             minHeight: 0,
-            height: { xs: "auto", lg: "100%" },
-            maxHeight: { xs: "none", lg: "100%" },
-            overflow: { xs: "visible", lg: "hidden" },
+            height: { xs: "auto", md: "100%" },
+            maxHeight: { xs: "none", md: "100%" },
+            overflow: { xs: "visible", md: "hidden" },
           } : {}),
         }}
       >
@@ -1907,12 +1945,12 @@ export function OrderTrailPanel({
 
         <Box
           sx={scrollable ? {
-            flex: { xs: "0 0 auto", lg: 1 },
+            flex: { xs: "0 0 auto", md: 1 },
             minHeight: 0,
-            overflowY: { xs: "visible", lg: "auto" },
+            overflowY: { xs: "visible", md: "auto" },
             overscrollBehavior: "contain",
-            pr: { lg: 0.5 },
-            mr: { lg: -0.5 },
+            pr: { md: 0.5 },
+            mr: { md: -0.5 },
           } : undefined}
         >
           {renderTrailList(inlineTrail, { dense: isMobile })}

@@ -10,6 +10,7 @@ import {
   deleteInquiryDocument,
   markNewInquiriesRead,
   subscribeInquiries,
+  updateInquiryFields,
   updateInquiryStatus,
 } from "./firebase/repositories/inquiries.js";
 
@@ -24,6 +25,14 @@ import {
 const STORAGE_KEY = "hobbyarena:inquiries";
 
 export const INQUIRY_STATUS = { NEW: "New", READ: "Read", HANDLED: "Handled" };
+
+export function isUnseenInquiry(inquiry) {
+  if (!inquiry) return false;
+  if (inquiry.status === INQUIRY_STATUS.HANDLED) return false;
+  if (inquiry.notificationSeen === true) return false;
+  if (inquiry.notificationSeen === false) return true;
+  return inquiry.status === INQUIRY_STATUS.NEW;
+}
 
 const SEED = [];
 
@@ -118,6 +127,7 @@ export function InquiriesProvider({ children }) {
         message: message.trim(),
         status: INQUIRY_STATUS.NEW,
         date: new Date().toISOString(),
+        notificationSeen: false,
       };
 
       // Email first so rate-limit / API failures surface before we claim success.
@@ -145,13 +155,29 @@ export function InquiriesProvider({ children }) {
     };
 
     const setStatus = (id, status) => {
+      const notificationSeen = status !== INQUIRY_STATUS.NEW;
       if (firebaseEnabled) {
         updateInquiryStatus(id, status).catch((error) => {
           console.error("[inquiries] Failed to update status:", error);
         });
         return;
       }
-      setInquiries((prev) => prev.map((q) => (q.id === id ? { ...q, status } : q)));
+      setInquiries((prev) => prev.map((q) => (q.id === id ? { ...q, status, notificationSeen } : q)));
+    };
+
+    const markInquirySeen = (id) => {
+      const current = inquiriesRef.current.find((q) => q.id === id);
+      if (!current || !isUnseenInquiry(current)) return;
+      const status = current.status === INQUIRY_STATUS.NEW ? INQUIRY_STATUS.READ : current.status;
+      if (firebaseEnabled) {
+        updateInquiryFields(id, { notificationSeen: true, status }).catch((error) => {
+          console.error("[inquiries] Failed to mark seen:", error);
+        });
+        return;
+      }
+      setInquiries((prev) => prev.map((q) => (
+        q.id === id ? { ...q, notificationSeen: true, status } : q
+      )));
     };
 
     const remove = (id) => {
@@ -167,7 +193,7 @@ export function InquiriesProvider({ children }) {
     const markAllNewAsRead = () => {
       if (firebaseEnabled) {
         const ids = inquiriesRef.current
-          .filter((q) => q.status === INQUIRY_STATUS.NEW)
+          .filter(isUnseenInquiry)
           .map((q) => q.id);
         if (ids.length) {
           markNewInquiriesRead(ids).catch((error) => {
@@ -177,15 +203,17 @@ export function InquiriesProvider({ children }) {
         return;
       }
       setInquiries((prev) =>
-        prev.map((q) => (q.status === INQUIRY_STATUS.NEW ? { ...q, status: INQUIRY_STATUS.READ } : q)),
+        prev.map((q) => (
+          isUnseenInquiry(q) ? { ...q, status: INQUIRY_STATUS.READ, notificationSeen: true } : q
+        )),
       );
     };
 
-    return { addInquiry, setStatus, remove, markAllNewAsRead };
+    return { addInquiry, setStatus, remove, markInquirySeen, markAllNewAsRead };
   }, [firebaseEnabled]);
 
   const unreadCount = useMemo(
-    () => inquiries.filter((q) => q.status === INQUIRY_STATUS.NEW).length,
+    () => inquiries.filter(isUnseenInquiry).length,
     [inquiries],
   );
 

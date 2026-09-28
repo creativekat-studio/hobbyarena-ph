@@ -4,6 +4,7 @@ import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHead
 import DesignPreviewSettings from "../components/DesignPreviewSettings.jsx";
 import DesignPreviewMockup from "../components/DesignPreviewMockup.jsx";
 import DemoDataResetPanel from "./DemoDataResetPanel.jsx";
+import AdminBackupPanel from "./AdminBackupPanel.jsx";
 import { isLocalHost, isPreviewHost } from "../lib/siteAccess.js";
 
 const PREVIEW_STICKY_SX = {
@@ -39,6 +40,8 @@ export default function DesignPreviewPage() {
           </Box>
         </Grid>
       </Grid>
+
+      <AdminBackupPanel panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} />
 
       {showDangerZone ? (
         <DemoDataResetPanel panelSx={panelSx} surfaceBorderColor={surfaceBorderColor} />

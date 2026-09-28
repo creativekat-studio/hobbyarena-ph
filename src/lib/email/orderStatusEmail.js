@@ -27,6 +27,17 @@ import {
 
 const BALANCE_ACTION_EMAIL_TYPES = new Set(["balance_due_full", "balance_due_partial"]);
 const REFUND_ACTION_EMAIL_TYPES = new Set(["partial_refund_pending", "full_refund_pending"]);
+const MESSENGER_BUTTON_EMAIL_TYPES = new Set([
+  ...BALANCE_ACTION_EMAIL_TYPES,
+  ...REFUND_ACTION_EMAIL_TYPES,
+  "partial_refund_sent",
+  "ready_for_pickup",
+  "consolidated_allocation",
+]);
+
+export function defaultShowMessengerButton(emailType) {
+  return MESSENGER_BUTTON_EMAIL_TYPES.has(emailType);
+}
 
 function depositPercentOf(order) {
   return Math.max(0, Math.min(100, Number(order?.depositPercent) || 30));
@@ -173,53 +184,65 @@ function consolidatedTotalsBlock(order) {
   return `${totalsBlock(rows)}<div style="clear:both"></div>`;
 }
 
-function customerActionButtonsBlock(emailType, order) {
+function dualCtaCaption(kind, showMessenger) {
+  if (kind === "refund") {
+    return showMessenger
+      ? "Share your bank or e-wallet details using either option below."
+      : "Share your bank or e-wallet details using the option below.";
+  }
+  return showMessenger
+    ? "Pay the balance and send your proof using either option below."
+    : "Pay the balance and send your proof using the option below.";
+}
+
+function customerActionButtonsBlock(emailType, order, { showMessenger = true } = {}) {
   const links = getEmailLinks();
+  const messengerOpts = {
+    messengerLabel: "Message Hobby Arena PH",
+    messengerHref: links.messengerUrl,
+    showMessenger,
+  };
 
   if (emailType === "consolidated_allocation") {
     const net = consolidatedNet(order);
     if (net < 0) {
       return customerResponseButtons({
-        caption: "Share your bank or e-wallet details using either option below.",
+        caption: dualCtaCaption("refund", showMessenger),
         accountLabel: "Submit refund details",
         accountHref: links.accountUrl,
-        messengerLabel: "Message Hobby Arena PH",
-        messengerHref: links.messengerUrl,
+        ...messengerOpts,
       });
     }
     if (net > 0) {
       return customerResponseButtons({
-        caption: "Pay the balance and send your proof using either option below.",
+        caption: dualCtaCaption("balance", showMessenger),
         accountLabel: "Upload in my account",
         accountHref: links.accountUrl,
-        messengerLabel: "Message Hobby Arena PH",
-        messengerHref: links.messengerUrl,
+        ...messengerOpts,
       });
     }
-    return "";
+    return showMessenger ? messengerButton({ label: "Message Hobby Arena PH" }) : "";
   }
 
   if (BALANCE_ACTION_EMAIL_TYPES.has(emailType)) {
     return customerResponseButtons({
-      caption: "Pay the balance and send your proof using either option below.",
+      caption: dualCtaCaption("balance", showMessenger),
       accountLabel: "Upload in my account",
       accountHref: links.accountUrl,
-      messengerLabel: "Message Hobby Arena PH",
-      messengerHref: links.messengerUrl,
+      ...messengerOpts,
     });
   }
 
   if (REFUND_ACTION_EMAIL_TYPES.has(emailType)) {
     return customerResponseButtons({
-      caption: "Share your bank or e-wallet details using either option below.",
+      caption: dualCtaCaption("refund", showMessenger),
       accountLabel: "Submit refund details",
       accountHref: links.accountUrl,
-      messengerLabel: "Message Hobby Arena PH",
-      messengerHref: links.messengerUrl,
+      ...messengerOpts,
     });
   }
 
-  if (emailType === "ready_for_pickup" || emailType === "partial_refund_sent") {
+  if (showMessenger) {
     return messengerButton({
       label: "Message Hobby Arena PH",
     });
@@ -946,6 +969,9 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
   const subjectOverride = typeof options.subjectOverride === "string" && options.subjectOverride.trim()
     ? options.subjectOverride.trim()
     : "";
+  const showMessengerButton = typeof options.showMessengerButton === "boolean"
+    ? options.showMessengerButton
+    : defaultShowMessengerButton(emailType);
   const showSummary = [
     "balance_due_full",
     "balance_due_partial",
@@ -985,7 +1011,7 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     ${isConsolidated ? consolidatedEmailTables(order) : ""}
     ${showSummary && !isConsolidated ? invoiceSummary(order, emailType) : ""}
     ${showMilestones && !isConsolidated ? preorderMilestones(item, emailType) : ""}
-    ${customerActionButtonsBlock(emailType, order)}
+    ${customerActionButtonsBlock(emailType, order, { showMessenger: showMessengerButton })}
     ${order.statusAttachment ? statusAttachmentBlock(order.statusAttachment) : ""}
   `;
 
@@ -1032,22 +1058,12 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
   }
 
   if (BALANCE_ACTION_EMAIL_TYPES.has(emailType) || (isConsolidated && net > 0)) {
-    text.push(
-      "",
-      "Upload in my account:",
-      links.accountUrl,
-      "Message Hobby Arena PH:",
-      links.messengerUrl,
-    );
+    text.push("", "Upload in my account:", links.accountUrl);
+    if (showMessengerButton) text.push("Message Hobby Arena PH:", links.messengerUrl);
   } else if (REFUND_ACTION_EMAIL_TYPES.has(emailType) || (isConsolidated && net < 0)) {
-    text.push(
-      "",
-      "Submit refund details:",
-      links.accountUrl,
-      "Message Hobby Arena PH:",
-      links.messengerUrl,
-    );
-  } else if (emailType === "ready_for_pickup" || emailType === "partial_refund_sent") {
+    text.push("", "Submit refund details:", links.accountUrl);
+    if (showMessengerButton) text.push("Message Hobby Arena PH:", links.messengerUrl);
+  } else if (showMessengerButton) {
     text.push("", "Message Hobby Arena PH:", links.messengerUrl);
   }
 

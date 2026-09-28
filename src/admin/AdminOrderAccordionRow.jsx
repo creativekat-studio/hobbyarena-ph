@@ -12,7 +12,7 @@ import {
 import { alpha, useTheme } from "@mui/material/styles";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
-import { ArchiveIcon, RestoreIcon } from "../components/icons.jsx";
+import { ArchiveIcon, InfoIcon, RestoreIcon } from "../components/icons.jsx";
 import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
 import { AdminGridHeaderLabel } from "./adminTableHeader.jsx";
 import {
@@ -129,6 +129,9 @@ export default function AdminOrderAccordionRow({
           size="small"
           aria-label={open ? "Collapse order" : "Expand order"}
           sx={{
+            width: 28,
+            height: 28,
+            borderRadius: 1,
             transform: open ? "rotate(90deg)" : "none",
             transition: "transform 0.2s ease",
             color: "text.secondary",
@@ -228,20 +231,13 @@ export default function AdminOrderAccordionRow({
                   component="span"
                   sx={{
                     display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 18,
-                    height: 18,
-                    borderRadius: "50%",
-                    border: "1px solid",
-                    borderColor: "text.disabled",
                     color: "text.secondary",
-                    fontSize: "0.68rem",
-                    fontWeight: 700,
-                    fontStyle: "italic",
+                    lineHeight: 0,
+                    flexShrink: 0,
                   }}
+                  aria-hidden
                 >
-                  i
+                  <InfoIcon sx={{ fontSize: 16 }} />
                 </Box>
               </Stack>
             </Tooltip>

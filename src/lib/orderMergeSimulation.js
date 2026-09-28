@@ -186,10 +186,14 @@ export function buildMergeWorkbook(orders, {
   finalByRow = {},
   statusByRow = {},
   paymentByRow = {},
+  includeKeys,
 } = {}) {
-  const lines = buildMergeSourceRows(orders).sort((a, b) =>
+  let lines = buildMergeSourceRows(orders).sort((a, b) =>
     compareOrdersByOrderNo({ id: a.orderId }, { id: b.orderId }),
   );
+  if (includeKeys instanceof Set) {
+    lines = lines.filter((line) => includeKeys.has(line.key));
+  }
   const products = collectMergeProducts(lines);
 
   const breakdown = products.map((product) => {
@@ -328,7 +332,7 @@ export function allocationMetaFromOrders(orders) {
   return meta;
 }
 
-export function buildLiveMergeWorkbook(orders) {
+export function buildLiveMergeWorkbook(orders, { includeKeys } = {}) {
   const liveRows = [];
   for (const order of orders || []) {
     for (const item of getOrderLineItems(order)) {
@@ -359,10 +363,13 @@ export function buildLiveMergeWorkbook(orders) {
   }
 
   const meta = allocationMetaFromOrders(orders);
-  const workbook = buildMergeWorkbook(orders, meta);
+  const workbook = buildMergeWorkbook(orders, { ...meta, includeKeys });
+  const scopedLiveRows = includeKeys instanceof Set
+    ? liveRows.filter((row) => includeKeys.has(row.key))
+    : liveRows;
   const byKey = new Map(liveRows.map((row) => [row.key, row]));
   const liveConsolidated = workbook.consolidated.map((product) => {
-    const productLines = liveRows.filter((line) => line.productKey === product.productKey);
+    const productLines = scopedLiveRows.filter((line) => line.productKey === product.productKey);
     const newQty = productLines.reduce((sum, line) => sum + line.finalAllocation, 0);
     const newAmount = roundMoney(productLines.reduce((sum, line) => sum + line.newAmount, 0));
     const totalDp = roundMoney(productLines.reduce((sum, line) => sum + line.dpAmount, 0));
@@ -546,17 +553,24 @@ export function applyMergeSimulationToOrder(order, simulatedRows, { mergedSetId,
   });
 
   const at = new Date().toISOString();
+  const setLabel = String(mergedSetId || "").trim();
   const trail = [
     ...(order.trail || []),
     ...forOrder.map((row, index) => ({
       id: `trail-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
       at,
-      title: `Grid allocation → ${row.finalAllocation}/${row.qty}`,
+      title: setLabel
+        ? `Added to consolidated order ${setLabel}`
+        : "Added to a consolidated order",
       status: row.status,
       payment: row.payment,
       lineItemId: row.lineItemId,
       lineItemName: lineItemTrailLabel({ ...row, quantity: row.qty, name: row.name }),
-      note: `Merged allocation on the orders grid (${row.allocationPercent}% → ${row.finalAllocation} of ${row.qty}). Email not sent.`,
+      note: [
+        setLabel ? `Included in ${setLabel}.` : "Included in a consolidated set.",
+        `Allocation ${row.allocationPercent}% → ${row.finalAllocation} of ${row.qty}.`,
+      ].join(" "),
+      ...(setLabel ? { mergedSetId: setLabel } : {}),
     })),
   ];
 

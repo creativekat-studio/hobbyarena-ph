@@ -58,10 +58,13 @@ function base64UrlJson(value) {
 
 /**
  * Mint a Google OAuth access token from the service account JSON.
- * Used for Identity Toolkit Admin REST (password-reset oob links) because
- * `firebase-admin/auth` cannot be loaded in this Vercel runtime.
+ * Used for Identity Toolkit Admin REST because `firebase-admin/auth`
+ * cannot be loaded in this Vercel runtime.
  */
-async function getServiceAccountAccessToken(serviceAccount) {
+export async function getServiceAccountAccessToken(serviceAccount = readServiceAccount()) {
+  if (!serviceAccount) {
+    throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not configured");
+  }
   const now = Date.now();
   if (cachedAccessToken && now < cachedAccessTokenExpiresAt - 60_000) {
     return cachedAccessToken;

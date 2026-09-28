@@ -32,5 +32,11 @@ service firebase.storage {
       allow read: if true;
       allow write: if isAdmin();
     }
+
+    match /customer-payouts/{uid}/{fileName} {
+      allow read: if true;
+      allow write: if request.resource.size < 5 * 1024 * 1024
+        && (isAdmin() || (isSignedIn() && uid == request.auth.uid));
+    }
   }
 }

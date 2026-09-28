@@ -27,6 +27,7 @@ export const STORAGE_PATHS = {
   orderProofs: (orderId) => `order-proofs/${orderId}`,
   productImages: (productId) => `products/${productId}`,
   cmsAssets: (filename) => `cms/${filename}`,
+  customerPayouts: (uid, filename) => `customer-payouts/${uid}/${filename}`,
   adminBackups: (stamp, filename) => `admin-backups/${stamp}/${filename}`,
 };
 
@@ -52,7 +53,8 @@ export const SCHEMA = {
     mergedAt: "string | undefined",
     mergedAllocation: "{ [productKey]: { percent, newQty } } | undefined",
     mergedEmailNote: "string | undefined — staff note included on the consolidated email",
-    mergedEmailAttachment: "{ label, url, type } | undefined — file included on the consolidated email",
+    mergedEmailAttachment: "{ label, url, type, source: \"consolidated\" } | undefined — set-level file for the consolidated email",
+    mergedEmailSavedAt: "string | undefined — ISO time the note/attachment were last saved",
   },
   inquiry: {
     name: "string",
@@ -61,6 +63,7 @@ export const SCHEMA = {
     message: "string",
     status: "New | Read | Handled",
     createdAt: "timestamp",
+    notificationSeen: "boolean — false until an admin opens the inquiry",
   },
   customer: {
     email: "string",
@@ -68,6 +71,8 @@ export const SCHEMA = {
     phone: "string",
     marketingOptIn: "boolean",
     joinedAt: "timestamp",
+    payoutMethods: "array of { id, bankName, accountName, accountNumber, note, qrUrl, qrName, isPdf, source }",
+    primaryPayoutMethodId: "string | undefined — id of the preferred payout method",
   },
   product: {
     name: "string",

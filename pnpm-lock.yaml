@@ -20,6 +20,9 @@ importers:
       '@mui/system':
         specifier: ^7.3.11
         version: 7.3.11(@emotion/react@11.14.0(@types/react@19.2.17)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.17)(react@18.3.1))(@types/react@19.2.17)(react@18.3.1))(@types/react@19.2.17)(react@18.3.1)
+      d3-shape:
+        specifier: ^3.2.0
+        version: 3.2.0
       firebase:
         specifier: ^11.10.0
         version: 11.10.0

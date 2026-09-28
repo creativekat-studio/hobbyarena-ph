@@ -6,6 +6,10 @@ import {
   Checkbox,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   Grid,
   InputAdornment,
@@ -22,6 +26,8 @@ import {
 import { alpha, useTheme } from "@mui/material/styles";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import { MONO_FONT, getStatAccents } from "../theme.js";
+import { getSurfaces } from "../lib/surfaces.js";
+import { useColorMode } from "../lib/colorMode.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import { BoxIcon, CardIcon, SearchIcon, SparkleIcon, TruckIcon } from "../components/icons.jsx";
 import {
@@ -31,7 +37,7 @@ import {
   orderStatusLabel,
 } from "../data/orderWorkflow.js";
 import { isArchivedOrder, isUnseenOrder, useOrders } from "../lib/ordersStore.jsx";
-import { compareOrdersByOrderNo } from "../lib/orderIds.js";
+import { compareOrdersByOrderNo, displayConsolidatedOrderId } from "../lib/orderIds.js";
 import { buildCostByProductId } from "../lib/orderRevenue.js";
 import { resolveOrderPlacedAt } from "../lib/orderTimestamps.js";
 import { useInventory } from "../lib/inventoryStore.jsx";
@@ -56,7 +62,7 @@ import {
 } from "./adminTableHeader.jsx";
 import AddOrderDialog from "./AddOrderDialog.jsx";
 import ExportOrdersDialog from "./ExportOrdersDialog.jsx";
-import { MergeSimulateDialog, MergedOrdersPanel } from "./MergeOrdersGrid.jsx";
+import { MergedOrdersPanel } from "./MergeOrdersGrid.jsx";
 import { evaluateMergeSelection } from "../lib/orderMergeSimulation.js";
 import AdminOrderAccordionRow, {
   ORDER_TABLE_MIN_WIDTH,
@@ -83,6 +89,31 @@ const ORDERS_VIEWS = [
   { id: "individual", label: "Individual orders" },
   { id: "merged", label: "Consolidated Orders" },
 ];
+const ORDERS_VIEW_STORAGE_KEY = "ha-admin-orders-view";
+
+function readStoredOrdersView() {
+  try {
+    const stored = window.sessionStorage.getItem(ORDERS_VIEW_STORAGE_KEY);
+    if (stored === "merged" || stored === "individual") return stored;
+  } catch {
+    /* ignore */
+  }
+  return "";
+}
+
+function writeStoredOrdersView(view) {
+  try {
+    window.sessionStorage.setItem(ORDERS_VIEW_STORAGE_KEY, view);
+  } catch {
+    /* ignore */
+  }
+}
+
+function resolveOrdersView(locationState) {
+  const fromState = locationState?.ordersView;
+  if (fromState === "merged" || fromState === "individual") return fromState;
+  return readStoredOrdersView() || "individual";
+}
 
 function SortableGridHeader({ label, sortKey, sort, onSort, sx }) {
   return (
@@ -115,7 +146,9 @@ export default function OrdersPage() {
   const accents = getStatAccents(theme);
   const navigate = useNavigate();
   const location = useLocation();
-  const { surfaces } = useOutletContext();
+  const { mode } = useColorMode();
+  const outletContext = useOutletContext();
+  const surfaces = outletContext?.surfaces || getSurfaces(theme, mode === "dark");
   const { panelSx, surfaceBorderColor } = surfaces;
   const { orders, ordersError, ordersReady, archiveOrders, restoreOrders, updateOrder, sendConsolidatedAllocationEmail } = useOrders();
   const { items: inventoryItems } = useInventory();
@@ -133,17 +166,18 @@ export default function OrdersPage() {
   const [sort, setSort] = useState({ key: "order", dir: "desc" });
   const [archiveTargetIds, setArchiveTargetIds] = useState([]);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
-  const [ordersView, setOrdersView] = useState(
-    () => (location.state?.ordersView === "merged" ? "merged" : "individual"),
-  );
-  const [simulateOpen, setSimulateOpen] = useState(false);
+  const [rematchOrders, setRematchOrders] = useState([]);
+  const [ordersView, setOrdersView] = useState(() => resolveOrdersView(location.state));
   const onMergedTab = ordersView === "merged";
 
   useEffect(() => {
-    if (location.state?.ordersView === "merged" || location.state?.ordersView === "individual") {
-      setOrdersView(location.state.ordersView);
-    }
-  }, [location.state]);
+    const next = resolveOrdersView(location.state);
+    setOrdersView((current) => (current === next ? current : next));
+  }, [location.key, location.state]);
+
+  useEffect(() => {
+    writeStoredOrdersView(ordersView);
+  }, [ordersView]);
 
   function handleSort(key) {
     setSort((prev) => toggleSortState(prev, key, { defaultDir: key === "order" ? "desc" : "asc" }));
@@ -156,6 +190,14 @@ export default function OrdersPage() {
   function openOrder(id) {
     navigate(`/admin/orders/${encodeURIComponent(id)}`, {
       state: { backTo: { path: "/admin/orders", label: "orders", ordersView } },
+    });
+  }
+
+  function openConsolidatedSet(set) {
+    const id = displayConsolidatedOrderId(set);
+    writeStoredOrdersView("merged");
+    navigate(`/admin/orders/consolidated/${encodeURIComponent(id)}`, {
+      state: { backTo: { path: "/admin/orders", label: "orders", ordersView: "merged" } },
     });
   }
 
@@ -190,14 +232,31 @@ export default function OrdersPage() {
     setArchiveTargetIds(ids);
   }
 
+  function goToNewConsolidated(selected) {
+    navigate("/admin/orders/consolidated/new", {
+      state: {
+        orderIds: selected.map((order) => order.id),
+        backTo: { path: "/admin/orders", label: "orders", ordersView: "individual" },
+      },
+    });
+  }
+
   function openMergeSimulation() {
     const selected = orders.filter((order) => selectedIds.has(order.id) && !isArchivedOrder(order));
     if (!evaluateMergeSelection(selected).canMerge) return;
-    setSimulateOpen(true);
+    const alreadyMerged = selected.filter((order) => String(order.mergedSetId || "").trim());
+    if (alreadyMerged.length) {
+      setRematchOrders(alreadyMerged);
+      return;
+    }
+    goToNewConsolidated(selected);
   }
 
-  function closeMergeSimulation() {
-    setSimulateOpen(false);
+  function confirmRematchMerge() {
+    const selected = orders.filter((order) => selectedIds.has(order.id) && !isArchivedOrder(order));
+    setRematchOrders([]);
+    if (!evaluateMergeSelection(selected).canMerge) return;
+    goToNewConsolidated(selected);
   }
 
   function showIndividualOrders() {
@@ -523,12 +582,14 @@ export default function OrdersPage() {
         {onMergedTab ? (
           <MergedOrdersPanel
             orders={orders}
+            ordersReady={ordersReady}
             updateOrder={updateOrder}
             sendConsolidatedAllocationEmail={sendConsolidatedAllocationEmail}
             surfaceBorderColor={surfaceBorderColor}
             stickyHeaderBg={stickyHeaderBg}
             onBack={showIndividualOrders}
             onOpenOrder={openOrder}
+            onViewSet={openConsolidatedSet}
           />
         ) : !ordersReady ? (
           <Stack spacing={1.5} alignItems="center" sx={{ py: 6, color: "text.secondary" }}>
@@ -600,20 +661,6 @@ export default function OrdersPage() {
         })}
       />
 
-      <MergeSimulateDialog
-        open={simulateOpen}
-        orders={selectedOrders}
-        allOrders={orders}
-        updateOrder={updateOrder}
-        sendConsolidatedAllocationEmail={sendConsolidatedAllocationEmail}
-        surfaceBorderColor={surfaceBorderColor}
-        onClose={closeMergeSimulation}
-        onApplied={() => {
-          setSimulateOpen(false);
-          setOrdersView("merged");
-        }}
-      />
-
       <ExportOrdersDialog
         open={exportOpen}
         onClose={() => setExportOpen(false)}
@@ -622,6 +669,48 @@ export default function OrdersPage() {
         costByProductId={costByProductId}
         surfaceBorderColor={surfaceBorderColor}
       />
+
+      <Dialog
+        open={rematchOrders.length > 0}
+        onClose={() => setRematchOrders([])}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 800 }}>Already consolidated</DialogTitle>
+        <DialogContent>
+          {rematchOrders.length === 1 ? (
+            <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
+              {rematchOrders[0].id} has been part of the consolidated report already
+              {rematchOrders[0].mergedSetId ? ` (${rematchOrders[0].mergedSetId})` : ""}.
+              {" "}Do you wish to continue?
+            </Typography>
+          ) : (
+            <>
+              <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
+                These orders have been part of a consolidated report already. Do you wish to continue?
+              </Typography>
+              <Stack spacing={0.5} sx={{ mt: 1.5 }}>
+                {rematchOrders.map((order) => (
+                  <Typography key={order.id} sx={{ fontFamily: MONO_FONT, fontSize: "0.82rem" }}>
+                    {order.id}
+                    {order.mergedSetId ? ` · ${order.mergedSetId}` : ""}
+                  </Typography>
+                ))}
+              </Stack>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button color="inherit" onClick={() => setRematchOrders([])}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={confirmRematchMerge}
+            sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase" }}
+          >
+            Continue
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <TypeConfirmDialog
         open={archiveCount > 0}

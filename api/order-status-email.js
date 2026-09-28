@@ -81,13 +81,14 @@ function readConsolidated(raw) {
 
 function readPayload(body) {
   if (!body || typeof body !== "object") return null;
-  const { emailType, order, bodyOverride, subjectOverride, reminder } = body;
+  const { emailType, order, bodyOverride, subjectOverride, reminder, showMessengerButton } = body;
   if (!emailType || !order?.id || !order?.customer || !isValidEmail(order.email)) return null;
   return {
     emailType: String(emailType),
     bodyOverride: typeof bodyOverride === "string" ? bodyOverride.slice(0, 4000) : "",
     subjectOverride: typeof subjectOverride === "string" ? subjectOverride.slice(0, 200) : "",
     reminder: readReminderConfig(reminder),
+    showMessengerButton: typeof showMessengerButton === "boolean" ? showMessengerButton : undefined,
     order: {
       id: String(order.id),
       customer: String(order.customer).trim(),
@@ -162,6 +163,7 @@ export default async function handler(req, res) {
       bodyOverride: payload.bodyOverride,
       ...(payload.subjectOverride ? { subjectOverride: payload.subjectOverride } : {}),
       ...(payload.reminder ? { reminder: payload.reminder } : {}),
+      ...(typeof payload.showMessengerButton === "boolean" ? { showMessengerButton: payload.showMessengerButton } : {}),
     });
     if (!content) {
       return res.status(400).json({ error: "Unknown email type." });

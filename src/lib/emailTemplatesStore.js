@@ -9,6 +9,7 @@
  */
 
 import { ORDER_STATUS_EMAIL_LABELS } from "./orderEmailTriggers.js";
+import { defaultShowMessengerButton } from "./email/orderStatusEmail.js";
 import {
   DEFAULT_PASSWORD_RESET_BODY,
   PASSWORD_RESET_EMAIL_TYPE,
@@ -19,6 +20,7 @@ export { PASSWORD_RESET_EMAIL_TYPE, PASSWORD_RESET_PLACEHOLDERS };
 
 const STORAGE_KEY = "hobbyarena:email-bodies";
 const REMINDER_STORAGE_KEY = "hobbyarena:email-preorder-reminder";
+const MESSENGER_BUTTON_STORAGE_KEY = "hobbyarena:email-messenger-button";
 
 /** Tokens admins can drop into a body — replaced with live order values. */
 export const EMAIL_PLACEHOLDERS = [
@@ -211,6 +213,47 @@ export function setEmailSubjectOverride(emailType, subject) {
   else map[emailType] = trimmed;
   writeSubjectStore(map);
   return getEmailSubjectOverride(emailType);
+}
+
+function readMessengerButtonStore() {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(MESSENGER_BUTTON_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeMessengerButtonStore(map) {
+  if (typeof window === "undefined") return;
+  try {
+    if (!map || !Object.keys(map).length) {
+      window.localStorage.removeItem(MESSENGER_BUTTON_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(MESSENGER_BUTTON_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // ignore quota / serialization errors
+  }
+}
+
+/** Saved show/hide for the Message Hobby Arena button (defaults per template). */
+export function getShowMessengerButton(emailType) {
+  const stored = readMessengerButtonStore()[emailType];
+  if (typeof stored === "boolean") return stored;
+  return defaultShowMessengerButton(emailType);
+}
+
+export function setShowMessengerButton(emailType, show) {
+  const map = readMessengerButtonStore();
+  const next = Boolean(show);
+  if (next === defaultShowMessengerButton(emailType)) delete map[emailType];
+  else map[emailType] = next;
+  writeMessengerButtonStore(map);
+  return getShowMessengerButton(emailType);
 }
 
 export function setEmailBodyOverride(emailType, body) {

@@ -39,9 +39,7 @@ import { PESO } from "../components/ProductCard.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import {
   CardIcon,
-  CollapseCornersIcon,
   EditIcon,
-  ExpandCornersIcon,
   SearchIcon,
   SparkleIcon,
   UserIcon,
@@ -62,6 +60,8 @@ import {
 } from "./adminTableHeader.jsx";
 import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
 import { changeCustomerEmail, isCustomerEmailTaken, useCustomers } from "../lib/customersStore.jsx";
+import { collectCustomerPayouts } from "../lib/customerPayoutMethods.js";
+import CustomerPayoutMethodsEditor from "./CustomerPayoutMethodsEditor.jsx";
 import { isValidEmail } from "../lib/email/emailUtils.js";
 import { useOrders } from "../lib/ordersStore.jsx";
 import { useClientTiers } from "../lib/clientTiersStore.jsx";
@@ -233,13 +233,13 @@ function CustomerDetailDialog({
   updateOrder,
   onEmailChanged,
   customers = [],
+  initialTab = "info",
 }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const navigate = useNavigate();
-  const [tab, setTab] = useState("history");
+  const [tab, setTab] = useState("info");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [tableExpanded, setTableExpanded] = useState(false);
   const [emailDraft, setEmailDraft] = useState("");
   const [emailEditing, setEmailEditing] = useState(false);
   const [confirmEmailOpen, setConfirmEmailOpen] = useState(false);
@@ -266,14 +266,12 @@ function CustomerDetailDialog({
   useEffect(() => {
     if (!open) return;
     setStatusFilter("all");
-    setTab("history");
-    // Mobile: collapse profile chrome so order history has room to render.
-    setTableExpanded(isMobile);
+    setTab(initialTab || "info");
     setEmailDraft(customer?.email || "");
     setEmailEditing(false);
     setEmailError("");
     setConfirmEmailOpen(false);
-  }, [open, customer?.email, customer?.uid, customer?.id, isMobile]);
+  }, [open, customer?.email, customer?.uid, customer?.id, initialTab]);
   if (!customer) return null;
 
   const tierColor = customer.tier?.badgeColor || theme.palette.primary.main;
@@ -332,11 +330,6 @@ function CustomerDetailDialog({
   }
 
   function handleRequestClose() {
-    // Desktop: first collapse an expanded table. Mobile starts expanded — close immediately.
-    if (tableExpanded && !isMobile) {
-      setTableExpanded(false);
-      return;
-    }
     onClose();
   }
 
@@ -408,7 +401,7 @@ function CustomerDetailDialog({
             <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.2, fontSize: { xs: "1.05rem", md: "1.25rem" } }}>{customer.name}</Typography>
             <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{customer.email}</Typography>
           </Box>
-          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap justifyContent="flex-end" sx={{ display: { xs: tableExpanded ? "none" : "flex", sm: "flex" } }}>
+          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap justifyContent="flex-end">
             <Chip
               label={customer.tier?.name || "Member"}
               sx={{
@@ -425,175 +418,6 @@ function CustomerDetailDialog({
         </Stack>
       </DialogTitle>
 
-      {!tableExpanded ? (
-        <Box
-          sx={{
-            px: { xs: 2, md: 3 },
-            pb: 2,
-            // Desktop: don't shrink — overflow was painting over the order-history bar.
-            flexShrink: { xs: 1, md: 0 },
-            minHeight: 0,
-            maxHeight: { xs: "42%", md: "none" },
-            overflow: { xs: "auto", md: "visible" },
-            borderBottom: "1px solid",
-            borderColor: surfaceBorderColor,
-          }}
-        >
-          <Stack spacing={2}>
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", fontWeight: 800, letterSpacing: 1, color: "text.secondary", textTransform: "uppercase", mb: 0.35 }}>
-                  Email
-                </Typography>
-                {emailEditing ? (
-                  <Stack spacing={1}>
-                    <TextField
-                      size="small"
-                      fullWidth
-                      autoFocus
-                      type="email"
-                      value={emailDraft}
-                      onChange={(event) => {
-                        setEmailDraft(event.target.value);
-                        if (emailError) setEmailError("");
-                      }}
-                      onBlur={() => {
-                        setEmailError(validateEmailDraft(emailDraft, { requireValue: true }));
-                      }}
-                      error={Boolean(shownEmailError)}
-                      helperText={shownEmailError || undefined}
-                      inputProps={{ "aria-label": "Customer email" }}
-                    />
-                    <Stack direction="row" spacing={1}>
-                      <Button
-                        size="small"
-                        color="inherit"
-                        disabled={emailSaving}
-                        onClick={() => {
-                          setEmailDraft(currentEmail);
-                          setEmailError("");
-                          setEmailEditing(false);
-                        }}
-                        sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase", fontSize: "0.68rem" }}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        size="small"
-                        variant="contained"
-                        color="primary"
-                        disabled={!canSaveEmail}
-                        onClick={requestEmailSave}
-                        sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase", fontSize: "0.68rem" }}
-                      >
-                        Save
-                      </Button>
-                    </Stack>
-                  </Stack>
-                ) : (
-                  <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0 }}>
-                    <Typography sx={{ fontWeight: 600, fontSize: "0.9rem", wordBreak: "break-word", minWidth: 0 }}>
-                      {currentEmail || "—"}
-                    </Typography>
-                    <Tooltip title="Edit email">
-                      <IconButton
-                        size="small"
-                        aria-label="Edit email"
-                        onClick={() => {
-                          setEmailDraft(currentEmail);
-                          setEmailError("");
-                          setEmailEditing(true);
-                        }}
-                        sx={{ color: "text.secondary", flexShrink: 0 }}
-                      >
-                        <EditIcon sx={{ fontSize: 16 }} />
-                      </IconButton>
-                    </Tooltip>
-                  </Stack>
-                )}
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Phone" value={customer.phone} /></Grid>
-              <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Sign-in" value={customer.signInMethod} /></Grid>
-              <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Joined" value={customer.joined} /></Grid>
-              <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Marketing" value={customer.marketingOptIn ? "Opted in" : "Not opted in"} /></Grid>
-              <Grid size={{ xs: 12 }}><DetailField label="Address" value={addressLine} /></Grid>
-            </Grid>
-
-            <Grid container spacing={1.5}>
-              <Grid size={{ xs: 6, sm: 3 }}>
-                <Box sx={{ p: 1.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}>
-                  <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>Orders</Typography>
-                  <Typography sx={{ fontWeight: 800, fontSize: "1.35rem", mt: 0.25 }}>{customer.orders}</Typography>
-                </Box>
-              </Grid>
-              <Grid size={{ xs: 6, sm: 3 }}>
-                <Box sx={{ p: 1.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}>
-                  <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>Total spent</Typography>
-                  <Typography sx={{ fontWeight: 800, fontSize: "1.05rem", mt: 0.5 }}>{PESO.format(customer.totalSpent)}</Typography>
-                </Box>
-              </Grid>
-              <Grid size={{ xs: 6, sm: 3 }}>
-                <Box sx={{ p: 1.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}>
-                  <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>Fulfilled</Typography>
-                  <Typography sx={{ fontWeight: 800, fontSize: "1.05rem", mt: 0.5 }}>{PESO.format(customer.fulfilledSpend)}</Typography>
-                </Box>
-              </Grid>
-              <Grid size={{ xs: 6, sm: 3 }}>
-                <Box sx={{ p: 1.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}>
-                  <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>Last order</Typography>
-                  <Typography sx={{ fontWeight: 800, fontSize: "0.9rem", mt: 0.5, fontFamily: MONO_FONT }}>{customer.lastOrderDate || "—"}</Typography>
-                </Box>
-              </Grid>
-            </Grid>
-
-            <Box sx={{ p: 1.75, borderRadius: 1, border: "1px solid", borderColor: alpha(tierColor, 0.45), bgcolor: alpha(tierColor, 0.08) }}>
-              <Stack spacing={1}>
-                <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
-                  <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 800, letterSpacing: 1, color: tierColor, textTransform: "uppercase" }}>
-                    Member tier
-                  </Typography>
-                  <Typography sx={{ fontWeight: 700, fontSize: "0.85rem" }}>{customer.tier?.name || "Member"}</Typography>
-                </Stack>
-                {customer.tierProgress?.atTop ? (
-                  <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>Top tier reached.</Typography>
-                ) : customer.tierProgress?.nextTier ? (
-                  <>
-                    <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>
-                      {PESO.format(customer.tierProgress.remaining)} more fulfilled spend to reach {customer.tierProgress.nextTier.name}.
-                    </Typography>
-                    <Stack direction="row" justifyContent="space-between" alignItems="baseline">
-                      <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 800, color: tierColor }}>
-                        {progressPct}%
-                      </Typography>
-                      <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", color: "text.secondary" }}>
-                        {PESO.format(customer.fulfilledSpend || 0)} / {PESO.format(customer.tierProgress.nextTier.minSpend ?? 0)}
-                      </Typography>
-                    </Stack>
-                    <LinearProgress
-                      variant="determinate"
-                      value={progressPct}
-                      sx={{
-                        height: 8,
-                        borderRadius: 1,
-                        bgcolor: alpha(tierColor, 0.18),
-                        "& .MuiLinearProgress-bar": { bgcolor: tierColor, borderRadius: 1 },
-                      }}
-                    />
-                    {(customer.fulfilledSpend || 0) <= 0 ? (
-                      <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>
-                        Only Fulfilled line items count — ready-for-pickup and deposits don’t.
-                      </Typography>
-                    ) : null}
-                  </>
-                ) : (
-                  <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>No tier ladder configured.</Typography>
-                )}
-              </Stack>
-            </Box>
-          </Stack>
-        </Box>
-      ) : null}
-
       <Box sx={{ flexShrink: 0, px: { xs: 2, md: 3 }, borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
         <Stack
           direction="row"
@@ -605,6 +429,8 @@ function CustomerDetailDialog({
           <Tabs
             value={tab}
             onChange={(_, next) => setTab(next)}
+            variant="scrollable"
+            scrollButtons="auto"
             sx={{
               minHeight: 40,
               flex: "1 1 auto",
@@ -620,42 +446,32 @@ function CustomerDetailDialog({
               },
             }}
           >
+            <Tab value="info" label="Customer info" />
             <Tab
               value="history"
               label={isMobile
                 ? `Orders (${filteredOrders.length})`
                 : `Order history (${filteredOrders.length}${statusFilter !== "all" ? ` / ${(orderList || []).length}` : ""})`}
             />
+            <Tab value="payouts" label="Bank details" />
           </Tabs>
-          {(orderList || []).length > 0 ? (
-            <Stack direction="row" spacing={1} alignItems="center">
-              <FormControl size="small" sx={{ minWidth: { xs: 120, sm: 180 } }}>
-                <InputLabel id="customer-order-status-filter">Status</InputLabel>
-                <Select
-                  labelId="customer-order-status-filter"
-                  label="Status"
-                  value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value)}
-                >
-                  <MenuItem value="all">All statuses</MenuItem>
-                  {statusOptions.map((status) => (
-                    <MenuItem key={status} value={status}>
-                      {orderStatusLabel(status)}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <Tooltip title={tableExpanded ? "Show profile" : "Focus order table"}>
-                <IconButton
-                  size="small"
-                  aria-label={tableExpanded ? "Show customer profile" : "Focus order table"}
-                  onClick={() => setTableExpanded((prev) => !prev)}
-                  sx={{ color: "text.secondary", border: "1px solid", borderColor: surfaceBorderColor, borderRadius: 1 }}
-                >
-                  {tableExpanded ? <CollapseCornersIcon sx={{ fontSize: 18 }} /> : <ExpandCornersIcon sx={{ fontSize: 18 }} />}
-                </IconButton>
-              </Tooltip>
-            </Stack>
+          {tab === "history" && (orderList || []).length > 0 ? (
+            <FormControl size="small" sx={{ minWidth: { xs: 120, sm: 180 } }}>
+              <InputLabel id="customer-order-status-filter">Status</InputLabel>
+              <Select
+                labelId="customer-order-status-filter"
+                label="Status"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+              >
+                <MenuItem value="all">All statuses</MenuItem>
+                {statusOptions.map((status) => (
+                  <MenuItem key={status} value={status}>
+                    {orderStatusLabel(status)}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           ) : null}
         </Stack>
       </Box>
@@ -670,7 +486,173 @@ function CustomerDetailDialog({
           overflow: "hidden",
         }}
       >
-        {tab === "history" ? (
+        {tab === "info" ? (
+          <Box sx={{ p: { xs: 2, md: 3 }, overflow: "auto", flex: 1, minHeight: 0 }}>
+            <Stack spacing={2}>
+              <Grid container spacing={2}>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", fontWeight: 800, letterSpacing: 1, color: "text.secondary", textTransform: "uppercase", mb: 0.35 }}>
+                    Email
+                  </Typography>
+                  {emailEditing ? (
+                    <Stack spacing={1}>
+                      <TextField
+                        size="small"
+                        fullWidth
+                        autoFocus
+                        type="email"
+                        value={emailDraft}
+                        onChange={(event) => {
+                          setEmailDraft(event.target.value);
+                          if (emailError) setEmailError("");
+                        }}
+                        onBlur={() => {
+                          setEmailError(validateEmailDraft(emailDraft, { requireValue: true }));
+                        }}
+                        error={Boolean(shownEmailError)}
+                        helperText={shownEmailError || undefined}
+                        inputProps={{ "aria-label": "Customer email" }}
+                      />
+                      <Stack direction="row" spacing={1}>
+                        <Button
+                          size="small"
+                          color="inherit"
+                          disabled={emailSaving}
+                          onClick={() => {
+                            setEmailDraft(currentEmail);
+                            setEmailError("");
+                            setEmailEditing(false);
+                          }}
+                          sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase", fontSize: "0.68rem" }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          color="primary"
+                          disabled={!canSaveEmail}
+                          onClick={requestEmailSave}
+                          sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase", fontSize: "0.68rem" }}
+                        >
+                          Save
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  ) : (
+                    <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontWeight: 600, fontSize: "0.9rem", wordBreak: "break-word", minWidth: 0 }}>
+                        {currentEmail || "—"}
+                      </Typography>
+                      <Tooltip title="Edit email">
+                        <IconButton
+                          size="small"
+                          aria-label="Edit email"
+                          onClick={() => {
+                            setEmailDraft(currentEmail);
+                            setEmailError("");
+                            setEmailEditing(true);
+                          }}
+                          sx={{ color: "text.secondary", flexShrink: 0 }}
+                        >
+                          <EditIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+                  )}
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Phone" value={customer.phone} /></Grid>
+                <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Sign-in" value={customer.signInMethod} /></Grid>
+                <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Joined" value={customer.joined} /></Grid>
+                <Grid size={{ xs: 12, sm: 6 }}><DetailField label="Marketing" value={customer.marketingOptIn ? "Opted in" : "Not opted in"} /></Grid>
+                <Grid size={{ xs: 12 }}><DetailField label="Address" value={addressLine} /></Grid>
+              </Grid>
+
+              <Grid container spacing={1.5}>
+                <Grid size={{ xs: 6, sm: 3 }}>
+                  <Box sx={{ p: 1.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}>
+                    <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>Orders</Typography>
+                    <Typography sx={{ fontWeight: 800, fontSize: "1.35rem", mt: 0.25 }}>{customer.orders}</Typography>
+                  </Box>
+                </Grid>
+                <Grid size={{ xs: 6, sm: 3 }}>
+                  <Box sx={{ p: 1.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}>
+                    <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>Total spent</Typography>
+                    <Typography sx={{ fontWeight: 800, fontSize: "1.05rem", mt: 0.5 }}>{PESO.format(customer.totalSpent)}</Typography>
+                  </Box>
+                </Grid>
+                <Grid size={{ xs: 6, sm: 3 }}>
+                  <Box sx={{ p: 1.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}>
+                    <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>Fulfilled</Typography>
+                    <Typography sx={{ fontWeight: 800, fontSize: "1.05rem", mt: 0.5 }}>{PESO.format(customer.fulfilledSpend)}</Typography>
+                  </Box>
+                </Grid>
+                <Grid size={{ xs: 6, sm: 3 }}>
+                  <Box sx={{ p: 1.5, borderRadius: 1, border: "1px solid", borderColor: surfaceBorderColor }}>
+                    <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.62rem", letterSpacing: 0.8, color: "text.secondary", textTransform: "uppercase" }}>Last order</Typography>
+                    <Typography sx={{ fontWeight: 800, fontSize: "0.9rem", mt: 0.5, fontFamily: MONO_FONT }}>{customer.lastOrderDate || "—"}</Typography>
+                  </Box>
+                </Grid>
+              </Grid>
+
+              <Box sx={{ p: 1.75, borderRadius: 1, border: "1px solid", borderColor: alpha(tierColor, 0.45), bgcolor: alpha(tierColor, 0.08) }}>
+                <Stack spacing={1}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
+                    <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 800, letterSpacing: 1, color: tierColor, textTransform: "uppercase" }}>
+                      Member tier
+                    </Typography>
+                    <Typography sx={{ fontWeight: 700, fontSize: "0.85rem" }}>{customer.tier?.name || "Member"}</Typography>
+                  </Stack>
+                  {customer.tierProgress?.atTop ? (
+                    <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>Top tier reached.</Typography>
+                  ) : customer.tierProgress?.nextTier ? (
+                    <>
+                      <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>
+                        {PESO.format(customer.tierProgress.remaining)} more fulfilled spend to reach {customer.tierProgress.nextTier.name}.
+                      </Typography>
+                      <Stack direction="row" justifyContent="space-between" alignItems="baseline">
+                        <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 800, color: tierColor }}>
+                          {progressPct}%
+                        </Typography>
+                        <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", color: "text.secondary" }}>
+                          {PESO.format(customer.fulfilledSpend || 0)} / {PESO.format(customer.tierProgress.nextTier.minSpend ?? 0)}
+                        </Typography>
+                      </Stack>
+                      <LinearProgress
+                        variant="determinate"
+                        value={progressPct}
+                        sx={{
+                          height: 8,
+                          borderRadius: 1,
+                          bgcolor: alpha(tierColor, 0.18),
+                          "& .MuiLinearProgress-bar": { bgcolor: tierColor, borderRadius: 1 },
+                        }}
+                      />
+                      {(customer.fulfilledSpend || 0) <= 0 ? (
+                        <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>
+                          Only Fulfilled line items count — ready-for-pickup and deposits don’t.
+                        </Typography>
+                      ) : null}
+                    </>
+                  ) : (
+                    <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>No tier ladder configured.</Typography>
+                  )}
+                </Stack>
+              </Box>
+            </Stack>
+          </Box>
+        ) : tab === "payouts" ? (
+          <Box sx={{ p: { xs: 2, md: 3 }, overflow: "auto", flex: 1, minHeight: 0 }}>
+            <CustomerPayoutMethodsEditor
+              email={currentEmail}
+              customerName={customer.name}
+              customerRecord={customer}
+              orderPayouts={collectCustomerPayouts(orderList)}
+              surfaceBorderColor={surfaceBorderColor}
+              ownerUid={customer.uid}
+            />
+          </Box>
+        ) : tab === "history" ? (
           orderList?.length ? (
             filteredOrders.length ? (
               <TableContainer sx={{ flex: 1, minHeight: 0, overflow: "auto", WebkitOverflowScrolling: "touch" }}>
@@ -815,13 +797,15 @@ export default function CustomersPage() {
   const [query, setQuery] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [selectedCustomerKey, setSelectedCustomerKey] = useState("");
+  const [detailTab, setDetailTab] = useState("info");
   const [sort, setSort] = useState({ key: "joined", dir: "asc" });
 
   function customerIdentityKey(customer) {
     return String(customer?.uid || customer?.id || customer?.email || "").trim().toLowerCase();
   }
 
-  function openCustomer(customer) {
+  function openCustomer(customer, tab = "info") {
+    setDetailTab(tab);
     setSelectedCustomer(customer);
     setSelectedCustomerKey(customerIdentityKey(customer));
   }
@@ -909,7 +893,7 @@ export default function CustomersPage() {
       const uid = String(customer.uid || customer.id || "").trim().toLowerCase();
       return email === key || uid === key;
     });
-    if (match) openCustomer(match);
+    if (match) openCustomer(match, "history");
     navigate(location.pathname, { replace: true, state: {} });
   }, [location.state, location.pathname, enrichedCustomers, navigate]);
 
@@ -1237,6 +1221,7 @@ export default function CustomersPage() {
         customer={selectedCustomer}
         open={Boolean(selectedCustomer)}
         onClose={closeCustomer}
+        initialTab={detailTab}
         panelSx={panelSx}
         surfaceBorderColor={surfaceBorderColor}
         updateOrder={updateOrder}

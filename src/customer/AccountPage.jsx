@@ -31,6 +31,8 @@ import { PESO } from "../components/ProductCard.jsx";
 import { CardIcon, HeartIcon, SearchIcon, SparkleIcon, TrashIcon, UserIcon } from "../components/icons.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { getCustomerProfile, useCustomers } from "../lib/customersStore.jsx";
+import { collectCustomerPayouts } from "../lib/customerPayoutMethods.js";
+import CustomerPayoutMethodsEditor from "../admin/CustomerPayoutMethodsEditor.jsx";
 import { useOrders, getOrdersForEmail } from "../lib/ordersStore.jsx";
 import { useWishlist } from "../lib/wishlistStore.jsx";
 import { useCart } from "../lib/cartStore.jsx";
@@ -799,6 +801,7 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
           <Tab label={`Orders (${customerOrders.length})`} />
           <Tab label={`Wishlist (${wishlistItems.length})`} />
           <Tab label="Profile" />
+          <Tab label="Bank details" />
         </Tabs>
 
         <Box>
@@ -892,7 +895,7 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
                 })}
               </Stack>
             )
-          ) : (
+          ) : tab === 2 ? (
             <ProfileTab
               panelSx={panelSx}
               surfaceBorderColor={surfaceBorderColor}
@@ -900,6 +903,23 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
               tierProgress={tierProgress}
               fulfilledSpend={fulfilledSpend}
             />
+          ) : (
+            <Box sx={{ p: { xs: 2.5, md: 3 } }}>
+              <Typography sx={{ fontWeight: 700, fontSize: "0.95rem", mb: 0.5 }}>
+                Bank details
+              </Typography>
+              <Typography sx={{ color: "text.secondary", fontSize: "0.82rem", mb: 2 }}>
+                Save a bank account or QR code for refunds. Mark one as primary.
+              </Typography>
+              <CustomerPayoutMethodsEditor
+                email={email}
+                customerName={displayName}
+                ownerUid={user?.uid}
+                orderPayouts={collectCustomerPayouts(customerOrders)}
+                surfaceBorderColor={surfaceBorderColor}
+                variant="storefront"
+              />
+            </Box>
           )}
         </Box>
       </Box>

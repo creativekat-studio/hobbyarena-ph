@@ -17,7 +17,7 @@ import { MONO_FONT } from "../theme.js";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
 import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
 import { ChevronLeftIcon, MailIcon, SearchIcon, SparkleIcon } from "../components/icons.jsx";
-import { INQUIRY_STATUS, useInquiries } from "../lib/inquiriesStore.jsx";
+import { INQUIRY_STATUS, isUnseenInquiry, useInquiries } from "../lib/inquiriesStore.jsx";
 import { isMobileMdViewport, useIsMobileMd } from "../lib/mobileUi.js";
 import {
   AdminListFilterTabs,
@@ -73,6 +73,7 @@ function initials(name) {
 function InquiryListItem({ inquiry, selected, onSelect, surfaceBorderColor }) {
   const theme = useTheme();
   const isNew = inquiry.status === INQUIRY_STATUS.NEW;
+  const unseen = isUnseenInquiry(inquiry);
 
   return (
     <Box
@@ -118,24 +119,32 @@ function InquiryListItem({ inquiry, selected, onSelect, surfaceBorderColor }) {
 
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
-          <Typography
-            sx={{
-              fontWeight: isNew ? 800 : 600,
-              fontSize: "0.88rem",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {inquiry.name}
-          </Typography>
+          <Stack direction="row" alignItems="center" spacing={0.75} sx={{ minWidth: 0 }}>
+            {unseen ? (
+              <Box
+                sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "warning.main", flexShrink: 0 }}
+                title="New inquiry"
+              />
+            ) : null}
+            <Typography
+              sx={{
+                fontWeight: unseen ? 800 : 600,
+                fontSize: "0.88rem",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {inquiry.name}
+            </Typography>
+          </Stack>
           <Typography sx={{ color: "text.secondary", fontSize: "0.68rem", fontFamily: MONO_FONT, flexShrink: 0 }}>
             {formatListTime(inquiry.date)}
           </Typography>
         </Stack>
         <Typography
           sx={{
-            fontWeight: isNew ? 700 : 500,
+            fontWeight: unseen ? 700 : 500,
             fontSize: "0.8rem",
             mt: 0.25,
             overflow: "hidden",
@@ -159,18 +168,6 @@ function InquiryListItem({ inquiry, selected, onSelect, surfaceBorderColor }) {
         </Typography>
       </Box>
 
-      {isNew ? (
-        <Box
-          sx={{
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            bgcolor: "primary.main",
-            flexShrink: 0,
-            mt: 0.75,
-          }}
-        />
-      ) : null}
     </Box>
   );
 }
@@ -296,7 +293,7 @@ export default function InquiriesPage() {
   const location = useLocation();
   const { surfaces } = useOutletContext();
   const { panelSx, surfaceBorderColor } = surfaces;
-  const { inquiries, unreadCount, setStatus, remove } = useInquiries();
+  const { inquiries, unreadCount, setStatus, remove, markInquirySeen } = useInquiries();
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   // Mobile: start on inbox. Desktop: open first conversation when available.
@@ -309,10 +306,10 @@ export default function InquiriesPage() {
     if (!openInquiryId) return;
     setSelectedId(openInquiryId);
     const inquiry = inquiries.find((q) => q.id === openInquiryId);
-    if (inquiry?.status === INQUIRY_STATUS.NEW) {
-      setStatus(openInquiryId, INQUIRY_STATUS.READ);
+    if (isUnseenInquiry(inquiry)) {
+      markInquirySeen(openInquiryId);
     }
-  }, [location.state?.openInquiryId, setStatus, inquiries]);
+  }, [location.state?.openInquiryId, markInquirySeen, inquiries]);
 
   const rows = useMemo(() => {
     return inquiries.filter((q) => {
@@ -348,8 +345,8 @@ export default function InquiriesPage() {
 
   function handleSelect(inquiry) {
     setSelectedId(inquiry.id);
-    if (inquiry.status === INQUIRY_STATUS.NEW) {
-      setStatus(inquiry.id, INQUIRY_STATUS.READ);
+    if (isUnseenInquiry(inquiry)) {
+      markInquirySeen(inquiry.id);
     }
   }
 

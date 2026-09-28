@@ -36,6 +36,8 @@ import AdminLogin from "./admin/AdminLogin.jsx";
 import DashboardPage from "./admin/DashboardPage.jsx";
 import OrdersPage from "./admin/OrdersPage.jsx";
 import OrderDetailPage from "./admin/OrderDetailPage.jsx";
+import ConsolidatedOrderDetailPage from "./admin/ConsolidatedOrderDetailPage.jsx";
+import NewConsolidatedOrderPage from "./admin/NewConsolidatedOrderPage.jsx";
 import CustomersPage from "./admin/CustomersPage.jsx";
 import InquiriesPage from "./admin/InquiriesPage.jsx";
 import InventoryPage from "./admin/InventoryPage.jsx";
@@ -73,22 +75,25 @@ const router = createBrowserRouter([
   },
   {
     // Admin portal — requires an authenticated user with the admin role.
+    path: "/admin",
     element: <ProtectedRoute role={ROLES.ADMIN} redirectTo="/admin/login" />,
     children: [
       {
         element: <AdminLayout />,
         children: [
-          { path: "/admin", element: <DashboardPage /> },
-          { path: "/admin/orders", element: <OrdersPage /> },
-          { path: "/admin/orders/:orderId", element: <OrderDetailPage /> },
-          { path: "/admin/customers", element: <CustomersPage /> },
-          { path: "/admin/client-tiers", element: <ClientTiersPage /> },
-          { path: "/admin/inquiries", element: <InquiriesPage /> },
-          { path: "/admin/inventory", element: <InventoryPage /> },
-          { path: "/admin/cms", element: <CmsPage /> },
-          { path: "/admin/emails", element: <EmailTemplatesPage /> },
-          { path: "/admin/catalog", element: <CatalogPage /> },
-          { path: "/admin/design", element: <DesignPreviewPage /> },
+          { index: true, element: <DashboardPage /> },
+          { path: "orders", element: <OrdersPage /> },
+          { path: "orders/consolidated/new", element: <NewConsolidatedOrderPage /> },
+          { path: "orders/consolidated/:setId", element: <ConsolidatedOrderDetailPage /> },
+          { path: "orders/:orderId", element: <OrderDetailPage /> },
+          { path: "customers", element: <CustomersPage /> },
+          { path: "client-tiers", element: <ClientTiersPage /> },
+          { path: "inquiries", element: <InquiriesPage /> },
+          { path: "inventory", element: <InventoryPage /> },
+          { path: "cms", element: <CmsPage /> },
+          { path: "emails", element: <EmailTemplatesPage /> },
+          { path: "catalog", element: <CatalogPage /> },
+          { path: "design", element: <DesignPreviewPage /> },
         ],
       },
     ],

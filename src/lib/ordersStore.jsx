@@ -30,6 +30,7 @@ import {
   syncOrderRollup,
   validateAllocationForStatus,
   findLatestAdminTrailAttachment,
+  isSetLevelMergedAttachment,
   refundedAmountForOrder,
 } from "../data/orderWorkflow.js";
 import { formatPeso, roundMoney } from "./money.js";
@@ -56,7 +57,7 @@ import {
 import { queueOrderAcknowledgement, queueOrderStatusEmail } from "./emailService.js";
 import { resolveOrderStatusEmailTypeForCurrentState, ORDER_STATUS_EMAIL_LABELS } from "./orderEmailTriggers.js";
 import { buildConsolidatedEmailOrder, buildLiveMergeWorkbook } from "./orderMergeSimulation.js";
-import { getEmailBodyOverride, getEmailSubjectOverride, getPreorderReminderConfig } from "./emailTemplatesStore.js";
+import { getEmailBodyOverride, getEmailSubjectOverride, getPreorderReminderConfig, getShowMessengerButton } from "./emailTemplatesStore.js";
 import { normalizeProofDataUrl } from "./imageCompression.js";
 import { uploadOrderProofFromDataUrl } from "./firebase/repositories/uploads.js";
 import { useInventory } from "./inventoryStore.jsx";
@@ -512,6 +513,7 @@ export function OrdersProvider({ children }) {
         bodyOverride: getEmailBodyOverride(emailType),
         subjectOverride: getEmailSubjectOverride(emailType),
         reminder: getPreorderReminderConfig(),
+        showMessengerButton: getShowMessengerButton(emailType),
         order: {
           id: order.id,
           customer: order.customer,
@@ -637,52 +639,84 @@ export function OrdersProvider({ children }) {
       return dispatchStatusEmail(order, payload);
     };
 
+    const resolveConsolidatedAttachment = async (orderId, attachment) => {
+      if (!attachment) return null;
+      const rawUrl = attachment.url || attachment.dataUrl || "";
+      if (!rawUrl) return null;
+      const type = attachment.type
+        || (/pdf/i.test(rawUrl) || /\.pdf$/i.test(attachment.name || attachment.label || "") ? "pdf" : "image");
+      const label = attachment.name || attachment.label || "Attachment";
+      if (rawUrl.startsWith("data:") && firebaseEnabled) {
+        try {
+          const storageUrl = await uploadOrderProofFromDataUrl(orderId, rawUrl, label);
+          return { label, url: storageUrl, type };
+        } catch (error) {
+          console.warn("[orders] Could not upload consolidated email attachment:", error);
+          return { label, url: rawUrl, type };
+        }
+      }
+      return { label, url: rawUrl, type };
+    };
+
+    const persistableMergedAttachment = (attachment) => {
+      if (!attachment?.url) return null;
+      const persistable = String(attachment.url).startsWith("http")
+        ? attachment
+        : (!firebaseEnabled && String(attachment.url).startsWith("data:") ? attachment : null);
+      if (!persistable) return null;
+      return { ...persistable, source: "consolidated" };
+    };
+
+    const applyMergedEmailExtras = (list, note, attachment, at) => {
+      const idSet = new Set(list.map((order) => order.id));
+      const persistAttachment = persistableMergedAttachment(attachment);
+      setOrders((current) => {
+        const next = current.map((row) => {
+          if (!idSet.has(row.id)) return row;
+          const updated = {
+            ...row,
+            mergedEmailNote: note,
+            mergedEmailAttachment: persistAttachment,
+            mergedEmailSavedAt: at,
+          };
+          persistOrder(updated);
+          return updated;
+        });
+        return next;
+      });
+    };
+
+    const saveConsolidatedEmailExtras = async (orders, extras = {}) => {
+      const list = (orders || []).filter(Boolean);
+      if (!list.length) throw new Error("No orders to save.");
+      const note = String(extras.note ?? "").trim();
+      const attachment = await resolveConsolidatedAttachment(list[0].id, extras.attachment || null);
+      const at = new Date().toISOString();
+      applyMergedEmailExtras(list, note, attachment, at);
+      return { note, attachment, savedAt: at };
+    };
+
     const sendConsolidatedAllocationEmail = async (orders, extras = {}) => {
       const list = (orders || []).filter(Boolean);
       if (!list.length) throw new Error("No orders to email.");
       const primary = list[0];
       if (!primary.email) throw new Error("Customer email is missing.");
-      const workbook = buildLiveMergeWorkbook(list);
+      const workbook = extras.workbook || buildLiveMergeWorkbook(list);
       const note = String(extras.note ?? primary.mergedEmailNote ?? "").trim();
-      let attachment = extras.attachment || primary.mergedEmailAttachment || null;
-      const rawUrl = attachment?.url || attachment?.dataUrl || "";
-      if (attachment && rawUrl.startsWith("data:") && firebaseEnabled) {
-        try {
-          const storageUrl = await uploadOrderProofFromDataUrl(
-            primary.id,
-            rawUrl,
-            attachment.name || attachment.label || "attachment",
-          );
-          attachment = {
-            label: attachment.name || attachment.label || "Attachment",
-            url: storageUrl,
-            type: attachment.type || (/pdf/i.test(rawUrl) || /\.pdf$/i.test(attachment.name || "") ? "pdf" : "image"),
-          };
-        } catch (error) {
-          console.warn("[orders] Could not upload consolidated email attachment:", error);
-          attachment = {
-            label: attachment.name || attachment.label || "Attachment",
-            url: rawUrl,
-            type: attachment.type || (/pdf/i.test(rawUrl) ? "pdf" : "image"),
-          };
-        }
-      } else if (attachment && rawUrl) {
-        attachment = {
-          label: attachment.name || attachment.label || "Attachment",
-          url: rawUrl,
-          type: attachment.type || (/pdf/i.test(rawUrl) || /\.pdf$/i.test(attachment.name || attachment.label || "") ? "pdf" : "image"),
-        };
-      } else {
-        attachment = null;
-      }
-      const persistAttachment = attachment?.url && String(attachment.url).startsWith("http")
-        ? attachment
+      const fallbackAttachment = isSetLevelMergedAttachment(primary.mergedEmailAttachment)
+        ? primary.mergedEmailAttachment
         : null;
+      const attachment = await resolveConsolidatedAttachment(
+        primary.id,
+        extras.attachment || fallbackAttachment,
+      );
+      const persistAttachment = persistableMergedAttachment(attachment);
       const payload = {
         emailType: "consolidated_allocation",
         bodyOverride: getEmailBodyOverride("consolidated_allocation"),
         subjectOverride: getEmailSubjectOverride("consolidated_allocation"),
         reminder: getPreorderReminderConfig(),
+        showMessengerButton: getShowMessengerButton("consolidated_allocation"),
         order: {
           ...buildConsolidatedEmailOrder(list, workbook),
           ...(note ? { notes: note } : {}),
@@ -698,6 +732,8 @@ export function OrdersProvider({ children }) {
               if (!idSet.has(row.id)) return row;
               const source = list.find((order) => order.id === row.id) || row;
               const record = { ...buildStatusEmailRecord("consolidated_allocation", source.email, { ok, result, error }), at };
+              const setId = String(source.mergedSetId || primary.mergedSetId || "").trim();
+              const verb = !ok ? "Failed" : result?.skipped ? "Skipped" : "Sent";
               const trailEntry = {
                 ...buildStatusEmailTrailEntry(
                   "consolidated_allocation",
@@ -706,17 +742,25 @@ export function OrdersProvider({ children }) {
                   { ok, result, error },
                 ),
                 at,
-                note: note || "Consolidated allocation email.",
+                title: source.email
+                  ? `Consolidated email ${verb} to ${source.email}`
+                  : `Consolidated email ${verb}`,
+                note: [
+                  setId ? `Sent as consolidated order ${setId}.` : "Sent as a consolidated order email.",
+                  note,
+                ].filter(Boolean).join(" "),
+                ...(setId ? { mergedSetId: setId } : {}),
                 ...(persistAttachment
-                  ? { attachment: buildTrailAttachment(persistAttachment.url, persistAttachment.label, "admin") }
+                  ? { attachment: buildTrailAttachment(persistAttachment.url, persistAttachment.label, "consolidated") }
                   : {}),
               };
               const updated = {
                 ...row,
                 emails: [...(row.emails || []), record],
                 trail: [...(row.trail || []), trailEntry],
-                ...(note ? { mergedEmailNote: note } : {}),
-                ...(persistAttachment ? { mergedEmailAttachment: persistAttachment } : {}),
+                mergedEmailNote: note,
+                mergedEmailAttachment: persistAttachment,
+                mergedEmailSavedAt: at,
               };
               persistOrder(updated);
               return updated;
@@ -1033,7 +1077,7 @@ export function OrdersProvider({ children }) {
             title = `Status → ${status}`;
           }
 
-          const seen = payment !== "Pending Verification" ? true : o.notificationSeen;
+          const seen = true;
           const rollup = syncOrderRollup(lineItems);
           const trailEntry = buildTrailEntry({
             title,
@@ -1073,6 +1117,7 @@ export function OrdersProvider({ children }) {
           const updated = {
             ...o,
             status,
+            notificationSeen: true,
             trail: [
               ...o.trail,
               buildTrailEntry({ title: `Status → ${status}`, status, payment: o.payment, note }),
@@ -1090,7 +1135,7 @@ export function OrdersProvider({ children }) {
         let persisted = null;
         const next = prev.map((o) => {
           if (o.id !== id) return o;
-          const seen = payment !== "Pending Verification" ? true : o.notificationSeen;
+          const seen = true;
           const updated = {
             ...o,
             payment,
@@ -1191,6 +1236,7 @@ export function OrdersProvider({ children }) {
             ...o,
             lineItems,
             ...syncOrderRollup(lineItems),
+            notificationSeen: true,
             trail: [
               ...o.trail,
               buildTrailEntry({
@@ -1449,6 +1495,7 @@ export function OrdersProvider({ children }) {
       uploadTrailProof,
       sendOrderStatusEmail,
       sendConsolidatedAllocationEmail,
+      saveConsolidatedEmailExtras,
       markOrderSeen,
       markAllOrdersSeen,
       archiveOrders,
