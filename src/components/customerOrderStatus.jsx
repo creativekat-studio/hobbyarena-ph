@@ -138,14 +138,18 @@ export function SummaryRow({ label, children }) {
   );
 }
 
-export function OrderLineItem({ order, item, surfaceBorderColor, sourceOrderId = "", hideRefund = false }) {
+export function OrderLineItem({ order, item, surfaceBorderColor, sourceOrderId = "", hideRefund = false, flush = false }) {
   const theme = useTheme();
   const payment = migratePaymentStatus(item.payment);
   const status = migrateOrderStatus(item.status);
   const lineTotal = lineItemAmount(item);
 
   return (
-    <Box sx={{ border: "1px solid", borderColor: surfaceBorderColor, borderRadius: 1.5, p: { xs: 2, md: 2.5 } }}>
+    <Box
+      sx={flush
+        ? { py: { xs: 2, md: 2.25 } }
+        : { border: "1px solid", borderColor: surfaceBorderColor, borderRadius: 1.5, p: { xs: 2, md: 2.5 } }}
+    >
       <Stack direction="row" spacing={2} alignItems="flex-start">
         <Box
           sx={{

@@ -3,6 +3,7 @@ import {
   Box,
   Chip,
   Container,
+  Divider,
   Stack,
   Typography,
 } from "@mui/material";
@@ -117,8 +118,8 @@ export default function CustomerConsolidatedOrderPage() {
           </Typography>
         </Box>
       ) : (
-        <Stack spacing={2.5}>
-          <Box sx={{ ...panelSx, p: { xs: 2.5, md: 3 } }}>
+        <Box sx={{ ...panelSx, overflow: "hidden" }}>
+          <Box sx={{ p: { xs: 2.5, md: 3 } }}>
             <Stack direction={{ xs: "column", sm: "row" }} spacing={2} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "flex-start" }}>
               <Box>
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: "wrap", rowGap: 0.75 }}>
@@ -170,32 +171,42 @@ export default function CustomerConsolidatedOrderPage() {
                 ) : null}
               </Box>
             ) : null}
+
+            {summary.needsRefund ? (
+              <Box sx={{ mt: 2 }}>
+                <CustomerRefundDetails amount={summary.refund} active embedded />
+              </Box>
+            ) : null}
           </Box>
 
-          {summary.needsRefund ? (
-            <CustomerRefundDetails amount={summary.refund} active />
-          ) : null}
+          <Divider sx={{ borderColor: surfaceBorderColor }} />
 
-          <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
-            <Typography sx={{ fontWeight: 800, fontSize: "0.72rem", fontFamily: MONO_FONT, letterSpacing: 0.6, textTransform: "none", color: "text.secondary", mb: 1.5 }}>
-              Items &amp; progress
+          <Box sx={{ p: { xs: 2, md: 2.5 } }}>
+            <Typography sx={{ fontWeight: 800, fontSize: "0.72rem", fontFamily: MONO_FONT, letterSpacing: 0.6, textTransform: "none", color: "text.secondary", mb: 0.5 }}>
+              Order details
             </Typography>
-            <Stack spacing={2}>
-              {items.length ? items.map(({ order, item }) => (
+            {items.length ? items.map(({ order, item }, index) => (
+              <Box
+                key={`${order.id}-${item.id}`}
+                sx={{
+                  borderTop: index === 0 ? "none" : "1px solid",
+                  borderColor: surfaceBorderColor,
+                }}
+              >
                 <OrderLineItem
-                  key={`${order.id}-${item.id}`}
                   order={order}
                   item={item}
                   surfaceBorderColor={surfaceBorderColor}
                   sourceOrderId={order.id}
                   hideRefund
+                  flush
                 />
-              )) : (
-                <Typography sx={{ fontSize: "0.9rem" }}>No items in this set.</Typography>
-              )}
-            </Stack>
+              </Box>
+            )) : (
+              <Typography sx={{ fontSize: "0.9rem" }}>No items in this set.</Typography>
+            )}
           </Box>
-        </Stack>
+        </Box>
       )}
     </Container>
   );

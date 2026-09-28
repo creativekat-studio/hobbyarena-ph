@@ -17,7 +17,7 @@ const processingPulse = keyframes`
   100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
 `;
 
-export default function CustomerRefundDetails({ order, item, amount, active = false }) {
+export default function CustomerRefundDetails({ order, item, amount, active = false, embedded = false }) {
   const theme = useTheme();
   const { user } = useAuth();
   const { getCustomerProfile } = useCustomers();
@@ -36,7 +36,7 @@ export default function CustomerRefundDetails({ order, item, amount, active = fa
   return (
     <Box
       sx={{
-        mb: 1.5,
+        mb: embedded ? 0 : 1.5,
         p: 1.5,
         borderRadius: 1,
         border: "1px solid",
