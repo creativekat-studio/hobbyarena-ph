@@ -32,6 +32,7 @@ import { CardIcon, HeartIcon, SearchIcon, TrashIcon, UserIcon } from "../compone
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { getCustomerProfile, useCustomers } from "../lib/customersStore.jsx";
 import { collectCustomerPayouts } from "../lib/customerPayoutMethods.js";
+import { buildCustomerOrderListRows, consolidatedOrderMeta } from "../lib/customerOrderGroups.js";
 import CustomerPayoutMethodsEditor from "../admin/CustomerPayoutMethodsEditor.jsx";
 import { useOrders, getOrdersForEmail } from "../lib/ordersStore.jsx";
 import { useWishlist } from "../lib/wishlistStore.jsx";
@@ -39,7 +40,6 @@ import { useCart } from "../lib/cartStore.jsx";
 import { productTracksStock } from "../lib/quantityLimits.js";
 import { CustomerOrderCard } from "../components/CustomerOrderCard.jsx";
 import { setAuthSurface } from "../auth/authSurface.js";
-import { sortOrdersByOrderNo } from "../lib/orderIds.js";
 import { useClientTiers } from "../lib/clientTiersStore.jsx";
 import { computeFulfilledSpendForEmail, getNextTierProgress, resolveClientTier } from "../lib/clientTier.js";
 import { formatPhPhoneInput, isValidPhPhone } from "../lib/phone.js";
@@ -795,17 +795,10 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
   const [orderQuery, setOrderQuery] = useState("");
 
   const customerOrders = useMemo(() => getOrdersForEmail(allOrders, user?.email), [allOrders, user?.email]);
-  const filteredCustomerOrders = useMemo(() => {
-    const q = orderQuery.trim().toLowerCase();
-    const list = !q
-      ? customerOrders
-      : customerOrders.filter((o) =>
-        o.id.toLowerCase().includes(q)
-        || (o.items || "").toLowerCase().includes(q)
-        || (o.lineItems || []).some((item) => (item.name || "").toLowerCase().includes(q)),
-      );
-    return sortOrdersByOrderNo(list);
-  }, [customerOrders, orderQuery]);
+  const orderRows = useMemo(
+    () => buildCustomerOrderListRows(customerOrders, orderQuery),
+    [customerOrders, orderQuery],
+  );
   const fulfilledSpend = useMemo(
     () => computeFulfilledSpendForEmail(allOrders, user?.email),
     [allOrders, user?.email],
@@ -869,7 +862,7 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
           onChange={(_, value) => setTab(value)}
           sx={{ px: 2, borderBottom: "1px solid", borderColor: surfaceBorderColor }}
         >
-          <Tab label={`Orders (${customerOrders.length})`} />
+          <Tab label={`Orders (${orderRows.length})`} />
           <Tab label={`Wishlist (${wishlistItems.length})`} />
           <Tab label="Profile" />
         </Tabs>
@@ -904,16 +897,36 @@ function Dashboard({ panelSx, surfaceBorderColor, authLoading = false }) {
                   <Typography>No orders yet.</Typography>
                   <Typography variant="body2">Your order history will appear here after checkout.</Typography>
                 </Stack>
-              ) : filteredCustomerOrders.length === 0 ? (
+              ) : orderRows.length === 0 ? (
                 <Stack spacing={1.5} alignItems="center" sx={{ py: 4, textAlign: "center", color: "text.secondary" }}>
                   <Typography>No orders match your search.</Typography>
                 </Stack>
-              ) : filteredCustomerOrders.map((order) => (
-                <CustomerOrderCard
-                  key={order.id}
-                  order={order}
-                  surfaceBorderColor={surfaceBorderColor}
-                />
+              ) : orderRows.map((row) => (
+                row.kind === "consolidated" ? (
+                  <CustomerOrderCard
+                    key={row.id}
+                    order={{
+                      id: row.card.id,
+                      lineItems: row.card.lineItems,
+                      status: row.card.status,
+                      createdAt: row.card.mergedAt,
+                    }}
+                    to={`/account/orders/consolidated/${encodeURIComponent(row.card.setId)}`}
+                    badge="Consolidated"
+                    title={row.card.id}
+                    meta={consolidatedOrderMeta(row.card)}
+                    total={row.card.total}
+                    outstanding={row.card.outstanding}
+                    needsPay={row.card.needsPay}
+                    surfaceBorderColor={surfaceBorderColor}
+                  />
+                ) : (
+                  <CustomerOrderCard
+                    key={row.id}
+                    order={row.order}
+                    surfaceBorderColor={surfaceBorderColor}
+                  />
+                )
               ))}
             </Stack>
           ) : tab === 1 ? (

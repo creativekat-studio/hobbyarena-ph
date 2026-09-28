@@ -29,6 +29,7 @@ import {
 import { lineItemAmount, orderCustomerDisplayTotal } from "../lib/orderRevenue.js";
 import { orderOpenCredit } from "../lib/orderCredit.js";
 import { formatOrderTimestamp } from "../lib/orderTimestamps.js";
+import { displayConsolidatedOrderId } from "../lib/orderIds.js";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { useOrders, getOrdersForEmail } from "../lib/ordersStore.jsx";
 import { setAuthSurface } from "../auth/authSurface.js";
@@ -43,7 +44,7 @@ const balancePulse = keyframes`
 `;
 
 /** Shows an outstanding balance — urgent (pay-now) or a muted "remaining" note. */
-function BalanceDueBadge({ amount, urgent, sx }) {
+export function BalanceDueBadge({ amount, urgent, sx }) {
   if (urgent) {
     return (
       <Box
@@ -75,7 +76,7 @@ function BalanceDueBadge({ amount, urgent, sx }) {
   );
 }
 
-function formatDeliverTo(order) {
+export function formatDeliverTo(order) {
   if (order.fulfillment === "pickup") return "Store pickup";
   const address = order.address;
   if (!address) return "Delivery";
@@ -145,7 +146,7 @@ function MilestoneTracker({ item }) {
   );
 }
 
-function SummaryRow({ label, children }) {
+export function SummaryRow({ label, children }) {
   return (
     <Stack direction="row" spacing={2} sx={{ py: 0.75 }}>
       <Typography sx={{ width: 120, flexShrink: 0, color: "text.secondary", fontSize: "0.82rem", fontFamily: MONO_FONT, letterSpacing: 0.3 }}>
@@ -156,7 +157,7 @@ function SummaryRow({ label, children }) {
   );
 }
 
-function OrderLineItem({ order, item, surfaceBorderColor }) {
+export function OrderLineItem({ order, item, surfaceBorderColor }) {
   const theme = useTheme();
   const payment = migratePaymentStatus(item.payment);
   const status = migrateOrderStatus(item.status);
@@ -279,8 +280,24 @@ export default function OrderStatusPage() {
                 <Typography sx={{ color: "text.secondary", fontSize: "0.82rem", mt: 0.25 }}>
                   {lineItems.length || 1} {(lineItems.length || 1) === 1 ? "product" : "products"} · Placed {formatOrderTimestamp(order)}
                 </Typography>
-                {order.type ? (
-                  <Chip label={order.type} size="small" variant="outlined" color={order.type === "Pre-order" ? "secondary" : "default"} sx={{ mt: 1, fontFamily: MONO_FONT, fontSize: "0.65rem" }} />
+                {order.mergedSetId ? (
+                  <Box
+                    component={RouterLink}
+                    to={`/account/orders/consolidated/${encodeURIComponent(order.mergedSetId)}`}
+                    sx={{
+                      display: "inline-flex",
+                      mt: 1.25,
+                      color: "primary.main",
+                      textDecoration: "none",
+                      fontFamily: MONO_FONT,
+                      fontSize: "0.72rem",
+                      fontWeight: 700,
+                      letterSpacing: 0.4,
+                      "&:hover": { textDecoration: "underline" },
+                    }}
+                  >
+                    Part of consolidated order {displayConsolidatedOrderId(order.mergedSetId)} →
+                  </Box>
                 ) : null}
               </Box>
               <Box sx={{ textAlign: { xs: "left", sm: "right" } }}>
