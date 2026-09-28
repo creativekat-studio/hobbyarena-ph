@@ -305,7 +305,7 @@ export default function CustomerPayoutMethodsEditor({
               textTransform: "uppercase",
             }}
           >
-            Add payout method
+            Add {variant === "storefront" ? "bank details" : "payout method"}
           </Button>
         ) : null}
 
