@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   AppBar,
   Badge,
@@ -44,12 +44,7 @@ import { useAuth } from "../auth/AuthProvider.jsx";
 import AdminNotificationBell from "./AdminNotificationBell.jsx";
 import AdminStorefrontButton from "../components/AdminStorefrontButton.jsx";
 import { AdminPageHeaderProvider, AdminPageHeaderToolbar, AdminPageHeaderMobileMeta } from "../components/AdminPageHeader.jsx";
-import OrdersPage from "./OrdersPage.jsx";
-import {
-  isOrdersListPath,
-  SHOW_ORDERS_LIST_EVENT,
-  useGoToOrdersList,
-} from "./ordersListNavigation.js";
+import { useGoToOrdersList } from "./ordersListNavigation.js";
 
 const DRAWER_WIDTH = 248;
 const RAIL_WIDTH = 72;
@@ -90,25 +85,6 @@ export default function AdminLayout() {
   const [healthOpen, setHealthOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [navCollapsed, setNavCollapsed] = useState(readNavCollapsed);
-  const [forceOrdersList, setForceOrdersList] = useState(false);
-
-  useEffect(() => {
-    function onShowOrdersList() {
-      setForceOrdersList(true);
-    }
-    window.addEventListener(SHOW_ORDERS_LIST_EVENT, onShowOrdersList);
-    return () => window.removeEventListener(SHOW_ORDERS_LIST_EVENT, onShowOrdersList);
-  }, []);
-
-  useEffect(() => {
-    if (location.pathname.startsWith("/admin/orders/") && !isOrdersListPath(location.pathname)) {
-      setForceOrdersList(false);
-    }
-  }, [location.pathname]);
-
-  const showOrdersList = forceOrdersList
-    || isOrdersListPath(location.pathname)
-    || isOrdersListPath(window.location.pathname);
 
   function toggleDesktopNav() {
     setNavCollapsed((prev) => {
@@ -143,16 +119,15 @@ export default function AdminLayout() {
               end={item.end}
               onClick={(event) => {
                 onNavigate?.();
-                if (item.to !== "/admin/orders") return;
-                const onOrdersDetail = location.pathname.startsWith("/admin/orders/");
-                const hrefIsList = isOrdersListPath(window.location.pathname);
-                const routerIsList = isOrdersListPath(location.pathname);
-                if (onOrdersDetail || (hrefIsList && !routerIsList)) {
-                  event.preventDefault();
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                event.preventDefault();
+                if (item.to === "/admin/orders" && location.pathname.startsWith("/admin/orders/")) {
                   goToOrdersList(
                     location.pathname.includes("/consolidated/") ? "merged" : "individual",
                   );
+                  return;
                 }
+                navigate(item.to, { flushSync: true });
               }}
               sx={{
                 borderRadius: 1,
@@ -381,11 +356,7 @@ export default function AdminLayout() {
                 overflow: "auto",
               }}
             >
-              {showOrdersList ? (
-                <OrdersPage key={location.key} />
-              ) : (
-                <Outlet key={location.pathname} context={{ surfaces, isDarkMode }} />
-              )}
+              <Outlet context={{ surfaces, isDarkMode }} />
             </Box>
           </Box>
         </AdminPageHeaderProvider>

@@ -174,15 +174,16 @@ export function isArchivedOrder(order) {
 export function isUnseenOrder(order) {
   if (isArchivedOrder(order)) return false;
   if (order.notificationSeen === true) return false;
+  // Customer-initiated updates (balance proof, refund details) explicitly re-flag
+  if (order.notificationSeen === false) return true;
+  // Admin already acted on these in a merge — don't keep the new-order alert
+  if (order.mergedSetId) return false;
   // New checkouts awaiting verification (including mixed rollups / legacy without the flag)
   if (migratePaymentStatus(order.payment) === "Pending Verification") return true;
   if (getOrderLineItems(order).some((item) => migratePaymentStatus(item.payment) === "Pending Verification")) {
     return true;
   }
-  // Admin already acted on these in a merge — don't keep the new-order alert
-  if (order.mergedSetId) return false;
-  // Customer-initiated updates explicitly re-flag the order
-  return order.notificationSeen === false;
+  return false;
 }
 
 function summarizeItems(cartItems) {

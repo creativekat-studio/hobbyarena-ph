@@ -47,7 +47,7 @@ import {
   buildMergeSourceRows,
   productKeyForItem,
 } from "../lib/orderMergeSimulation.js";
-import { isArchivedOrder } from "../lib/ordersStore.jsx";
+import { isArchivedOrder, isUnseenOrder } from "../lib/ordersStore.jsx";
 import { compareOrdersByOrderNo, displayConsolidatedOrderId, withConsolidatedDisplayIds } from "../lib/orderIds.js";
 import { lineItemAmount } from "../lib/orderRevenue.js";
 import { formatOrderTimestamp } from "../lib/orderTimestamps.js";
@@ -1410,6 +1410,7 @@ function MergedSetAccordionRow({
   const { customer, email } = customerContactFromOrders(set.orders);
   const sentCount = countMergedEmailsSent(set.orders);
   const sent = sentCount > 0;
+  const hasUnseenActivity = (set.orders || []).some(isUnseenOrder);
   const summary = useMemo(() => summarizeMergedSet(set.orders), [set.orders]);
   const net = Number(summary.totals?.net) || 0;
   const netSign = net < 0 ? "−" : net > 0 ? "+" : "";
@@ -1447,12 +1448,19 @@ function MergedSetAccordionRow({
         </IconButton>
 
         <Box sx={{ minWidth: 0 }}>
-          <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap" }}>
-            {displayConsolidatedOrderId(set)}
-          </Typography>
-          <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", whiteSpace: "nowrap", fontFamily: MONO_FONT }}>
-            {formatOrderTimestamp({ createdAt: set.mergedAt || summary.newest?.createdAt })}
-          </Typography>
+          <Stack direction="row" spacing={0.75} alignItems="center">
+            {hasUnseenActivity ? (
+              <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "warning.main", flexShrink: 0 }} title="New activity" />
+            ) : null}
+            <Box sx={{ minWidth: 0 }}>
+              <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap" }}>
+                {displayConsolidatedOrderId(set)}
+              </Typography>
+              <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", whiteSpace: "nowrap", fontFamily: MONO_FONT }}>
+                {formatOrderTimestamp({ createdAt: set.mergedAt || summary.newest?.createdAt })}
+              </Typography>
+            </Box>
+          </Stack>
         </Box>
 
         <Box sx={{ minWidth: 0, maxWidth: "100%" }}>
@@ -1734,13 +1742,14 @@ export function ConsolidatedOrderView({
     [set, selectedKeys],
   );
 
+  const selectedSig = [...selectedKeys].sort().join("|");
   useEffect(() => {
     onPayloadChange?.({
       workbook,
       selectedCount: selectedKeys.size,
       removedOrderIds: orderIdsPendingRemoval(detailWorkbook?.orderDetails, selectedKeys),
     });
-  }, [workbook, selectedKeys, detailWorkbook, onPayloadChange]);
+  }, [workbook, selectedSig, selectedKeys, detailWorkbook, onPayloadChange]);
 
   if (!set || !detailWorkbook || !workbook) return null;
 
