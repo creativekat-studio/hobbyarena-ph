@@ -1,6 +1,7 @@
-import { Box, Chip, Stack, Typography } from "@mui/material";
+import { Box, Button, Chip, Stack, Typography } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { keyframes } from "@mui/system";
+import { Link as RouterLink } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "./ProductCard.jsx";
 import { CardIcon } from "./icons.jsx";
@@ -25,6 +26,34 @@ const balancePulse = keyframes`
   70% { box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); }
   100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
 `;
+
+function BackIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" {...props}>
+      <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+    </svg>
+  );
+}
+
+export function CustomerBackToOrders() {
+  return (
+    <Button
+      component={RouterLink}
+      to="/account"
+      startIcon={<BackIcon />}
+      sx={{
+        alignSelf: "flex-start",
+        flexShrink: 0,
+        mb: 2,
+        fontFamily: MONO_FONT,
+        fontSize: "0.82rem",
+        color: "text.secondary",
+      }}
+    >
+      Back to my orders
+    </Button>
+  );
+}
 
 export function BalanceDueBadge({ amount, urgent, sx }) {
   if (urgent) {

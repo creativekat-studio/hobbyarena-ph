@@ -7,7 +7,7 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
-import { Link as RouterLink, Navigate, useOutletContext, useParams } from "react-router-dom";
+import { Navigate, useOutletContext, useParams } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
 import { TruckIcon } from "../components/icons.jsx";
@@ -27,6 +27,7 @@ import { useOrders, getOrdersForEmail } from "../lib/ordersStore.jsx";
 import { setAuthSurface } from "../auth/authSurface.js";
 import CustomerRefundDetails, { CustomerBalanceDueNotice } from "../components/CustomerRefundDetails.jsx";
 import {
+  CustomerBackToOrders,
   formatDeliverTo,
   OrderLineItem,
 } from "../components/customerOrderStatus.jsx";
@@ -80,25 +81,7 @@ export default function CustomerConsolidatedOrderPage() {
 
   return (
     <Container maxWidth="md" sx={{ py: { xs: 3, md: 4 }, width: "100%" }}>
-      <Box
-        component={RouterLink}
-        to="/account"
-        sx={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 0.75,
-          mb: 2,
-          color: "text.secondary",
-          textDecoration: "none",
-          fontFamily: MONO_FONT,
-          fontSize: "0.75rem",
-          letterSpacing: 0.6,
-          textTransform: "none",
-          "&:hover": { color: "primary.main" },
-        }}
-      >
-        ← Back to my orders
-      </Box>
+      <CustomerBackToOrders />
 
       {!isCustomer && !loading ? (
         <Box sx={{ ...panelSx, p: 4, textAlign: "center" }}>

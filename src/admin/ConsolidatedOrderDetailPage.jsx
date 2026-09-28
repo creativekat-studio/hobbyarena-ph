@@ -109,12 +109,25 @@ export default function ConsolidatedOrderDetailPage() {
   const [confirmRemove, setConfirmRemove] = useState(null);
   const [selectionResetKey, setSelectionResetKey] = useState(0);
 
-  const set = findConsolidatedSet(orders, setId);
+  const set = useMemo(() => findConsolidatedSet(orders, setId), [orders, setId]);
   const contact = customerContactFromOrders(set?.orders);
   const sentCount = set ? countMergedEmailsSent(set.orders) : 0;
   const consolidatedId = set ? displayConsolidatedOrderId(set) : setId;
   const handlePayloadChange = useCallback((next) => {
-    setPayload(next);
+    setPayload((prev) => {
+      const prevRemoved = prev?.removedOrderIds || [];
+      const nextRemoved = next?.removedOrderIds || [];
+      if (
+        prev
+        && prev.workbook === next.workbook
+        && prev.selectedCount === next.selectedCount
+        && prevRemoved.length === nextRemoved.length
+        && prevRemoved.every((id, index) => id === nextRemoved[index])
+      ) {
+        return prev;
+      }
+      return next;
+    });
   }, []);
 
   const customer = useMemo(() => {
