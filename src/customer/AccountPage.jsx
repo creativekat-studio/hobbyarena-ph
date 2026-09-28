@@ -28,7 +28,7 @@ import { MONO_FONT, getStatAccents } from "../theme.js";
 import { avatarStyles } from "../lib/surfaces.js";
 import { wider } from "../lib/layout.js";
 import { PESO } from "../components/ProductCard.jsx";
-import { CardIcon, HeartIcon, SearchIcon, SparkleIcon, TrashIcon, UserIcon } from "../components/icons.jsx";
+import { CardIcon, HeartIcon, SearchIcon, TrashIcon, UserIcon } from "../components/icons.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { getCustomerProfile, useCustomers } from "../lib/customersStore.jsx";
 import { collectCustomerPayouts } from "../lib/customerPayoutMethods.js";
@@ -458,45 +458,61 @@ function StatCard({ panelSx, icon, label, value, accent }) {
   );
 }
 
+function ProfileSection({ title, subtitle, headerAction, surfaceBorderColor, children }) {
+  return (
+    <Box
+      sx={{
+        borderRadius: 1,
+        border: "1px solid",
+        borderColor: surfaceBorderColor,
+        overflow: "hidden",
+      }}
+    >
+      <Box
+        component="header"
+        sx={{
+          px: 2,
+          pt: 1.5,
+          pb: 1.25,
+          borderBottom: "1px solid",
+          borderColor: surfaceBorderColor,
+        }}
+      >
+        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1.5}>
+          <Typography
+            component="h2"
+            sx={{
+              fontFamily: MONO_FONT,
+              fontWeight: 800,
+              fontSize: "0.82rem",
+              letterSpacing: 1,
+              textTransform: "uppercase",
+              lineHeight: 1.3,
+              minWidth: 0,
+            }}
+          >
+            {title}
+          </Typography>
+          {headerAction}
+        </Stack>
+        {subtitle ? (
+          <Typography sx={{ color: "text.secondary", fontSize: "0.75rem", mt: 0.4 }}>
+            {subtitle}
+          </Typography>
+        ) : null}
+      </Box>
+      <Box sx={{ p: 2 }}>{children}</Box>
+    </Box>
+  );
+}
+
 function TierQuestCard({ clientTier, tierProgress, fulfilledSpend }) {
   const theme = useTheme();
   const accent = clientTier?.badgeColor || theme.palette.primary.main;
   const pct = Math.round((tierProgress.progress || 0) * 100);
 
   return (
-    <Box
-      sx={{
-        mb: 3,
-        p: { xs: 2.25, md: 2.75 },
-        borderRadius: 1,
-        border: "1px solid",
-        borderColor: alpha(accent, 0.45),
-        bgcolor: alpha(accent, 0.08),
-      }}
-    >
-      <Stack spacing={1.75}>
-        <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-          <Stack direction="row" spacing={1} alignItems="center">
-            <SparkleIcon sx={{ color: accent, fontSize: 22 }} />
-            <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", fontWeight: 800, letterSpacing: 1.4, textTransform: "uppercase", color: accent }}>
-              Member tier
-            </Typography>
-          </Stack>
-          <Chip
-            label={clientTier?.name || "Member"}
-            size="small"
-            sx={{
-              fontFamily: MONO_FONT,
-              fontWeight: 800,
-              letterSpacing: 0.4,
-              color: clientTier?.badgeColor || "primary.main",
-              border: "1px solid",
-              borderColor: clientTier?.badgeColor || "primary.main",
-              bgcolor: alpha(clientTier?.badgeColor || theme.palette.primary.main, 0.12),
-            }}
-          />
-        </Stack>
-
+    <Stack spacing={1.75}>
         {tierProgress.atTop ? (
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.2 }}>
@@ -562,7 +578,6 @@ function TierQuestCard({ clientTier, tierProgress, fulfilledSpend }) {
           </Box>
         )}
       </Stack>
-    </Box>
   );
 }
 
@@ -634,100 +649,127 @@ function ProfileTab({
   }
 
   return (
-    <Stack spacing={3} sx={{ p: { xs: 2.5, md: 3 } }}>
-      <Box component="form" onSubmit={handleSave}>
-      <TierQuestCard
-        clientTier={clientTier}
-        tierProgress={tierProgress}
-        fulfilledSpend={fulfilledSpend}
-      />
+    <Stack spacing={2} sx={{ p: { xs: 2, md: 2.5 } }}>
+      {status === "saved" ? <Alert severity="success">Profile saved.</Alert> : null}
+      {error ? <Alert severity="error">{error}</Alert> : null}
 
-      {status === "saved" ? <Alert severity="success" sx={{ mb: 2 }}>Profile saved.</Alert> : null}
-      {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
-
-      <Grid container spacing={3}>
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Stack spacing={2}>
-            <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }}>Contact</Typography>
-            <TextField label="Full name" fullWidth value={name} onChange={(e) => setName(e.target.value)} required />
-            <TextField label="Email" fullWidth value={user?.email || ""} disabled />
-            <TextField
-              label="Phone"
-              fullWidth
-              value={phone}
-              onChange={(e) => setPhone(formatPhPhoneInput(e.target.value))}
-              placeholder="09XX XXX XXXX"
-              inputProps={{ inputMode: "numeric", autoComplete: "tel-national" }}
-            />
-          </Stack>
-        </Grid>
-
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Stack spacing={2}>
-            <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }}>Default delivery address</Typography>
-            <TextField label="Street address" fullWidth value={street} onChange={(e) => setStreet(e.target.value)} />
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-              <TextField label="City" fullWidth value={city} onChange={(e) => setCity(e.target.value)} />
-              <TextField label="Province" fullWidth value={province} onChange={(e) => setProvince(e.target.value)} />
-            </Stack>
-            <TextField label="Postal code" fullWidth value={postal} onChange={(e) => setPostal(e.target.value)} sx={{ maxWidth: { sm: 220 } }} />
-          </Stack>
-        </Grid>
-      </Grid>
-
-      <Box
-        sx={{
-          mt: 3,
-          p: 2,
-          border: "1px solid",
-          borderColor: surfaceBorderColor,
-          borderRadius: 1,
-          bgcolor: (theme) => alpha(theme.palette.primary.main, 0.04),
-        }}
+      <ProfileSection
+        title="Member tier"
+        subtitle={tierProgress.atTop
+          ? "Champion status unlocked. Keep pulling — the arena remembers."
+          : `${PESO.format(tierProgress.remaining)} more in fulfilled orders to level up.`}
+        surfaceBorderColor={surfaceBorderColor}
+        headerAction={(
+          <Chip
+            label={clientTier?.name || "Member"}
+            size="small"
+            sx={{
+              fontFamily: MONO_FONT,
+              fontWeight: 800,
+              letterSpacing: 0.4,
+              color: clientTier?.badgeColor || "primary.main",
+              border: "1px solid",
+              borderColor: clientTier?.badgeColor || "primary.main",
+              bgcolor: (theme) => alpha(clientTier?.badgeColor || theme.palette.primary.main, 0.12),
+            }}
+          />
+        )}
       >
-        <FormControlLabel
-          sx={{ alignItems: "flex-start", m: 0, gap: 1, width: "100%" }}
-          control={(
-            <Switch
-              checked={marketingOptIn}
-              onChange={(e) => {
-                setMarketingOptIn(e.target.checked);
-                setStatus("idle");
-              }}
-              color="primary"
-              inputProps={{ "aria-label": "Marketing opt-in" }}
-            />
-          )}
-          label={(
-            <Box>
-              <Typography sx={{ fontWeight: 700, fontSize: "0.88rem" }}>
-                Marketing
-              </Typography>
-              <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", mt: 0.25, lineHeight: 1.4 }}>
-                Opt in for restock alerts, pre-order windows, and member deals. Turn off anytime.
-              </Typography>
-            </Box>
-          )}
+        <TierQuestCard
+          clientTier={clientTier}
+          tierProgress={tierProgress}
+          fulfilledSpend={fulfilledSpend}
         />
+      </ProfileSection>
+
+      <Box component="form" onSubmit={handleSave}>
+        <ProfileSection
+          title="Profile details"
+          subtitle="Contact, delivery address, and marketing preferences."
+          surfaceBorderColor={surfaceBorderColor}
+        >
+          <Grid container spacing={3}>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <Stack spacing={2}>
+                <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }}>Contact</Typography>
+                <TextField label="Full name" fullWidth value={name} onChange={(e) => setName(e.target.value)} required />
+                <TextField label="Email" fullWidth value={user?.email || ""} disabled />
+                <TextField
+                  label="Phone"
+                  fullWidth
+                  value={phone}
+                  onChange={(e) => setPhone(formatPhPhoneInput(e.target.value))}
+                  placeholder="09XX XXX XXXX"
+                  inputProps={{ inputMode: "numeric", autoComplete: "tel-national" }}
+                />
+              </Stack>
+            </Grid>
+
+            <Grid size={{ xs: 12, md: 6 }}>
+              <Stack spacing={2}>
+                <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }}>Default delivery address</Typography>
+                <TextField label="Street address" fullWidth value={street} onChange={(e) => setStreet(e.target.value)} />
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                  <TextField label="City" fullWidth value={city} onChange={(e) => setCity(e.target.value)} />
+                  <TextField label="Province" fullWidth value={province} onChange={(e) => setProvince(e.target.value)} />
+                </Stack>
+                <TextField label="Postal code" fullWidth value={postal} onChange={(e) => setPostal(e.target.value)} sx={{ maxWidth: { sm: 220 } }} />
+              </Stack>
+            </Grid>
+          </Grid>
+
+          <Box
+            sx={{
+              mt: 3,
+              p: 2,
+              border: "1px solid",
+              borderColor: surfaceBorderColor,
+              borderRadius: 1,
+              bgcolor: (theme) => alpha(theme.palette.primary.main, 0.04),
+            }}
+          >
+            <FormControlLabel
+              sx={{ alignItems: "flex-start", m: 0, gap: 1, width: "100%" }}
+              control={(
+                <Switch
+                  checked={marketingOptIn}
+                  onChange={(e) => {
+                    setMarketingOptIn(e.target.checked);
+                    setStatus("idle");
+                  }}
+                  color="primary"
+                  inputProps={{ "aria-label": "Marketing opt-in" }}
+                />
+              )}
+              label={(
+                <Box>
+                  <Typography sx={{ fontWeight: 700, fontSize: "0.88rem" }}>
+                    Marketing
+                  </Typography>
+                  <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", mt: 0.25, lineHeight: 1.4 }}>
+                    Opt in for restock alerts, pre-order windows, and member deals. Turn off anytime.
+                  </Typography>
+                </Box>
+              )}
+            />
+          </Box>
+
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={status === "saving"}
+            sx={{ mt: 3, fontFamily: MONO_FONT, letterSpacing: 0.5 }}
+          >
+            {status === "saving" ? "Saving…" : "Save details"}
+          </Button>
+        </ProfileSection>
       </Box>
 
-      <Button
-        type="submit"
-        variant="contained"
-        disabled={status === "saving"}
-        sx={{ mt: 3, fontFamily: MONO_FONT, letterSpacing: 0.5 }}
+      <ProfileSection
+        title="Bank details"
+        subtitle="Save a bank account or QR code for refunds. Mark one as primary."
+        surfaceBorderColor={surfaceBorderColor}
       >
-        {status === "saving" ? "Saving…" : "Save details"}
-      </Button>
-    </Box>
-
-      <Box sx={{ pt: 1, borderTop: "1px solid", borderColor: surfaceBorderColor }}>
-        <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", mb: 0.5 }}>
-          Bank details
-        </Typography>
-        <Typography sx={{ color: "text.secondary", fontSize: "0.82rem", mb: 2 }}>
-          Save a bank account or QR code for refunds. Mark one as primary.
-        </Typography>
         <CustomerPayoutMethodsEditor
           email={email}
           customerName={displayName}
@@ -736,7 +778,7 @@ function ProfileTab({
           surfaceBorderColor={surfaceBorderColor}
           variant="storefront"
         />
-      </Box>
+      </ProfileSection>
     </Stack>
   );
 }
