@@ -44,7 +44,7 @@ function OrderThumb({ item, surfaceBorderColor }) {
   );
 }
 
-export function CustomerOrderCard({ order, surfaceBorderColor, consolidatedId = "", nested = false }) {
+export function CustomerOrderCard({ order, surfaceBorderColor, consolidatedId = "" }) {
   const theme = useTheme();
   const lineItems = order.lineItems ?? [];
   const status = migrateOrderStatus(order.status);
@@ -59,20 +59,22 @@ export function CustomerOrderCard({ order, surfaceBorderColor, consolidatedId = 
     ? `${primaryLabel} + ${lineItems.length - 1} more`
     : primaryLabel;
   const setLabel = String(consolidatedId || order.mergedSetId || "").trim();
+  const href = setLabel
+    ? `/account/orders/${encodeURIComponent(setLabel)}`
+    : `/account/orders/${order.id}`;
 
   return (
     <Box
       component={RouterLink}
-      to={`/account/orders/${order.id}`}
+      to={href}
       sx={{
         display: "block",
         textDecoration: "none",
         color: "inherit",
-        p: nested ? 2 : 2.5,
+        p: 2.5,
         borderRadius: 1.5,
         border: "1px solid",
         borderColor: surfaceBorderColor,
-        bgcolor: nested ? alpha(theme.palette.background.paper, 0.7) : undefined,
         transition: "border-color 160ms ease, background-color 160ms ease, transform 160ms ease",
         "&:hover": {
           borderColor: alpha(theme.palette.primary.main, 0.5),
@@ -86,7 +88,7 @@ export function CustomerOrderCard({ order, surfaceBorderColor, consolidatedId = 
           <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", mt: 0.25 }}>
             {(lineItems.length || 1)} {(lineItems.length || 1) === 1 ? "product" : "products"} · {formatOrderTimestamp(order)}
           </Typography>
-          {setLabel && !nested ? (
+          {setLabel ? (
             <Chip
               size="small"
               variant="outlined"
@@ -207,50 +209,140 @@ export function CustomerOrderCard({ order, surfaceBorderColor, consolidatedId = 
   );
 }
 
+function CompactMemberRow({ order, surfaceBorderColor }) {
+  const theme = useTheme();
+  const lineItems = order.lineItems ?? [];
+  const status = migrateOrderStatus(order.status);
+  const thumb = lineItems[0];
+  return (
+    <Stack direction="row" spacing={1.25} alignItems="center" sx={{ py: 1, minWidth: 0 }}>
+      <Box
+        sx={{
+          width: 40,
+          height: 40,
+          flexShrink: 0,
+          borderRadius: 1,
+          overflow: "hidden",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          bgcolor: alpha(theme.palette.text.primary, 0.05),
+          border: "1px solid",
+          borderColor: surfaceBorderColor,
+        }}
+      >
+        {thumb?.image ? (
+          <Box component="img" src={thumb.image} alt="" loading="lazy" decoding="async" sx={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        ) : (
+          <CardIcon sx={{ fontSize: 18, color: "text.disabled" }} />
+        )}
+      </Box>
+      <Box sx={{ minWidth: 0, flex: 1 }}>
+        <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: "0.82rem" }}>{order.id}</Typography>
+        <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>
+          {(lineItems.length || 1)} {(lineItems.length || 1) === 1 ? "product" : "products"}
+        </Typography>
+      </Box>
+      <Chip
+        label={orderStatusLabel(status)}
+        size="small"
+        color={STATUS_COLOR[status] || "default"}
+        sx={{ fontWeight: 700, fontSize: "0.6rem", height: 22, flexShrink: 0 }}
+      />
+    </Stack>
+  );
+}
+
 export function CustomerConsolidatedOrderGroup({ setId, orders, surfaceBorderColor }) {
   const theme = useTheme();
   const count = orders.length;
+  const total = orders.reduce((sum, order) => sum + (orderCustomerDisplayTotal(order) || 0), 0);
+  const outstanding = orders.reduce((sum, order) => sum + (orderOutstandingBalance(order) || 0), 0);
+  const needsPay = orders.some((order) => orderNeedsBalancePayment(order));
+
   return (
     <Box
+      component={RouterLink}
+      to={`/account/orders/${encodeURIComponent(setId)}`}
       sx={{
+        display: "block",
+        textDecoration: "none",
+        color: "inherit",
         borderRadius: 1.5,
         border: "1px solid",
         borderColor: alpha(theme.palette.primary.main, 0.35),
         bgcolor: alpha(theme.palette.primary.main, 0.04),
         overflow: "hidden",
+        transition: "border-color 160ms ease, background-color 160ms ease",
+        "&:hover": {
+          borderColor: alpha(theme.palette.primary.main, 0.55),
+          bgcolor: alpha(theme.palette.primary.main, 0.07),
+        },
       }}
     >
-      <Box sx={{ px: 2.25, pt: 1.75, pb: 1.5 }}>
-        <Typography
-          sx={{
-            fontFamily: MONO_FONT,
-            fontWeight: 800,
-            fontSize: "0.62rem",
-            letterSpacing: 1,
-            color: "primary.main",
-            textTransform: "uppercase",
-          }}
-        >
-          Consolidated
-        </Typography>
-        <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: "0.95rem", mt: 0.35 }}>
-          {setId}
-        </Typography>
-        <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", mt: 0.4, lineHeight: 1.45 }}>
-          {count} {count === 1 ? "order" : "orders"} grouped for allocation. Each original ID below still tracks its own items and status.
-        </Typography>
-      </Box>
-      <Stack spacing={1.25} sx={{ px: 1.5, pb: 1.5 }}>
-        {orders.map((order) => (
-          <CustomerOrderCard
-            key={order.id}
-            order={order}
-            surfaceBorderColor={surfaceBorderColor}
-            consolidatedId={setId}
-            nested
-          />
-        ))}
+      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2} sx={{ px: 2.25, pt: 1.75, pb: 1.25 }}>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography
+            sx={{
+              fontFamily: MONO_FONT,
+              fontWeight: 800,
+              fontSize: "0.62rem",
+              letterSpacing: 1,
+              color: "primary.main",
+              textTransform: "uppercase",
+            }}
+          >
+            Consolidated
+          </Typography>
+          <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: "0.95rem", mt: 0.35 }}>
+            {setId}
+          </Typography>
+          <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", mt: 0.35 }}>
+            {count} {count === 1 ? "order" : "orders"} grouped for allocation
+          </Typography>
+        </Box>
+        <Box sx={{ textAlign: "right", flexShrink: 0 }}>
+          <Typography sx={{ fontWeight: 800, color: "primary.main", fontSize: "1rem" }}>
+            {PESO.format(total)}
+          </Typography>
+          {outstanding > 0 ? (
+            needsPay ? (
+              <Typography sx={{ fontSize: "0.68rem", fontWeight: 800, color: "warning.main", mt: 0.35 }}>
+                Pay {PESO.format(outstanding)} now
+              </Typography>
+            ) : (
+              <Typography sx={{ fontSize: "0.68rem", color: "text.secondary", fontWeight: 600, mt: 0.35 }}>
+                {PESO.format(outstanding)} remaining
+              </Typography>
+            )
+          ) : null}
+          <Typography
+            sx={{
+              fontFamily: MONO_FONT,
+              fontSize: "0.68rem",
+              fontWeight: 700,
+              letterSpacing: 0.4,
+              color: "primary.main",
+              mt: 0.35,
+            }}
+          >
+            View status →
+          </Typography>
+        </Box>
       </Stack>
+      <Box sx={{ mx: 1.5, mb: 1.5, px: 1.25, borderRadius: 1.25, bgcolor: "background.paper", border: "1px solid", borderColor: surfaceBorderColor }}>
+        {orders.map((order, index) => (
+          <Box
+            key={order.id}
+            sx={{
+              borderTop: index === 0 ? "none" : "1px solid",
+              borderColor: surfaceBorderColor,
+            }}
+          >
+            <CompactMemberRow order={order} surfaceBorderColor={surfaceBorderColor} />
+          </Box>
+        ))}
+      </Box>
     </Box>
   );
 }
