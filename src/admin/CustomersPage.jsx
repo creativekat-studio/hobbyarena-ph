@@ -58,7 +58,7 @@ import {
   ADMIN_LIST_SEARCH_FIELD_SX,
   ADMIN_LIST_STATS_SX,
 } from "./adminTableHeader.jsx";
-import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
+import { ADMIN_ACTION_BUTTON_SX, ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
 import { changeCustomerEmail, isCustomerEmailTaken, useCustomers } from "../lib/customersStore.jsx";
 import { collectCustomerPayouts } from "../lib/customerPayoutMethods.js";
 import CustomerPayoutMethodsEditor from "./CustomerPayoutMethodsEditor.jsx";
@@ -145,8 +145,9 @@ function customerStatusChipSx(status, theme) {
   return {
     ...ADMIN_STATUS_CHIP_SX,
     fontWeight: 800,
-    border: "none",
-    ...tone,
+    color: tone.color,
+    borderColor: tone.color,
+    bgcolor: "transparent",
   };
 }
 
@@ -155,7 +156,7 @@ function CustomerStatusChip({ status }) {
   return (
     <Chip
       label={status}
-      variant="filled"
+      variant="outlined"
       sx={customerStatusChipSx(status, theme)}
     />
   );
@@ -698,9 +699,10 @@ function CustomerDetailDialog({
                           <TableCell align="right">
                             <Button
                               size="small"
-                              variant="outlined"
+                              variant="contained"
+                              color="primary"
                               onClick={() => openOrderFromHistory(order.id)}
-                              sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
+                              sx={ADMIN_ACTION_BUTTON_SX}
                             >
                               View
                             </Button>
@@ -1184,12 +1186,13 @@ export default function CustomersPage() {
                     <TableCell align="right">
                       <Button
                         size="small"
-                        variant="outlined"
+                        variant="contained"
+                        color="primary"
                         onClick={(event) => {
                           event.stopPropagation();
                           openCustomer(customer);
                         }}
-                        sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
+                        sx={ADMIN_ACTION_BUTTON_SX}
                       >
                         View
                       </Button>

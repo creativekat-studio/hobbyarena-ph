@@ -70,7 +70,7 @@ function consolidatedNetLabel(order) {
   const net = consolidatedNet(order);
   if (net < 0) return "Refund amount";
   if (net > 0) return "Balance";
-  return "Settled";
+  return "No balance";
 }
 
 function gridHeaderCell(label, { align = "left" } = {}) {

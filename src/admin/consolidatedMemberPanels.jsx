@@ -39,7 +39,7 @@ import {
 import { PESO } from "../components/ProductCard.jsx";
 import { orderCustomerTotal } from "../lib/orderRevenue.js";
 import { buildLiveMergeWorkbook } from "../lib/orderMergeSimulation.js";
-import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
+import { ADMIN_ACTION_BUTTON_SX, ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
 import { AdminTableHeaderCell } from "./adminTableHeader.jsx";
 import { OrderTrailPanel } from "./orderDetailShared.jsx";
 
@@ -249,8 +249,8 @@ function MemberOrderDialog({ order, surfaceBorderColor, onClose }) {
   const knownNet = knownNew - known.reduce((sum, row) => sum + (Number(row.totalDp) || 0), 0);
   const net = mixed ? knownNet : (workbook?.totals?.net || 0);
   const netLabel = mixed
-    ? (knownNet < 0 ? "Refund" : knownNet > 0 ? "Balance due" : "Settled")
-    : (workbook?.totals?.netLabel || "Settled");
+    ? (knownNet < 0 ? "Refund" : knownNet > 0 ? "Balance due" : "No balance")
+    : (workbook?.totals?.netLabel || "No balance");
   const newTotal = mixed ? knownNew : (workbook?.totals?.newTotal || 0);
 
   return (
@@ -615,9 +615,10 @@ export function ConsolidatedAccountTab({
                       <TableCell align="right">
                         <Button
                           size="small"
-                          variant="outlined"
+                          variant="contained"
+                          color="primary"
                           onClick={() => setViewOrder(order)}
-                          sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
+                          sx={ADMIN_ACTION_BUTTON_SX}
                         >
                           View
                         </Button>

@@ -123,8 +123,9 @@ export default function OrderStatusPage() {
               <Chip
                 label={orderStatusLabel(migrateOrderStatus(order.status))}
                 size="small"
+                variant="outlined"
                 color={STATUS_COLOR[migrateOrderStatus(order.status)] || "default"}
-                sx={{ fontWeight: 700, fontSize: "0.68rem" }}
+                sx={{ height: 22, fontWeight: 700, fontSize: "0.62rem", borderRadius: 999 }}
               />
             </SummaryRow>
             <SummaryRow label="Placed on">

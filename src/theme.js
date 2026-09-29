@@ -92,23 +92,10 @@ export function createAppTheme(mode, proposalId = 2) {
             "&:hover": { boxShadow: "none" },
             "&:active": { boxShadow: "none" },
           },
-          containedPrimary: proposal.id === 2
-            ? {
-                background: "transparent",
-                boxShadow: "none",
-                border: "1px solid",
-                borderColor: isDarkMode ? alpha("#F5C518", 0.5) : alpha("#C9A227", 0.6),
-                color: isDarkMode ? "#F5C518" : "#B8921E",
-                "&:hover": {
-                  background: alpha(isDarkMode ? "#F5C518" : "#C9A227", 0.08),
-                  boxShadow: "none",
-                  borderColor: isDarkMode ? "#F5C518" : "#C9A227",
-                },
-              }
-            : {
-                boxShadow: "none",
-                "&:hover": { boxShadow: "none" },
-              },
+          containedPrimary: {
+            boxShadow: "none",
+            "&:hover": { boxShadow: "none" },
+          },
           outlinedPrimary: proposal.id === 2
             ? {
                 borderColor: isDarkMode ? alpha("#F5C518", 0.45) : alpha("#C9A227", 0.55),

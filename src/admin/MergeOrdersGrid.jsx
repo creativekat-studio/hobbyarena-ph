@@ -22,7 +22,7 @@ import {
 import { alpha, useTheme } from "@mui/material/styles";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
-import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
+import { ADMIN_ACTION_BUTTON_SX, ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
 import {
   PAYMENT_COLOR,
   STATUS_COLOR,
@@ -66,6 +66,7 @@ import {
   adminStickyHeaderRowSx,
 } from "./adminTableHeader.jsx";
 import {
+  EmailSentMark,
   lineItemGridSx,
   orderSummaryGridSx,
 } from "./AdminOrderAccordionRow.jsx";
@@ -133,6 +134,7 @@ function LineChipSelect({ value, options, onChange, colorMap, labelFor = (entry)
           label={labelFor(selected)}
           color={colorMap[selected] || "default"}
           variant="outlined"
+          sx={ADMIN_STATUS_CHIP_SX}
         />
       )}
     >
@@ -1163,8 +1165,8 @@ export function MergeWorkbookView({
               const knownNet = knownNew - knownDp;
               const net = mixed ? knownNet : (grid.totals?.net || 0);
               const netLabel = mixed
-                ? (knownNet < 0 ? "Refund" : knownNet > 0 ? "Balance due" : "Settled")
-                : (grid.totals?.netLabel || "Settled");
+                ? (knownNet < 0 ? "Refund" : knownNet > 0 ? "Balance due" : "No balance")
+                : (grid.totals?.netLabel || "No balance");
               return [
               {
                 key: "new-total",
@@ -1303,8 +1305,8 @@ export function totalItemQty(rows) {
   return (rows || []).reduce((sum, row) => sum + (Number(row.qty) || 0), 0);
 }
 
-const CONSOLIDATED_SUMMARY_GRID = "28px minmax(148px, 1fr) minmax(140px, 1fr) minmax(140px, 0.8fr) minmax(110px, 0.75fr) minmax(120px, 0.85fr) 240px";
-const CONSOLIDATED_TABLE_MIN_WIDTH = 960;
+const CONSOLIDATED_SUMMARY_GRID = "28px minmax(148px, 1fr) minmax(140px, 1fr) minmax(140px, 0.8fr) minmax(110px, 0.75fr) minmax(120px, 0.85fr) 112px 200px";
+const CONSOLIDATED_TABLE_MIN_WIDTH = 1080;
 const CONSOLIDATED_LINE_GRID = "minmax(180px, 1.4fr) minmax(72px, 0.6fr) minmax(110px, 0.75fr) minmax(110px, 0.85fr) minmax(110px, 0.85fr) auto";
 const CONSOLIDATED_LINE_MIN_WIDTH = 760;
 
@@ -1430,19 +1432,16 @@ function MergedSetAccordionRow({
   open,
   onToggle,
   onOpenOrder,
-  sending,
-  onSend,
   onView,
 }) {
   const theme = useTheme();
   const { customer, email } = customerContactFromOrders(set.orders);
   const sentCount = countMergedEmailsSent(set.orders);
-  const sent = sentCount > 0;
   const hasUnseenActivity = (set.orders || []).some(isUnseenOrder);
   const summary = useMemo(() => summarizeMergedSet(set.orders), [set.orders]);
   const net = Number(summary.totals?.net) || 0;
   const netSign = net < 0 ? "−" : net > 0 ? "+" : "";
-  const netKind = net < 0 ? "Refund Amount" : net > 0 ? "Balance Due" : "Settled";
+  const netKind = net < 0 ? "Refund Amount" : net > 0 ? "Balance Due" : "No balance";
 
   return (
     <Box sx={{ borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
@@ -1502,29 +1501,37 @@ function MergedSetAccordionRow({
           ) : null}
         </Box>
 
-        <Stack
-          direction="row"
-          spacing={0.75}
-          alignItems="center"
-          sx={{ minWidth: 0, flexWrap: "nowrap" }}
-        >
-          <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, whiteSpace: "nowrap" }}>
-            {summary.memberOrders.length} order{summary.memberOrders.length === 1 ? "" : "s"}
-          </Typography>
-          <OrdersInfoTip
-            orderIds={summary.memberOrders.map((order) => order.id)}
-            label="Orders in this set"
-          />
-          {summary.kinds.map((kind) => (
-            <Chip
-              key={kind}
-              label={kind}
-              variant="outlined"
-              color={kind === "Pre-order" ? "secondary" : "default"}
-              sx={{ ...ADMIN_STATUS_CHIP_SX, flexShrink: 0 }}
+        <Box sx={{ minWidth: 0 }}>
+          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: "nowrap" }}>
+            {summary.kinds.map((kind) => (
+              <Chip
+                key={kind}
+                label={kind}
+                variant="outlined"
+                color={kind === "Pre-order" ? "secondary" : "default"}
+                sx={{ ...ADMIN_STATUS_CHIP_SX, flexShrink: 0 }}
+              />
+            ))}
+          </Stack>
+          <Stack direction="row" spacing={0.4} alignItems="center" sx={{ mt: 0.35 }}>
+            <Typography
+              component="sub"
+              sx={{
+                color: "text.secondary",
+                fontSize: "0.68rem",
+                fontFamily: MONO_FONT,
+                lineHeight: 1.2,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {summary.memberOrders.length} order{summary.memberOrders.length === 1 ? "" : "s"}
+            </Typography>
+            <OrdersInfoTip
+              orderIds={summary.memberOrders.map((order) => order.id)}
+              label="Orders in this set"
             />
-          ))}
-        </Stack>
+          </Stack>
+        </Box>
 
         <Box sx={{ minWidth: 0 }}>
           <Typography sx={{ fontWeight: 800, fontSize: "0.85rem", color: "primary.main", whiteSpace: "nowrap" }}>
@@ -1541,45 +1548,24 @@ function MergedSetAccordionRow({
           </Typography>
         </Box>
 
+        <EmailSentMark sentCount={sentCount} />
+
         <Stack
+          direction="row"
           spacing={0.5}
-          alignItems="flex-end"
-          sx={{ minWidth: 0 }}
+          alignItems="center"
+          sx={{ justifySelf: "end", width: "fit-content", maxWidth: "100%" }}
           onClick={(event) => event.stopPropagation()}
         >
-          <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
-            <Button
-              size="small"
-              variant="outlined"
-              disabled={sending || !onSend}
-              onClick={onSend}
-              sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
-            >
-              {sending ? "Sending…" : "Send email"}
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={onView}
-              sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
-            >
-              View
-            </Button>
-          </Stack>
-          <Typography
-            sx={{
-              color: "text.secondary",
-              fontSize: "0.72rem",
-              fontFamily: MONO_FONT,
-              whiteSpace: "nowrap",
-              width: "100%",
-              textAlign: "left",
-            }}
+          <Button
+            size="small"
+            variant="contained"
+            color="primary"
+            onClick={onView}
+            sx={ADMIN_ACTION_BUTTON_SX}
           >
-            {sent
-              ? `Email sent: ${sentCount} ${sentCount === 1 ? "time" : "times"}`
-              : "Pending email"}
-          </Typography>
+            View
+          </Button>
         </Stack>
       </Box>
 
@@ -1667,9 +1653,10 @@ function MergedSetAccordionRow({
                     <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
                       <Button
                         size="small"
-                        variant="outlined"
+                        variant="contained"
+                        color="primary"
                         onClick={() => onOpenOrder?.(order.id)}
-                        sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
+                        sx={ADMIN_ACTION_BUTTON_SX}
                       >
                         View
                       </Button>
@@ -1847,10 +1834,11 @@ export function ConsolidatedOrderView({
       {showSend ? (
         <Stack direction="row" justifyContent="flex-end">
           <Button
-            variant="outlined"
+            variant="contained"
+            color="primary"
             disabled={!sendEnabled || sending || selectedKeys.size === 0}
             onClick={() => onSend?.({ note, attachment, workbook })}
-            sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
+            sx={ADMIN_ACTION_BUTTON_SX}
           >
             {sending ? "Sending…" : "Send email"}
           </Button>
@@ -1864,7 +1852,6 @@ export function MergedOrdersPanel({
   orders,
   ordersReady = true,
   updateOrder,
-  sendConsolidatedAllocationEmail,
   surfaceBorderColor,
   stickyHeaderBg,
   onBack,
@@ -1877,8 +1864,6 @@ export function MergedOrdersPanel({
 }) {
   const theme = useTheme();
   const headerBg = stickyHeaderBg || theme.palette.background.paper;
-  const [sendingId, setSendingId] = useState("");
-  const [sendError, setSendError] = useState("");
   const [expandedSetId, setExpandedSetId] = useState(null);
   const viewingArchived = queueFilter === "archived";
   const groupedSets = useMemo(
@@ -1930,18 +1915,6 @@ export function MergedOrdersPanel({
     setExpandedSetId((current) => (current === id ? null : id));
   }
 
-  async function handleSendSet(set, extras) {
-    setSendError("");
-    setSendingId(set.id);
-    try {
-      await sendMergedOrderEmails(set.orders, sendConsolidatedAllocationEmail, extras);
-    } catch (error) {
-      setSendError(error?.message || "Could not send email.");
-    } finally {
-      setSendingId("");
-    }
-  }
-
   if (!ordersReady) {
     return (
       <Stack spacing={1.5} alignItems="center" sx={{ py: 6, color: "text.secondary" }}>
@@ -1973,9 +1946,6 @@ export function MergedOrdersPanel({
 
   return (
     <Box ref={scrollRootRef} sx={ADMIN_LIST_SCROLL_SX}>
-      {sendError ? (
-        <Alert severity="error" sx={{ mx: 2, mt: 1.5 }}>{sendError}</Alert>
-      ) : null}
       <Box sx={{ minWidth: CONSOLIDATED_TABLE_MIN_WIDTH }}>
         <Box
           sx={{
@@ -1993,6 +1963,7 @@ export function MergedOrdersPanel({
           <AdminGridHeaderLabel>Orders</AdminGridHeaderLabel>
           <AdminGridHeaderLabel>New Total</AdminGridHeaderLabel>
           <AdminGridHeaderLabel>Settlement</AdminGridHeaderLabel>
+          <AdminGridHeaderLabel>Email sent</AdminGridHeaderLabel>
           <Box />
         </Box>
         {visibleItems.map((set) => (
@@ -2003,8 +1974,6 @@ export function MergedOrdersPanel({
             open={expandedSetId === set.id}
             onToggle={toggleSetAccordion}
             onOpenOrder={onOpenOrder}
-            sending={sendingId === set.id}
-            onSend={sendConsolidatedAllocationEmail ? () => handleSendSet(set) : undefined}
             onView={() => onViewSet?.(set)}
           />
         ))}

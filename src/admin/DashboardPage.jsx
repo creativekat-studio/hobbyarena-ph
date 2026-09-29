@@ -1125,7 +1125,7 @@ export default function DashboardPage() {
                       size="small"
                       color={ORDER_STATUS_COLOR[order.status] || "default"}
                       variant="outlined"
-                      sx={{ maxWidth: "100%", "& .MuiChip-label": { overflow: "hidden", textOverflow: "ellipsis" } }}
+                      sx={{ height: 22, fontSize: "0.62rem", borderRadius: 999, maxWidth: "100%", "& .MuiChip-label": { overflow: "hidden", textOverflow: "ellipsis" } }}
                     />
                   </Box>
 

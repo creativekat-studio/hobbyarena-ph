@@ -18,7 +18,7 @@ import {
   describeMergeSelection,
   evaluateMergeSelection,
 } from "../lib/orderMergeSimulation.js";
-import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
+import { ADMIN_ACTION_BUTTON_SX, ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
 import {
   customerContactFromOrders,
   MergeWorkbookView,
@@ -428,10 +428,11 @@ export default function NewConsolidatedOrderPage() {
           </Button>
           <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end" flexWrap="wrap" useFlexGap>
             <Button
-              variant="outlined"
+              variant="contained"
+              color="primary"
               disabled={!canApply || !sendConsolidatedAllocationEmail}
               onClick={() => setConfirmSend(true)}
-              sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
+              sx={ADMIN_ACTION_BUTTON_SX}
             >
               {sending ? "Sending…" : "Send email"}
             </Button>
@@ -439,7 +440,7 @@ export default function NewConsolidatedOrderPage() {
               variant="contained"
               disabled={!canApply}
               onClick={() => setConfirmApply(true)}
-              sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
+              sx={ADMIN_ACTION_BUTTON_SX}
             >
               {applyLabel}
             </Button>

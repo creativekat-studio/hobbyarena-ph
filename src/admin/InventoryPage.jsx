@@ -65,6 +65,7 @@ import {
   ADMIN_TABLE_SORT_LABEL_SX,
 } from "./adminTableHeader.jsx";
 import AddProductDialog from "./AddProductDialog.jsx";
+import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
 import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
 
 const STATUS_FILTERS = [
@@ -156,7 +157,29 @@ function PublishControl({ row, togglePublished }) {
   );
 }
 
-function FeaturedCheckbox({ row, featuredCountSealed, featuredCountPreorder, toggleFeatured }) {
+function CardCheckLabel({ label, children }) {
+  return (
+    <Stack spacing={0} alignItems="center" sx={{ minWidth: 0 }}>
+      {children}
+      <Typography
+        sx={{
+          fontSize: "0.58rem",
+          fontWeight: 800,
+          letterSpacing: 0.3,
+          lineHeight: 1,
+          color: "text.secondary",
+          fontFamily: MONO_FONT,
+          textTransform: "uppercase",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </Typography>
+    </Stack>
+  );
+}
+
+function FeaturedCheckbox({ row, featuredCountSealed, featuredCountPreorder, toggleFeatured, showLabel = false }) {
   const archived = isArchivedRow(row);
   const outOfStock = productTracksStock(row) && row.stock <= 0;
   const isPreorder = row.type === "Pre-order";
@@ -174,7 +197,7 @@ function FeaturedCheckbox({ row, featuredCountSealed, featuredCountPreorder, tog
           ? "Remove from homepage featured"
           : "Feature on homepage";
 
-  return (
+  const control = (
     <Tooltip title={title}>
       <span>
         <Checkbox
@@ -185,13 +208,16 @@ function FeaturedCheckbox({ row, featuredCountSealed, featuredCountPreorder, tog
           size="small"
           color="secondary"
           inputProps={{ "aria-label": title }}
+          sx={showLabel ? { p: 0.25 } : undefined}
         />
       </span>
     </Tooltip>
   );
+
+  return showLabel ? <CardCheckLabel label="Featured">{control}</CardCheckLabel> : control;
 }
 
-function ComingSoonCheckbox({ row, toggleComingSoon }) {
+function ComingSoonCheckbox({ row, toggleComingSoon, showLabel = false }) {
   const archived = isArchivedRow(row);
   const title = archived
     ? "Archived products can’t be marked coming soon"
@@ -199,7 +225,7 @@ function ComingSoonCheckbox({ row, toggleComingSoon }) {
       ? "Remove coming soon — allow purchase / countdown"
       : "Mark coming soon — visible, not for sale";
 
-  return (
+  const control = (
     <Tooltip title={title}>
       <span>
         <Checkbox
@@ -210,10 +236,13 @@ function ComingSoonCheckbox({ row, toggleComingSoon }) {
           size="small"
           color="warning"
           inputProps={{ "aria-label": title }}
+          sx={showLabel ? { p: 0.25 } : undefined}
         />
       </span>
     </Tooltip>
   );
+
+  return showLabel ? <CardCheckLabel label="Coming soon">{control}</CardCheckLabel> : control;
 }
 
 function InventoryTableView({
@@ -257,7 +286,7 @@ function InventoryTableView({
   return (
     <Box ref={scrollRootRef} sx={ADMIN_LIST_SCROLL_SX}>
       <TableContainer sx={{ overflow: "visible" }}>
-      <Table stickyHeader>
+      <Table stickyHeader sx={{ tableLayout: "fixed", width: "100%" }}>
         <TableHead>
           <TableRow>
             <TableCell padding="checkbox">
@@ -269,17 +298,18 @@ function InventoryTableView({
               />
             </TableCell>
             <AdminTableHeaderCell sx={{ width: 56 }} />
-            <SortHeader id="sku" label="SKU" />
-            <SortHeader id="product" label="Product" />
-            <SortHeader id="type" label="Type" sx={{ display: { xs: "none", md: "table-cell" } }} />
-            <SortHeader id="price" label="Price" align="right" sx={{ display: { xs: "none", sm: "table-cell" } }} />
-            <SortHeader id="cost" label="Cost" align="right" sx={{ display: { xs: "none", md: "table-cell" } }} />
-            <SortHeader id="stock" label="Stock" align="right" />
-            <SortHeader id="value" label="Value" align="right" sx={{ display: { xs: "none", sm: "table-cell" } }} />
-            <SortHeader id="live" label="Live" align="center" />
+            <SortHeader id="sku" label="SKU" sx={{ width: 112 }} />
+            <SortHeader id="product" label="Product" sx={{ width: "34%" }} />
+            <SortHeader id="type" label="Type" sx={{ width: 92, display: { xs: "none", md: "table-cell" } }} />
+            <SortHeader id="price" label="Price" align="right" sx={{ width: 108, display: { xs: "none", sm: "table-cell" } }} />
+            <SortHeader id="cost" label="Cost" align="right" sx={{ width: 108, display: { xs: "none", md: "table-cell" } }} />
+            <SortHeader id="stock" label="Stock" align="right" sx={{ width: 72 }} />
+            <SortHeader id="value" label="Value" align="right" sx={{ width: 100, display: { xs: "none", sm: "table-cell" } }} />
+            <SortHeader id="live" label="Live" align="center" sx={{ width: 72 }} />
             <TableCell
               align="center"
               sortDirection={sort.key === "featured" ? sort.dir : false}
+              sx={{ width: 108 }}
             >
               <TableSortLabel
                 active={sort.key === "featured"}
@@ -313,6 +343,7 @@ function InventoryTableView({
             <TableCell
               align="center"
               sortDirection={sort.key === "comingSoon" ? sort.dir : false}
+              sx={{ width: 128 }}
             >
               <TableSortLabel
                 active={sort.key === "comingSoon"}
@@ -341,7 +372,7 @@ function InventoryTableView({
                 </Box>
               </TableSortLabel>
             </TableCell>
-            <SortHeader id="status" label="Status" align="right" />
+            <SortHeader id="status" label="Status" align="right" sx={{ width: 116 }} />
             <AdminTableHeaderCell sx={{ width: 96 }} />
           </TableRow>
         </TableHead>
@@ -372,12 +403,17 @@ function InventoryTableView({
                   <InventoryProductThumb row={row} size={44} isDarkMode={isDarkMode} />
                 </TableCell>
                 <TableCell sx={{ fontFamily: MONO_FONT, fontWeight: 700, whiteSpace: "nowrap" }}>{row.sku}</TableCell>
-                <TableCell sx={{ maxWidth: 320 }}>
+                <TableCell sx={{ width: "34%" }}>
                   <Typography sx={{ fontWeight: 600, fontSize: "0.9rem", lineHeight: 1.3 }}>{row.name}</Typography>
                   <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", fontFamily: MONO_FONT }}>{row.line}</Typography>
                 </TableCell>
                 <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
-                  <Chip label={row.type} size="small" variant="outlined" color={row.type === "Pre-order" ? "secondary" : "default"} />
+                  <Chip
+                    label={row.type}
+                    variant="outlined"
+                    color={row.type === "Pre-order" ? "secondary" : "default"}
+                    sx={ADMIN_STATUS_CHIP_SX}
+                  />
                 </TableCell>
                 <TableCell align="right" sx={{ fontWeight: 700, display: { xs: "none", sm: "table-cell" } }}>{PESO.format(row.price)}</TableCell>
                 <TableCell align="right" sx={{ fontWeight: 700, display: { xs: "none", md: "table-cell" }, color: "text.secondary" }}>
@@ -403,9 +439,9 @@ function InventoryTableView({
                 </TableCell>
                 <TableCell align="right">
                   {archived ? (
-                    <Chip label="Archived" size="small" color="error" variant="outlined" />
+                    <Chip label="Archived" color="error" variant="outlined" sx={ADMIN_STATUS_CHIP_SX} />
                   ) : (
-                    <Chip label={status.label} size="small" color={status.color} variant="outlined" />
+                    <Chip label={status.label} color={status.color} variant="outlined" sx={ADMIN_STATUS_CHIP_SX} />
                   )}
                 </TableCell>
                 <TableCell align="right" onClick={(event) => event.stopPropagation()}>
@@ -505,7 +541,7 @@ function InventoryCardView({
                 ...panelSx,
                 position: "relative",
                 p: 2,
-                pb: 5.5,
+                pb: 2,
                 height: "100%",
                 opacity: archived ? 0.55 : row.published ? 1 : 0.78,
                 display: "flex",
@@ -582,30 +618,44 @@ function InventoryCardView({
                 </Typography>
               </Stack>
 
-              <Box sx={{ position: "absolute", bottom: 12, left: 12, display: "flex", gap: 0.5, flexWrap: "wrap", alignItems: "center" }}>
-                <Chip label={row.type} size="small" variant="outlined" color={row.type === "Pre-order" ? "secondary" : "default"} />
-                {archived ? (
-                  <Chip label="Archived" size="small" color="error" variant="outlined" />
-                ) : (
-                  <Chip label={status.label} size="small" color={status.color} variant="outlined" />
-                )}
-              </Box>
-
               <Stack
                 direction="row"
                 spacing={1}
-                alignItems="center"
-                sx={{ position: "absolute", bottom: 8, right: 8 }}
-                onClick={(event) => event.stopPropagation()}
+                alignItems="flex-end"
+                justifyContent="space-between"
+                useFlexGap
+                flexWrap="wrap"
+                sx={{ mt: "auto" }}
               >
-                <ComingSoonCheckbox row={row} toggleComingSoon={toggleComingSoon} />
-                <FeaturedCheckbox
-                  row={row}
-                  featuredCountSealed={featuredCountSealed}
-                  featuredCountPreorder={featuredCountPreorder}
-                  toggleFeatured={toggleFeatured}
-                />
-                <PublishControl row={row} togglePublished={togglePublished} />
+                <Stack direction="row" spacing={0.5} alignItems="center" useFlexGap flexWrap="wrap">
+                  <Chip
+                    label={row.type}
+                    variant="outlined"
+                    color={row.type === "Pre-order" ? "secondary" : "default"}
+                    sx={ADMIN_STATUS_CHIP_SX}
+                  />
+                  {archived ? (
+                    <Chip label="Archived" color="error" variant="outlined" sx={ADMIN_STATUS_CHIP_SX} />
+                  ) : (
+                    <Chip label={status.label} color={status.color} variant="outlined" sx={ADMIN_STATUS_CHIP_SX} />
+                  )}
+                </Stack>
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  alignItems="flex-end"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <ComingSoonCheckbox row={row} toggleComingSoon={toggleComingSoon} showLabel />
+                  <FeaturedCheckbox
+                    row={row}
+                    featuredCountSealed={featuredCountSealed}
+                    featuredCountPreorder={featuredCountPreorder}
+                    toggleFeatured={toggleFeatured}
+                    showLabel
+                  />
+                  <PublishControl row={row} togglePublished={togglePublished} />
+                </Stack>
               </Stack>
             </Box>
           </Grid>
