@@ -15,6 +15,7 @@ import {
   totalsBlock,
   wrapSimpleEmail,
 } from "./emailTemplate.js";
+import { singleOrderEmailSections } from "./orderStatusEmail.js";
 
 function orderKind(order) {
   if (order.type === "Pre-order") return "preorder";
@@ -92,7 +93,6 @@ export function buildOrderAcknowledgementEmail(order, options = {}) {
   const kind = orderKind(order);
   const isPreorder = kind === "preorder";
   const lineItems = normalizeLineItems(order);
-  const notes = customerNotes(order);
   const orderDate = formatEmailDate(order.date || new Date().toISOString());
   const subject = isPreorder
     ? `Pre-order confirmation — ${order.id}`
@@ -100,21 +100,7 @@ export function buildOrderAcknowledgementEmail(order, options = {}) {
   const dp = depositPercentOf(order);
   const bal = balancePercentOf(order);
 
-  const totalRows = [
-    { label: "Subtotal", value: formatPeso(order.subtotal || order.total) },
-    { label: "Shipping", value: order.shippingFee > 0 ? formatPeso(order.shippingFee) : "At buyer's expense" },
-  ];
-
-  if (isPreorder) {
-    totalRows.push({ label: `Paid now DP (${dp}%)`, value: formatPeso(order.total) });
-    if (order.balanceDue > 0) {
-      totalRows.push({ label: `Balance Due (${bal}%)`, value: formatPeso(order.balanceDue) });
-    }
-    totalRows.push({ label: "Order total", value: formatPeso((order.subtotal || order.total) + (order.balanceDue || 0)), strong: true });
-  } else {
-    totalRows.push({ label: "Total", value: formatPeso(order.total), strong: true });
-  }
-
+  const orderSections = singleOrderEmailSections(order);
   const assignedFooter = resolveReminderFooter(options.reminder, null);
   const showReminder = shouldShowPreorderReminder(order, null, options.reminder);
   const reminderOpts = {
@@ -144,16 +130,7 @@ export function buildOrderAcknowledgementEmail(order, options = {}) {
     `Date: ${orderDate}`,
     `Payment: ${order.payment || "Pending Verification"}`,
     "",
-    ...lineItems.map((item) => {
-      const unit = item.lineTotal > 0
-        ? item.lineTotal / Math.max(1, item.quantity)
-        : item.price;
-      const unitLabel = unit > 0 ? ` @ ${formatPeso(unit)}` : "";
-      return `${item.quantity}× ${item.name}${unitLabel}`;
-    }),
-    "",
-    ...totalRows.map((row) => `${row.label}: ${row.value}`),
-    ...notesTextLines(notes),
+    ...orderSections.lines,
     "",
     showReminder ? preorderReminderText(reminderOpts) : "Questions? Message us at Hobby Arena PH.",
     "",
@@ -175,11 +152,7 @@ export function buildOrderAcknowledgementEmail(order, options = {}) {
     ${metaLine(`<strong style="color:${EMAIL_BRAND.colors.text}">${escapeHtml(order.customer)}</strong>`)}
     ${metaLine(escapeHtml(order.email))}
     ${order.phone ? metaLine(escapeHtml(order.phone)) : ""}
-    ${sectionHeading("Order summary")}
-    ${invoiceTable(lineItems)}
-    ${totalsBlock(totalRows)}
-    <div style="clear:both"></div>
-    ${notesHtml(notes)}
+    ${orderSections.html}
     ${divider()}
     ${sectionHeading("Status")}
     ${statusList([

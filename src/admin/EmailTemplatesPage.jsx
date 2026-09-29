@@ -49,12 +49,14 @@ import {
   PASSWORD_RESET_PLACEHOLDERS,
   PREORDER_REMINDER_PLACEHOLDERS,
   addEmailFooter,
+  getActionNotes,
   getEditableEmailBody,
   getEmailSubjectOverride,
   getPreorderReminderConfig,
   getShowMessengerButton,
   setEmailSubjectOverride,
   removeEmailFooter,
+  setActionNotes,
   setEmailBodyOverride,
   setEmailFooterAssignment,
   setPreorderReminderConfig,
@@ -160,7 +162,7 @@ function buildSampleOrder(recipientEmail, emailType) {
   };
 }
 
-function EmailPreview({ emailType, body, subject, reminder, showMessengerButton, surfaceBorderColor }) {
+function EmailPreview({ emailType, body, subject, reminder, showMessengerButton, actionNotes, surfaceBorderColor }) {
   const [state, setState] = useState({ loading: true, html: "", subject: "", error: "" });
 
   useEffect(() => {
@@ -171,7 +173,7 @@ function EmailPreview({ emailType, body, subject, reminder, showMessengerButton,
         const result = buildOrderStatusEmail(
           buildSampleOrder(PREVIEW_EMAIL, emailType),
           emailType,
-          { bodyOverride: body, subjectOverride: subject, reminder, showMessengerButton },
+          { bodyOverride: body, subjectOverride: subject, reminder, showMessengerButton, actionNotes },
         );
         if (cancelled) return;
         if (!result) {
@@ -188,7 +190,7 @@ function EmailPreview({ emailType, body, subject, reminder, showMessengerButton,
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [emailType, body, subject, reminder, showMessengerButton]);
+  }, [emailType, body, subject, reminder, showMessengerButton, actionNotes]);
 
   return (
     <Box sx={{ height: "100%", minHeight: 0, flex: 1, display: "flex", flexDirection: "column" }}>
@@ -266,6 +268,8 @@ function EmailEditor({
   onReminderChange,
   showMessengerButton,
   onShowMessengerChange,
+  actionNotes,
+  onActionNotesChange,
 }) {
   const theme = useTheme();
   const [saved, setSaved] = useState(false);
@@ -275,10 +279,16 @@ function EmailEditor({
   const isCustom = draft.trim() !== defaultBody.trim() || Boolean(String(subject || "").trim());
   const selectedFooterId = reminder?.assignmentByType?.[emailType] || "";
   const isConsolidated = emailType === "consolidated_allocation";
+  const noteFields = actionNotes && typeof actionNotes === "object" ? actionNotes : {};
+  const hasRefundNote = Object.prototype.hasOwnProperty.call(noteFields, "refund");
+  const hasBalanceNote = Object.prototype.hasOwnProperty.call(noteFields, "balance");
 
   function handleSave() {
     setEmailBodyOverride(emailType, draft);
     setEmailSubjectOverride(emailType, subject);
+    if (hasRefundNote || hasBalanceNote) {
+      onActionNotesChange?.(setActionNotes(emailType, noteFields));
+    }
     onDraftChange(getEditableEmailBody(emailType));
     onSubjectChange?.(getEmailSubjectOverride(emailType));
     setSaved(true);
@@ -318,6 +328,7 @@ function EmailEditor({
         subjectOverride: subject,
         reminder,
         showMessengerButton,
+        actionNotes: noteFields,
       });
       if (result?.simulated) {
         onTestResult({
@@ -393,6 +404,39 @@ function EmailEditor({
           />
         ))}
       </PlaceholderGroup>
+
+      {hasRefundNote ? (
+        <TextField
+          fullWidth
+          multiline
+          minRows={2}
+          size="small"
+          label={hasBalanceNote ? "Refund button note" : "Note above the button"}
+          value={noteFields.refund}
+          onChange={(e) => {
+            onActionNotesChange?.({ ...noteFields, refund: e.target.value });
+            setSaved(false);
+          }}
+          helperText={hasBalanceNote
+            ? "Shown above Submit Bank Details when this email is a refund. The preview uses that case."
+            : "Shown above the Submit Bank Details button."}
+        />
+      ) : null}
+      {hasBalanceNote ? (
+        <TextField
+          fullWidth
+          multiline
+          minRows={2}
+          size="small"
+          label={hasRefundNote ? "Balance button note" : "Note above the button"}
+          value={noteFields.balance}
+          onChange={(e) => {
+            onActionNotesChange?.({ ...noteFields, balance: e.target.value });
+            setSaved(false);
+          }}
+          helperText="Shown above the Submit Proof button."
+        />
+      ) : null}
 
       <Stack direction="row" spacing={1} alignItems="center">
         <FormControl size="small" sx={{ flex: 1, minWidth: 0 }}>
@@ -1198,6 +1242,9 @@ export default function EmailTemplatesPage() {
   const [messengerByType, setMessengerByType] = useState(() => (
     Object.fromEntries(EMAIL_TYPES.map((type) => [type, getShowMessengerButton(type)]))
   ));
+  const [actionNotesByType, setActionNotesByType] = useState(() => (
+    Object.fromEntries(EMAIL_TYPES.map((type) => [type, getActionNotes(type)]))
+  ));
 
   const draft = drafts[activeType] ?? "";
 
@@ -1213,6 +1260,10 @@ export default function EmailTemplatesPage() {
 
   function setMessengerForActive(value) {
     setMessengerByType((prev) => ({ ...prev, [activeType]: value }));
+  }
+
+  function setActionNotesForActive(value) {
+    setActionNotesByType((prev) => ({ ...prev, [activeType]: value }));
   }
 
   function feedbackSeverity() {
@@ -1352,8 +1403,10 @@ export default function EmailTemplatesPage() {
                 onTestResult={setFeedback}
                 reminder={reminderDraft}
                 onReminderChange={setReminderDraft}
-                showMessengerButton={messengerByType[activeType] !== false}
+                showMessengerButton={messengerByType[activeType] === true}
                 onShowMessengerChange={setMessengerForActive}
+                actionNotes={actionNotesByType[activeType]}
+                onActionNotesChange={setActionNotesForActive}
               />
 
               <Box
@@ -1374,7 +1427,8 @@ export default function EmailTemplatesPage() {
                   body={draft}
                   subject={subjects[activeType] || ""}
                   reminder={reminderDraft}
-                  showMessengerButton={messengerByType[activeType] !== false}
+                  showMessengerButton={messengerByType[activeType] === true}
+                  actionNotes={actionNotesByType[activeType]}
                   surfaceBorderColor={surfaceBorderColor}
                 />
               </Box>

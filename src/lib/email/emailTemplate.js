@@ -233,20 +233,20 @@ function resolveReminderLines(lines, placeholders = {}) {
 }
 
 /**
- * Side-by-side CTA buttons for balance payment or refund detail submission.
- * @param {{ caption?: string; accountLabel: string; accountHref: string; messengerLabel: string; messengerHref: string; showMessenger?: boolean }} options
+ * Account CTA, with an optional Message Hobby Arena button beside it.
+ * @param {{ caption?: string; accountLabel: string; accountHref: string; messengerLabel?: string; messengerHref?: string; showMessenger?: boolean }} options
  */
 export function customerResponseButtons({
   caption = "",
   accountLabel,
   accountHref,
-  messengerLabel,
-  messengerHref,
-  showMessenger = true,
+  messengerLabel = "Message Hobby Arena PH",
+  messengerHref = "",
+  showMessenger = false,
 }) {
   const c = EMAIL_BRAND.colors;
-  const buttonBase = `display:block;width:100%;padding:12px 14px;border-radius:8px;font-family:${FONT};font-size:13px;font-weight:700;line-height:1.35;text-align:center;text-decoration:none;box-sizing:border-box`;
   const linkAttrs = 'target="_blank" rel="noopener noreferrer"';
+  const buttonBase = `display:block;width:100%;padding:12px 14px;border-radius:8px;font-family:${FONT};font-size:13px;font-weight:700;line-height:1.35;text-align:center;text-decoration:none;box-sizing:border-box`;
 
   const primaryButton = `
     <a href="${escapeHtml(accountHref)}" ${linkAttrs} style="${buttonBase};background:${c.ink};color:#FFFFFF;border:1px solid ${c.ink}">
@@ -288,7 +288,7 @@ export function customerResponseButtons({
   `;
 }
 
-/** Single Messenger CTA (e.g. ready for pickup). */
+/** Optional Messenger CTA. Hidden unless an admin turns it on for that template. */
 export function messengerButton({
   caption = "",
   label = "Message Hobby Arena PH",
@@ -321,13 +321,21 @@ export function wrapSimpleEmail({ preheader = "", bodyHtml, footerNote = "" }) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="color-scheme" content="light" />
   <title>${escapeHtml(EMAIL_BRAND.name)}</title>
+  <style>
+    .consolidated-stack { display: none !important; max-height: 0; overflow: hidden; mso-hide: all; }
+    @media only screen and (max-width: 480px) {
+      .email-pad { padding: 28px 14px !important; }
+      .consolidated-table { display: none !important; max-height: 0 !important; overflow: hidden !important; }
+      .consolidated-stack { display: block !important; max-height: none !important; overflow: visible !important; }
+    }
+  </style>
 </head>
 <body style="margin:0;padding:0;background:${c.page};color:${c.text};-webkit-text-size-adjust:100%">
   ${preheaderBlock(preheader)}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${c.page};padding:40px 16px">
     <tr>
       <td align="center">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:${c.panel};padding:40px 36px">
+        <table role="presentation" class="email-pad" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:${c.panel};padding:40px 36px">
           <tr>
             <td style="font-family:${FONT}">
               ${emailHeader()}

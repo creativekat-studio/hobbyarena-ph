@@ -81,7 +81,7 @@ function readConsolidated(raw) {
 
 function readPayload(body) {
   if (!body || typeof body !== "object") return null;
-  const { emailType, order, bodyOverride, subjectOverride, reminder, showMessengerButton } = body;
+  const { emailType, order, bodyOverride, subjectOverride, reminder, showMessengerButton, actionNotes } = body;
   if (!emailType || !order?.id || !order?.customer || !isValidEmail(order.email)) return null;
   return {
     emailType: String(emailType),
@@ -89,6 +89,12 @@ function readPayload(body) {
     subjectOverride: typeof subjectOverride === "string" ? subjectOverride.slice(0, 200) : "",
     reminder: readReminderConfig(reminder),
     showMessengerButton: typeof showMessengerButton === "boolean" ? showMessengerButton : undefined,
+    actionNotes: actionNotes && typeof actionNotes === "object"
+      ? {
+        ...(typeof actionNotes.refund === "string" ? { refund: actionNotes.refund.slice(0, 500) } : {}),
+        ...(typeof actionNotes.balance === "string" ? { balance: actionNotes.balance.slice(0, 500) } : {}),
+      }
+      : undefined,
     order: {
       id: String(order.id),
       customer: String(order.customer).trim(),
@@ -104,6 +110,7 @@ function readPayload(body) {
       qty: Number(order.qty) || 1,
       depositPercent: Number(order.depositPercent) || 30,
       date: order.date ? String(order.date) : "",
+      ...(order.mergedSetId ? { mergedSetId: String(order.mergedSetId).trim().slice(0, 40) } : {}),
       items: order.items ? String(order.items) : "",
       notes: order.notes ? String(order.notes).trim().slice(0, 2000) : "",
       lineItems: Array.isArray(order.lineItems) ? order.lineItems : [],
@@ -164,6 +171,7 @@ export default async function handler(req, res) {
       ...(payload.subjectOverride ? { subjectOverride: payload.subjectOverride } : {}),
       ...(payload.reminder ? { reminder: payload.reminder } : {}),
       ...(typeof payload.showMessengerButton === "boolean" ? { showMessengerButton: payload.showMessengerButton } : {}),
+      ...(payload.actionNotes ? { actionNotes: payload.actionNotes } : {}),
     });
     if (!content) {
       return res.status(400).json({ error: "Unknown email type." });

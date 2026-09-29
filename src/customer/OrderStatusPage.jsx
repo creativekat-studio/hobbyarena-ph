@@ -55,6 +55,13 @@ export default function OrderStatusPage() {
   );
   const lineItems = order?.lineItems ?? [];
 
+  useEffect(() => {
+    if (window.location.hash !== "#balance-proof") return;
+    const el = document.querySelector("[data-balance-proof]");
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [ordersReady, order]);
+
   if (parseConsolidatedOrderId(orderId)) {
     return <CustomerConsolidatedOrderPage />;
   }

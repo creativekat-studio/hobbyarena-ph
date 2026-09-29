@@ -109,7 +109,19 @@ export default function ConsolidatedOrderDetailPage() {
   const [confirmRemove, setConfirmRemove] = useState(null);
   const [selectionResetKey, setSelectionResetKey] = useState(0);
 
-  const set = useMemo(() => findConsolidatedSet(orders, setId), [orders, setId]);
+  const set = useMemo(() => {
+    const merged = findConsolidatedSet(orders, setId);
+    if (merged) return merged;
+    const order = (orders || []).find((row) => row.id === setId);
+    if (!order) return null;
+    return {
+      id: order.id,
+      displayId: order.id,
+      orders: [order],
+      mergedAt: order.createdAt || "",
+      standalone: true,
+    };
+  }, [orders, setId]);
   const contact = customerContactFromOrders(set?.orders);
   const sentCount = set ? countMergedEmailsSent(set.orders) : 0;
   const consolidatedId = set ? displayConsolidatedOrderId(set) : setId;
@@ -292,7 +304,21 @@ export default function ConsolidatedOrderDetailPage() {
     try {
       for (const draft of Object.values(lineDrafts)) {
         if (!draft?.orderId || removed.has(draft.orderId)) continue;
-        await setPaymentAndStatus?.(draft.orderId, draft.payment, draft.status, draft.lineItemId);
+        const simulated = (payload?.workbook?.orderDetails || []).find((row) => row.key === draft.key
+          || (row.orderId === draft.orderId && row.lineItemId === draft.lineItemId));
+        const product = (payload?.workbook?.consolidated || []).find((row) => row.productKey === simulated?.productKey);
+        const enteredAllocation = Boolean(set.standalone)
+          && product?.allocationMode === "entry"
+          && (product?.qtyOverride || Number(product?.allocationPercent) > 0);
+        await setPaymentAndStatus?.(
+          draft.orderId,
+          draft.payment,
+          draft.status,
+          draft.lineItemId,
+          "",
+          undefined,
+          enteredAllocation ? simulated.finalAllocation : undefined,
+        );
       }
       const remainingOrders = (set.orders || []).filter((order) => !removed.has(order.id));
       if (saveConsolidatedEmailExtras && remainingOrders.length) {
@@ -324,7 +350,9 @@ export default function ConsolidatedOrderDetailPage() {
 
   async function handleSave() {
     if (!set) return;
-    const removedIds = [...(payload?.removedOrderIds || [])].sort(compareOrdersByOrderNo);
+    const removedIds = set.standalone
+      ? []
+      : [...(payload?.removedOrderIds || [])].sort(compareOrdersByOrderNo);
     if (removedIds.length) {
       setConfirmRemove({
         orderIds: removedIds,
@@ -355,9 +383,9 @@ export default function ConsolidatedOrderDetailPage() {
           {backNav.label}
         </Button>
         <Box sx={{ ...panelSx, p: 4, textAlign: "center" }}>
-          <Typography sx={{ fontWeight: 800, mb: 1 }}>Consolidated order not found</Typography>
+          <Typography sx={{ fontWeight: 800, mb: 1 }}>Order not found</Typography>
           <Typography color="text.secondary" sx={{ mb: 2 }}>
-            This set may have been unmerged or the link is invalid.
+            This order may have been removed or the link is invalid.
           </Typography>
           <Button variant="contained" onClick={() => goToOrdersList("merged")}>
             View consolidated orders
@@ -417,7 +445,7 @@ export default function ConsolidatedOrderDetailPage() {
       </Button>
 
       <AdminPageHeader
-        eyebrow="Consolidated order"
+        eyebrow={set.standalone ? "Order" : "Consolidated order"}
         title={consolidatedId}
         subtitle={`${formatOrderTimestamp({ createdAt: set.mergedAt })} · ${contact.customer}${contact.email ? ` · ${contact.email}` : ""}`}
         action={(
@@ -497,6 +525,7 @@ export default function ConsolidatedOrderDetailPage() {
             }}
             lineDrafts={lineDrafts}
             selectionResetKey={selectionResetKey}
+            allocationEditing={Boolean(set.standalone)}
             onPaymentChange={handlePaymentChange}
             onStatusChange={handleStatusChange}
             onPayloadChange={handlePayloadChange}

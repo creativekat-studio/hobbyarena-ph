@@ -57,7 +57,7 @@ import {
 import { queueOrderAcknowledgement, queueOrderStatusEmail } from "./emailService.js";
 import { resolveOrderStatusEmailTypeForCurrentState, ORDER_STATUS_EMAIL_LABELS } from "./orderEmailTriggers.js";
 import { buildConsolidatedEmailOrder, buildLiveMergeWorkbook } from "./orderMergeSimulation.js";
-import { getEmailBodyOverride, getEmailSubjectOverride, getPreorderReminderConfig, getShowMessengerButton } from "./emailTemplatesStore.js";
+import { getActionNotes, getEmailBodyOverride, getEmailSubjectOverride, getPreorderReminderConfig, getShowMessengerButton } from "./emailTemplatesStore.js";
 import { normalizeProofDataUrl } from "./imageCompression.js";
 import { uploadOrderProofFromDataUrl } from "./firebase/repositories/uploads.js";
 import { useInventory } from "./inventoryStore.jsx";
@@ -515,6 +515,7 @@ export function OrdersProvider({ children }) {
         subjectOverride: getEmailSubjectOverride(emailType),
         reminder: getPreorderReminderConfig(),
         showMessengerButton: getShowMessengerButton(emailType),
+        actionNotes: getActionNotes(emailType),
         order: {
           id: order.id,
           customer: order.customer,
@@ -551,6 +552,7 @@ export function OrdersProvider({ children }) {
             creditAmount: primaryItem.creditAmount ?? 0,
           },
           ...(statusAttachment ? { statusAttachment } : {}),
+          ...(order.mergedSetId ? { mergedSetId: String(order.mergedSetId) } : {}),
         },
       };
     };
@@ -718,6 +720,7 @@ export function OrdersProvider({ children }) {
         subjectOverride: getEmailSubjectOverride("consolidated_allocation"),
         reminder: getPreorderReminderConfig(),
         showMessengerButton: getShowMessengerButton("consolidated_allocation"),
+        actionNotes: getActionNotes("consolidated_allocation"),
         order: {
           ...buildConsolidatedEmailOrder(list, workbook),
           ...(note ? { notes: note } : {}),

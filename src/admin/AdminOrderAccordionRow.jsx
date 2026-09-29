@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   Box,
   Button,
@@ -12,7 +13,7 @@ import {
 import { alpha, useTheme } from "@mui/material/styles";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
-import { ArchiveIcon, InfoIcon, RestoreIcon } from "../components/icons.jsx";
+import { ArchiveIcon, RestoreIcon } from "../components/icons.jsx";
 import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
 import { AdminGridHeaderLabel } from "./adminTableHeader.jsx";
 import {
@@ -20,7 +21,6 @@ import {
   STATUS_COLOR,
   allocationLabelForItem,
   getOrderLineItems,
-  getOrderStage,
   isPreorderOrder,
   lineItemTrailLabel,
   migratePaymentStatus,
@@ -30,12 +30,13 @@ import {
 } from "../data/orderWorkflow.js";
 import { isArchivedOrder, isUnseenOrder } from "../lib/ordersStore.jsx";
 import { lineItemAmount } from "../lib/orderRevenue.js";
+import { buildLiveMergeWorkbook } from "../lib/orderMergeSimulation.js";
 import { formatOrderTimestamp } from "../lib/orderTimestamps.js";
 
-export const ORDER_SUMMARY_GRID = "36px 28px minmax(140px, 1.1fr) minmax(120px, 1fr) minmax(140px, 1.3fr) minmax(120px, 0.9fr) auto";
-export const ORDER_SUMMARY_GRID_NO_SELECT = "28px minmax(140px, 1.1fr) minmax(120px, 1fr) minmax(140px, 1.3fr) minmax(120px, 0.9fr) auto";
-export const LINEITEM_GRID = "minmax(160px, 1.25fr) minmax(100px, 0.85fr) minmax(72px, 0.6fr) minmax(110px, 0.75fr) minmax(110px, 0.85fr) minmax(110px, 0.85fr)";
-export const ORDER_TABLE_MIN_WIDTH = 760;
+export const ORDER_SUMMARY_GRID = "36px 28px minmax(148px, 1fr) minmax(140px, 1fr) minmax(140px, 0.8fr) minmax(110px, 0.75fr) minmax(120px, 0.85fr) 240px";
+export const ORDER_SUMMARY_GRID_NO_SELECT = "28px minmax(148px, 1fr) minmax(140px, 1fr) minmax(140px, 0.8fr) minmax(110px, 0.75fr) minmax(120px, 0.85fr) 240px";
+export const LINEITEM_GRID = "minmax(180px, 1.4fr) minmax(72px, 0.6fr) minmax(110px, 0.75fr) minmax(110px, 0.85fr) minmax(110px, 0.85fr)";
+export const ORDER_TABLE_MIN_WIDTH = 960;
 const LINEITEM_TABLE_MIN_WIDTH = 720;
 
 export function orderSummaryGridSx(overrides = {}) {
@@ -65,10 +66,21 @@ export function lineItemGridSx(overrides = {}) {
   };
 }
 
-const DONE_STATUSES = new Set(["Fulfilled", "Refunded", "Unpaid"]);
+function moneyColor(value) {
+  if (value > 0) return "success.main";
+  if (value < 0) return "error.main";
+  return "text.primary";
+}
 
-function isLineItemDone(item) {
-  return DONE_STATUSES.has(migrateOrderStatus(item.status));
+function emailsSentCount(order) {
+  const since = order?.mergedAt || "";
+  const keys = new Set();
+  for (const entry of order?.trail || []) {
+    if (entry.emailStatus !== "sent") continue;
+    if (since && entry.at && entry.at < since) continue;
+    keys.add(`${entry.at || ""}|${entry.emailType || ""}|${entry.emailTo || ""}`);
+  }
+  return keys.size;
 }
 
 function GridHeaderCell({ children, sx }) {
@@ -83,20 +95,43 @@ export default function AdminOrderAccordionRow({
   onToggle,
   onArchive,
   onRestore,
+  onSend,
+  sending = false,
   selected = false,
   onToggleSelect,
   showSelect = true,
 }) {
   const theme = useTheme();
   const lineItems = getOrderLineItems(order);
-  const multiItem = lineItems.length > 1;
   const preorder = isPreorderOrder(order);
-  const status = migrateOrderStatus(order.status);
   const archived = isArchivedOrder(order);
   const hasUnseenActivity = !archived && isUnseenOrder(order);
-
-  const doneCount = lineItems.filter(isLineItemDone).length;
-  const allDone = lineItems.length > 0 && doneCount === lineItems.length;
+  const kinds = orderKindLabels(order);
+  const sentCount = emailsSentCount(order);
+  const sent = sentCount > 0;
+  const workbook = useMemo(() => buildLiveMergeWorkbook([order]), [order]);
+  const summaryRows = workbook.consolidated || [];
+  const knownRows = summaryRows.filter((row) => row.allocationMode !== "pending");
+  const allocationPending = summaryRows.length > 0 && knownRows.length === 0;
+  const knownNew = knownRows.reduce((sum, row) => sum + (Number(row.newAmount) || 0), 0);
+  const knownDp = knownRows.reduce((sum, row) => sum + (Number(row.totalDp) || 0), 0);
+  const orderedTotal = lineItems.reduce((sum, item) => sum + lineItemAmount(item), 0);
+  const orderedBalance = lineItems.reduce((sum, item) => sum + Math.max(0, Number(item.balanceDue) || 0), 0);
+  const verificationPending = lineItems.length > 0 && lineItems.every((item) => {
+    const payment = migratePaymentStatus(item.payment);
+    const status = migrateOrderStatus(item.status);
+    return payment === "Pending Verification" || status === "Pending Verification";
+  });
+  const useOrderedFigures = allocationPending || verificationPending;
+  const net = useOrderedFigures
+    ? orderedBalance
+    : (knownRows.length < summaryRows.length ? knownNew - knownDp : (Number(workbook.totals?.net) || 0));
+  const totalAmount = useOrderedFigures
+    ? orderedTotal
+    : (knownRows.length < summaryRows.length ? knownNew : (Number(workbook.totals?.newTotal) || 0));
+  const balanceUnset = verificationPending && orderedBalance <= 0;
+  const netSign = net < 0 ? "−" : net > 0 ? "+" : "";
+  const netKind = net < 0 ? "Refund" : net > 0 ? "Due" : "Settled";
 
   return (
     <Box sx={{ borderBottom: "1px solid", borderColor: surfaceBorderColor, opacity: archived ? 0.72 : 1 }}>
@@ -168,106 +203,107 @@ export default function AdminOrderAccordionRow({
           <Typography sx={{ fontWeight: 600, fontSize: "0.88rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {order.customer}
           </Typography>
-          <Stack
-            direction="row"
-            spacing={0.5}
-            alignItems="center"
-            sx={{ mt: 0.5, flexWrap: "wrap", rowGap: 0.5 }}
-          >
-            {orderKindLabels(order).map((kind) => (
-              <Chip
-                key={kind}
-                label={kind}
-                variant="outlined"
-                color={kind === "Pre-order" ? "secondary" : "default"}
-                sx={ADMIN_STATUS_CHIP_SX}
-              />
-            ))}
-          </Stack>
+          {order.email ? (
+            <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", whiteSpace: "nowrap", fontFamily: MONO_FONT }}>
+              {order.email}
+            </Typography>
+          ) : null}
         </Box>
 
-        <Box sx={{ minWidth: 0 }}>
-          {multiItem ? (
-            <Typography sx={{ fontSize: "0.85rem", fontWeight: 600 }}>{lineItems.length} items</Typography>
-          ) : (
-            <Typography sx={{ fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{order.items}</Typography>
-          )}
-        </Box>
-
-        <Box sx={{ minWidth: 0 }}>
-          {allDone ? (
+        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0, flexWrap: "nowrap" }}>
+          <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, whiteSpace: "nowrap" }}>
+            {lineItems.length} item{lineItems.length === 1 ? "" : "s"}
+          </Typography>
+          {kinds.map((kind) => (
             <Chip
-              label={orderStatusLabel(status)}
-              color={STATUS_COLOR[status] || "default"}
+              key={kind}
+              label={kind}
               variant="outlined"
-              sx={ADMIN_STATUS_CHIP_SX}
+              color={kind === "Pre-order" ? "secondary" : "default"}
+              sx={{ ...ADMIN_STATUS_CHIP_SX, flexShrink: 0 }}
             />
+          ))}
+        </Stack>
+
+        <Box sx={{ minWidth: 0 }}>
+          <Typography sx={{ fontWeight: 800, fontSize: "0.85rem", color: "primary.main", whiteSpace: "nowrap" }}>
+            {PESO.format(totalAmount)}
+          </Typography>
+        </Box>
+
+        <Box sx={{ minWidth: 0 }}>
+          {balanceUnset ? (
+            <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", color: "text.secondary", whiteSpace: "nowrap" }}>
+              —
+            </Typography>
           ) : (
-            <Tooltip
-              arrow
-              title={(
-                <Box sx={{ py: 0.5 }}>
-                  <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, mb: 0.5 }}>
-                    {doneCount} of {lineItems.length} items closed
-                  </Typography>
-                  <Stack spacing={0.25}>
-                    {lineItems.map((item) => (
-                      <Typography key={item.id} sx={{ fontSize: "0.7rem" }}>
-                        {isLineItemDone(item) ? "✓" : "•"} {lineItemTrailLabel(item)} — {orderStatusLabel(item.status)}
-                      </Typography>
-                    ))}
-                  </Stack>
-                </Box>
-              )}
-            >
-              <Stack direction="row" spacing={0.5} alignItems="center" sx={{ cursor: "help", width: "fit-content" }}>
-                <Chip
-                  label={`${doneCount}/${lineItems.length}`}
-                  variant="outlined"
-                  color={doneCount > 0 ? "warning" : "default"}
-                  sx={ADMIN_STATUS_CHIP_SX}
-                />
-                <Box
-                  component="span"
-                  sx={{
-                    display: "inline-flex",
-                    color: "text.secondary",
-                    lineHeight: 0,
-                    flexShrink: 0,
-                  }}
-                  aria-hidden
-                >
-                  <InfoIcon sx={{ fontSize: 16 }} />
-                </Box>
-              </Stack>
-            </Tooltip>
+            <>
+              <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", color: moneyColor(net), whiteSpace: "nowrap" }}>
+                {`${netSign}${netSign ? " " : ""}${PESO.format(Math.abs(net))}`}
+              </Typography>
+              <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", fontFamily: MONO_FONT, whiteSpace: "nowrap" }}>
+                {netKind}
+              </Typography>
+            </>
           )}
         </Box>
 
-        <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end" onClick={(event) => event.stopPropagation()}>
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={onOpen}
-            sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
-          >
-            View
-          </Button>
-          {archived ? (
-            onRestore ? (
-              <Tooltip title="Restore">
-                <IconButton size="small" aria-label={`Restore ${order.id}`} onClick={onRestore} color="primary">
-                  <RestoreIcon sx={{ fontSize: 18 }} />
+        <Stack
+          spacing={0.5}
+          alignItems="flex-end"
+          sx={{ minWidth: 0 }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
+            {onSend ? (
+              <Button
+                size="small"
+                variant="outlined"
+                disabled={sending}
+                onClick={onSend}
+                sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
+              >
+                {sending ? "Sending…" : "Send email"}
+              </Button>
+            ) : null}
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={onOpen}
+              sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
+            >
+              View
+            </Button>
+            {archived ? (
+              onRestore ? (
+                <Tooltip title="Restore">
+                  <IconButton size="small" aria-label={`Restore ${order.id}`} onClick={onRestore} color="primary">
+                    <RestoreIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
+              ) : null
+            ) : onArchive ? (
+              <Tooltip title="Archive">
+                <IconButton size="small" aria-label={`Archive ${order.id}`} onClick={onArchive} sx={{ color: "text.secondary" }}>
+                  <ArchiveIcon sx={{ fontSize: 18 }} />
                 </IconButton>
               </Tooltip>
-            ) : null
-          ) : onArchive ? (
-            <Tooltip title="Archive">
-              <IconButton size="small" aria-label={`Archive ${order.id}`} onClick={onArchive} sx={{ color: "text.secondary" }}>
-                <ArchiveIcon sx={{ fontSize: 18 }} />
-              </IconButton>
-            </Tooltip>
-          ) : null}
+            ) : null}
+          </Stack>
+          <Typography
+            sx={{
+              color: "text.secondary",
+              fontSize: "0.72rem",
+              fontFamily: MONO_FONT,
+              whiteSpace: "nowrap",
+              width: "100%",
+              textAlign: "left",
+            }}
+          >
+            {sent
+              ? `Email sent: ${sentCount} ${sentCount === 1 ? "time" : "times"}`
+              : "Pending email"}
+          </Typography>
         </Stack>
       </Box>
 
@@ -293,7 +329,6 @@ export default function AdminOrderAccordionRow({
                 }}
               >
                 <GridHeaderCell>Item</GridHeaderCell>
-                <GridHeaderCell>Stage</GridHeaderCell>
                 <GridHeaderCell>Allocation</GridHeaderCell>
                 <GridHeaderCell>Balance</GridHeaderCell>
                 <GridHeaderCell>Payment</GridHeaderCell>
@@ -303,7 +338,6 @@ export default function AdminOrderAccordionRow({
               {lineItems.map((item, index) => {
                 const itemPayment = migratePaymentStatus(item.payment);
                 const itemStatus = migrateOrderStatus(item.status);
-                const itemStage = getOrderStage({ ...order, payment: item.payment, status: item.status, lineItems: [item] });
                 const lineTotal = lineItemAmount(item);
                 return (
                   <Box
@@ -323,9 +357,6 @@ export default function AdminOrderAccordionRow({
                         {PESO.format(lineTotal)}
                       </Typography>
                     </Box>
-                    <Typography sx={{ fontSize: "0.82rem", fontWeight: 700 }}>
-                      {itemStage}
-                    </Typography>
                     <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.78rem" }}>
                       {preorder ? allocationLabelForItem(item) : "—"}
                     </Typography>

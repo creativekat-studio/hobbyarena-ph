@@ -14,6 +14,7 @@ import {
   buildMergeWorkbook,
   buildMergeSourceRows,
   createMergedSetId,
+  defaultMergeSelectionKeys,
   describeMergeSelection,
   evaluateMergeSelection,
 } from "../lib/orderMergeSimulation.js";
@@ -100,7 +101,7 @@ export default function NewConsolidatedOrderPage() {
     setNewQtyByProduct({});
     setStatusByRow({});
     setPaymentByRow({});
-    setSelectedKeys(new Set(sourceRows.map((row) => row.key)));
+    setSelectedKeys(new Set(defaultMergeSelectionKeys(sourceRows)));
     setNote("");
     setAttachment(null);
     setAttachmentError("");
@@ -113,7 +114,12 @@ export default function NewConsolidatedOrderPage() {
   }, [memberOrders]);
 
   const detailWorkbook = useMemo(
-    () => buildMergeWorkbook(selectedOrders, { percentByProduct, newQtyByProduct, statusByRow, paymentByRow }),
+    () => buildMergeWorkbook(selectedOrders, {
+      percentByProduct,
+      newQtyByProduct,
+      statusByRow,
+      paymentByRow,
+    }),
     [selectedOrders, percentByProduct, newQtyByProduct, statusByRow, paymentByRow],
   );
   const workbook = useMemo(
@@ -220,7 +226,7 @@ export default function NewConsolidatedOrderPage() {
         <Box sx={{ ...panelSx, p: 4, textAlign: "center" }}>
           <Typography sx={{ fontWeight: 800, mb: 1 }}>No orders selected</Typography>
           <Typography color="text.secondary" sx={{ mb: 2 }}>
-            Select orders on the Individual orders tab, then choose Merge Orders.
+            Select two or more orders on the Individual orders tab, then choose Merge Orders.
           </Typography>
           <Button variant="contained" onClick={goBackToOrders}>
             View orders
@@ -340,10 +346,11 @@ export default function NewConsolidatedOrderPage() {
               }}
               onPaymentChange={(row, payment) => {
                 const kind = row.tag === "Pre-order" ? "Pre-order" : "In-stock";
+                const status = resolveOrderStatusForPayment(payment, row.status, kind);
                 setPaymentByRow((prev) => ({ ...prev, [row.key]: payment }));
                 setStatusByRow((prev) => ({
                   ...prev,
-                  [row.key]: resolveOrderStatusForPayment(payment, row.status, kind),
+                  [row.key]: status,
                 }));
               }}
               onStatusChange={(row, status) => {

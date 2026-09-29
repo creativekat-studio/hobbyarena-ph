@@ -20,6 +20,7 @@ import {
   INSTOCK_ORDER_STATUSES,
   INSTOCK_ORDER_STATUSES_BY_PAYMENT,
   lineItemTrailLabel,
+  migrateOrderStatus,
   migratePaymentStatus,
   optionsIncludingCurrent,
   ORDER_STATUSES_BY_PAYMENT,
@@ -45,17 +46,17 @@ export function customerKeyForOrder(order) {
   return String(order?.customer || "").trim().toLowerCase();
 }
 
-/** Any line status is eligible. The only merge block is mixed customers. */
+/** Any line status is eligible. At least two orders are required; mixed customers cannot. */
 export function evaluateMergeSelection(orders) {
   const list = (orders || []).filter(Boolean);
   const keys = [...new Set(list.map(customerKeyForOrder).filter(Boolean))];
   const mixedCustomers = keys.length > 1;
   const lineCount = buildMergeSourceRows(list).length;
   let blockReason = "";
-  if (mixedCustomers) {
+  if (list.length < 2) {
+    blockReason = "Select at least two orders to merge.";
+  } else if (mixedCustomers) {
     blockReason = "Orders from different customers cannot be merged.";
-  } else if (list.length < 2) {
-    blockReason = "Select at least two orders from the same customer.";
   } else if (lineCount === 0) {
     blockReason = "Selected orders have no line items.";
   }
@@ -149,6 +150,7 @@ export function buildMergeSourceRows(orders) {
         defaultPercent: 0,
         payment: item.payment || "",
         status: item.status || "",
+        allocationSealed: lineAllocationSealed(order, item),
       });
     }
   }
@@ -171,6 +173,80 @@ export function statusOptionsForMergedLine(item) {
   return optionsIncludingCurrent(all, item?.status);
 }
 
+/** Still waiting on allocation — DP paid / pending verification / awaiting stock. */
+export function isPendingAllocationState(payment, status) {
+  const pay = migratePaymentStatus(payment);
+  const st = migrateOrderStatus(status);
+  return pay === "DP Paid"
+    || pay === "Pending Verification"
+    || st === "Pending Verification"
+    || st === "Awaiting Stock";
+}
+
+/** Fulfilled (legacy “Completed”) and refunded lines are finished. */
+export function isCompletedMergeLine(line) {
+  const status = migrateOrderStatus(line?.sourceStatus ?? line?.status);
+  return status === "Fulfilled" || status === "Refunded";
+}
+
+export function defaultMergeSelectionKeys(lines) {
+  return (lines || []).filter((line) => !isCompletedMergeLine(line)).map((line) => line.key);
+}
+
+function trailShowsPastAllocation(order, item) {
+  const lineId = item?.id;
+  return (order?.trail || []).some((entry) => {
+    if (!entry) return false;
+    if (entry.lineItemId && lineId && entry.lineItemId !== lineId) {
+      const emailed = (entry.emailLineItems || []).find((row) => row?.lineItemId === lineId);
+      if (!emailed) return false;
+      return !isPendingAllocationState(emailed.payment, emailed.status);
+    }
+    if (!entry.status && !entry.payment) return false;
+    return !isPendingAllocationState(entry.payment, entry.status);
+  });
+}
+
+/**
+ * True once this pre-order line has left the waiting window, including when
+ * the saved status was later put back to DP Paid.
+ */
+export function lineAllocationSealed(order, item) {
+  const kind = item?.tag || resolveOrderKindForItem(item);
+  if (kind !== "Pre-order") return false;
+  if (!isPendingAllocationState(item?.payment, item?.status)) return true;
+  return trailShowsPastAllocation(order, item);
+}
+
+/** Statuses where a new allocation can be entered. */
+export function isAllocationEntryStatus(status) {
+  const st = migrateOrderStatus(status);
+  return st === ALLOCATION_FULFILLED_PAY_BALANCE
+    || st === "Partially Fulfilled & Pay Balance"
+    || st === "Partially Fulfilled & For Refund";
+}
+
+/**
+ * pending — still DP paid / pending verification; show Pending, not 0.
+ * entry — allocation fulfilled / partially fulfilled; fields may be edited.
+ * locked — allocation already decided, or the line left that window.
+ * instock — no pre-order allocation step.
+ */
+export function allocationSummaryMode(lines) {
+  const preorderLines = (lines || []).filter((line) => line?.tag === "Pre-order" || line?.kind === "Pre-order");
+  if (!preorderLines.length) return "instock";
+  const waiting = preorderLines.every((line) => isPendingAllocationState(line.payment, line.status));
+  if (waiting && preorderLines.every((line) => !line.allocationSealed)) return "pending";
+  if (preorderLines.every((line) => isAllocationEntryStatus(line.status))) return "entry";
+  return "locked";
+}
+
+/** Alloc % and New Qty open only while every pre-order line is in an allocation status. */
+export function allocationFieldsOpen(lines) {
+  const mode = allocationSummaryMode(lines);
+  return mode === "entry" || mode === "instock";
+}
+
 function distributeNewQty(lines, newQty) {
   let remaining = Math.max(0, Math.round(Number(newQty) || 0));
   return lines.map((line) => {
@@ -187,6 +263,7 @@ export function buildMergeWorkbook(orders, {
   statusByRow = {},
   paymentByRow = {},
   includeKeys,
+  sealedKeys,
 } = {}) {
   let lines = buildMergeSourceRows(orders).sort((a, b) =>
     compareOrdersByOrderNo({ id: a.orderId }, { id: b.orderId }),
@@ -238,8 +315,10 @@ export function buildMergeWorkbook(orders, {
     const kind = line.tag === "Pre-order" ? "Pre-order" : "In-stock";
     const paymentOverride = paymentByRow[line.key];
     const statusOverride = statusByRow[line.key];
-    const currentPayment = line.payment || "";
-    const currentStatus = line.status || "";
+    const sourcePayment = line.payment || "";
+    const sourceStatus = line.status || "";
+    const currentPayment = sourcePayment;
+    const currentStatus = sourceStatus;
     const payment = paymentOverride || (
       statusOverride
         ? resolvePaymentForStatus(kind, statusOverride, currentPayment)
@@ -252,6 +331,9 @@ export function buildMergeWorkbook(orders, {
     );
     return {
       ...line,
+      sourcePayment,
+      sourceStatus,
+      allocationSealed: Boolean(line.allocationSealed) || (sealedKeys instanceof Set && sealedKeys.has(line.key)),
       allocationPercent: product?.allocationPercent || 0,
       rawAllocation: rawAllocation(line.qty, product?.allocationPercent || 0),
       finalAllocation,
@@ -274,6 +356,8 @@ export function buildMergeWorkbook(orders, {
       totalDp,
       newAmount,
       net: roundMoney(newAmount - totalDp),
+      allocationOpen: allocationFieldsOpen(productLines),
+      allocationMode: allocationSummaryMode(productLines),
     };
   });
 
@@ -679,6 +763,8 @@ export function buildConsolidatedEmailOrder(orders, workbook) {
         name: row.name,
         totalQty: Number(row.totalQty) || 0,
         totalDp: Number(row.totalDp) || 0,
+        allocationPercent: row.allocationPercent,
+        allocationPending: row.allocationMode === "pending",
         newQty: row.newQty,
         newAmount: row.newAmount,
       })),

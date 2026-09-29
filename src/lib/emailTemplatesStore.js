@@ -9,7 +9,13 @@
  */
 
 import { ORDER_STATUS_EMAIL_LABELS } from "./orderEmailTriggers.js";
-import { defaultShowMessengerButton } from "./email/orderStatusEmail.js";
+import {
+  BALANCE_ACTION_EMAIL_TYPES,
+  DEFAULT_BALANCE_ACTION_NOTE,
+  DEFAULT_REFUND_ACTION_NOTE,
+  REFUND_ACTION_EMAIL_TYPES,
+  defaultShowMessengerButton,
+} from "./email/orderStatusEmail.js";
 import {
   DEFAULT_PASSWORD_RESET_BODY,
   PASSWORD_RESET_EMAIL_TYPE,
@@ -21,6 +27,7 @@ export { PASSWORD_RESET_EMAIL_TYPE, PASSWORD_RESET_PLACEHOLDERS };
 const STORAGE_KEY = "hobbyarena:email-bodies";
 const REMINDER_STORAGE_KEY = "hobbyarena:email-preorder-reminder";
 const MESSENGER_BUTTON_STORAGE_KEY = "hobbyarena:email-messenger-button";
+const ACTION_NOTE_STORAGE_KEY = "hobbyarena:email-action-notes";
 
 /** Tokens admins can drop into a body — replaced with live order values. */
 export const EMAIL_PLACEHOLDERS = [
@@ -240,7 +247,69 @@ function writeMessengerButtonStore(map) {
   }
 }
 
-/** Saved show/hide for the Message Hobby Arena button (defaults per template). */
+export function defaultActionNotes(emailType) {
+  const notes = {};
+  if (emailType === "consolidated_allocation" || REFUND_ACTION_EMAIL_TYPES.has(emailType)) {
+    notes.refund = DEFAULT_REFUND_ACTION_NOTE;
+  }
+  if (emailType === "consolidated_allocation" || BALANCE_ACTION_EMAIL_TYPES.has(emailType)) {
+    notes.balance = DEFAULT_BALANCE_ACTION_NOTE;
+  }
+  return notes;
+}
+
+function readActionNoteStore() {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(ACTION_NOTE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeActionNoteStore(map) {
+  if (typeof window === "undefined") return;
+  try {
+    if (!map || !Object.keys(map).length) {
+      window.localStorage.removeItem(ACTION_NOTE_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(ACTION_NOTE_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // ignore quota / serialization errors
+  }
+}
+
+/** Button note shown above Submit Bank Details / Submit Proof. Defaults when unset. */
+export function getActionNotes(emailType) {
+  const defaults = defaultActionNotes(emailType);
+  const stored = readActionNoteStore()[emailType];
+  if (!stored || typeof stored !== "object") return defaults;
+  const next = { ...defaults };
+  for (const key of Object.keys(defaults)) {
+    if (typeof stored[key] === "string") next[key] = stored[key];
+  }
+  return next;
+}
+
+export function setActionNotes(emailType, notes) {
+  const defaults = defaultActionNotes(emailType);
+  const map = readActionNoteStore();
+  const next = {};
+  for (const key of Object.keys(defaults)) {
+    const value = String(notes?.[key] ?? defaults[key]);
+    if (value !== defaults[key]) next[key] = value;
+  }
+  if (!Object.keys(next).length) delete map[emailType];
+  else map[emailType] = next;
+  writeActionNoteStore(map);
+  return getActionNotes(emailType);
+}
+
+/** Saved show/hide for the Message Hobby Arena button. Off unless an admin turns it on. */
 export function getShowMessengerButton(emailType) {
   const stored = readMessengerButtonStore()[emailType];
   if (typeof stored === "boolean") return stored;

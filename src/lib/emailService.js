@@ -70,7 +70,15 @@ async function adminFetch(path, options = {}) {
   return response;
 }
 
-export async function sendOrderStatusEmail({ emailType, order, bodyOverride, subjectOverride, reminder, showMessengerButton }) {
+function actionNotePayload(actionNotes) {
+  if (!actionNotes || typeof actionNotes !== "object") return {};
+  const refund = typeof actionNotes.refund === "string" ? actionNotes.refund : undefined;
+  const balance = typeof actionNotes.balance === "string" ? actionNotes.balance : undefined;
+  if (refund == null && balance == null) return {};
+  return { actionNotes: { ...(refund != null ? { refund } : {}), ...(balance != null ? { balance } : {}) } };
+}
+
+export async function sendOrderStatusEmail({ emailType, order, bodyOverride, subjectOverride, reminder, showMessengerButton, actionNotes }) {
   return postJson("/api/order-status-email", {
     emailType,
     order,
@@ -78,10 +86,11 @@ export async function sendOrderStatusEmail({ emailType, order, bodyOverride, sub
     ...(subjectOverride ? { subjectOverride } : {}),
     ...(reminder ? { reminder } : {}),
     ...(typeof showMessengerButton === "boolean" ? { showMessengerButton } : {}),
+    ...actionNotePayload(actionNotes),
   }, { admin: true });
 }
 
-export async function previewOrderStatusEmail({ emailType, order, bodyOverride, subjectOverride, reminder, showMessengerButton }) {
+export async function previewOrderStatusEmail({ emailType, order, bodyOverride, subjectOverride, reminder, showMessengerButton, actionNotes }) {
   return postJson("/api/order-status-email", {
     preview: true,
     emailType,
@@ -90,6 +99,7 @@ export async function previewOrderStatusEmail({ emailType, order, bodyOverride, 
     ...(subjectOverride ? { subjectOverride } : {}),
     ...(reminder ? { reminder } : {}),
     ...(typeof showMessengerButton === "boolean" ? { showMessengerButton } : {}),
+    ...actionNotePayload(actionNotes),
   }, { admin: true });
 }
 
