@@ -238,6 +238,14 @@ function PendingDash() {
   );
 }
 
+function PendingAllocLabel() {
+  return (
+    <Typography component="span" sx={{ fontFamily: MONO_FONT, fontWeight: 700, fontStyle: "italic", color: "text.secondary" }}>
+      Pending
+    </Typography>
+  );
+}
+
 function MemberOrderDialog({ order, surfaceBorderColor, onClose }) {
   const workbook = useMemo(() => (order ? buildLiveMergeWorkbook([order]) : null), [order]);
   const lines = workbook?.orderDetails || [];
@@ -328,7 +336,7 @@ function MemberOrderDialog({ order, surfaceBorderColor, onClose }) {
                     <TableCell align="center" sx={{ fontFamily: MONO_FONT }}>{row.totalQty}</TableCell>
                     <TableCell align="right" sx={{ fontFamily: MONO_FONT, whiteSpace: "nowrap" }}>{PESO.format(row.totalDp)}</TableCell>
                     <TableCell align="center" sx={{ fontFamily: MONO_FONT }}>
-                      {pending ? <PendingDash /> : `${Number(row.allocationPercent || 0).toFixed(2)}%`}
+                      {pending ? <PendingAllocLabel /> : `${Number(row.allocationPercent || 0).toFixed(2)}%`}
                     </TableCell>
                     <TableCell align="center" sx={{ fontFamily: MONO_FONT }}>
                       {pending ? <PendingDash /> : row.newQty}
