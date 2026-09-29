@@ -249,8 +249,8 @@ function MemberOrderDialog({ order, surfaceBorderColor, onClose }) {
   const knownNet = knownNew - known.reduce((sum, row) => sum + (Number(row.totalDp) || 0), 0);
   const net = mixed ? knownNet : (workbook?.totals?.net || 0);
   const netLabel = mixed
-    ? (knownNet < 0 ? "Refund" : knownNet > 0 ? "Balance due" : "No balance")
-    : (workbook?.totals?.netLabel || "No balance");
+    ? (knownNet < 0 ? "Refund" : knownNet > 0 ? "Balance due" : "Settled")
+    : (workbook?.totals?.netLabel || "Settled");
   const newTotal = mixed ? knownNew : (workbook?.totals?.newTotal || 0);
 
   return (

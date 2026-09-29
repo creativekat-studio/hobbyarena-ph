@@ -1165,8 +1165,8 @@ export function MergeWorkbookView({
               const knownNet = knownNew - knownDp;
               const net = mixed ? knownNet : (grid.totals?.net || 0);
               const netLabel = mixed
-                ? (knownNet < 0 ? "Refund" : knownNet > 0 ? "Balance due" : "No balance")
-                : (grid.totals?.netLabel || "No balance");
+                ? (knownNet < 0 ? "Refund" : knownNet > 0 ? "Balance due" : "Settled")
+                : (grid.totals?.netLabel || "Settled");
               return [
               {
                 key: "new-total",
@@ -1305,7 +1305,7 @@ export function totalItemQty(rows) {
   return (rows || []).reduce((sum, row) => sum + (Number(row.qty) || 0), 0);
 }
 
-const CONSOLIDATED_SUMMARY_GRID = "28px minmax(148px, 1fr) minmax(140px, 1fr) minmax(140px, 0.8fr) minmax(110px, 0.75fr) minmax(120px, 0.85fr) 112px 200px";
+const CONSOLIDATED_SUMMARY_GRID = "28px minmax(148px, 0.9fr) minmax(200px, 1.6fr) minmax(120px, 0.65fr) minmax(150px, 1.15fr) minmax(160px, 1.25fr) 88px 120px";
 const CONSOLIDATED_TABLE_MIN_WIDTH = 1080;
 const CONSOLIDATED_LINE_GRID = "minmax(180px, 1.4fr) minmax(72px, 0.6fr) minmax(110px, 0.75fr) minmax(110px, 0.85fr) minmax(110px, 0.85fr) auto";
 const CONSOLIDATED_LINE_MIN_WIDTH = 760;
@@ -1441,7 +1441,7 @@ function MergedSetAccordionRow({
   const summary = useMemo(() => summarizeMergedSet(set.orders), [set.orders]);
   const net = Number(summary.totals?.net) || 0;
   const netSign = net < 0 ? "−" : net > 0 ? "+" : "";
-  const netKind = net < 0 ? "Refund Amount" : net > 0 ? "Balance Due" : "No balance";
+  const netKind = net < 0 ? "Refund Amount" : net > 0 ? "Balance Due" : "Settled";
 
   return (
     <Box sx={{ borderBottom: "1px solid", borderColor: surfaceBorderColor }}>
@@ -1963,7 +1963,7 @@ export function MergedOrdersPanel({
           <AdminGridHeaderLabel>Orders</AdminGridHeaderLabel>
           <AdminGridHeaderLabel>New Total</AdminGridHeaderLabel>
           <AdminGridHeaderLabel>Settlement</AdminGridHeaderLabel>
-          <AdminGridHeaderLabel>Email sent</AdminGridHeaderLabel>
+          <AdminGridHeaderLabel sx={{ justifySelf: "end" }}>Email sent</AdminGridHeaderLabel>
           <Box />
         </Box>
         {visibleItems.map((set) => (

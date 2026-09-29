@@ -624,7 +624,7 @@ export default function OrdersPage() {
                 <AdminGridHeaderLabel>Items</AdminGridHeaderLabel>
                 <AdminGridHeaderLabel>Total</AdminGridHeaderLabel>
                 <AdminGridHeaderLabel>Balance</AdminGridHeaderLabel>
-                <AdminGridHeaderLabel>Email sent</AdminGridHeaderLabel>
+                <AdminGridHeaderLabel sx={{ justifySelf: "end" }}>Email sent</AdminGridHeaderLabel>
                 <Box />
               </Box>
 
