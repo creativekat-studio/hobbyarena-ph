@@ -88,7 +88,7 @@ export function EmailSentMark({ sentCount }) {
   const sent = count > 0;
   const timesLabel = `Sent ${count} ${count === 1 ? "time" : "times"}`;
   return (
-    <Stack direction="row" spacing={0.35} alignItems="center" onClick={(event) => event.stopPropagation()} sx={{ justifySelf: "end" }}>
+    <Stack direction="row" spacing={0.35} alignItems="center" onClick={(event) => event.stopPropagation()} sx={{ justifySelf: "start" }}>
       <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap" }}>
         {sent ? "Yes" : "No"}
       </Typography>

@@ -1089,6 +1089,11 @@ export function MergeWorkbookView({
               const mode = row.allocationMode || (row.allocationOpen === false ? "locked" : "instock");
               const showPending = mode === "pending";
               const showInputs = editable && (mode === "entry" || mode === "instock");
+              const pendingLabel = (
+                <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.8rem", fontWeight: 700, fontStyle: "italic", textAlign: "center", color: "text.secondary" }}>
+                  Pending
+                </Typography>
+              );
               const pendingValue = (align) => (
                 <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.8rem", fontWeight: 700, textAlign: align, color: "text.secondary" }}>
                   —
@@ -1108,7 +1113,7 @@ export function MergeWorkbookView({
                     {PESO.format(row.totalDp)}
                   </Typography>
                 ),
-                percent: showPending ? pendingValue("center") : showInputs ? (
+                percent: showPending ? pendingLabel : showInputs ? (
                   <CompactField
                     type="text"
                     inputMode="decimal"
@@ -1963,7 +1968,7 @@ export function MergedOrdersPanel({
           <AdminGridHeaderLabel>Orders</AdminGridHeaderLabel>
           <AdminGridHeaderLabel>New Total</AdminGridHeaderLabel>
           <AdminGridHeaderLabel>Settlement</AdminGridHeaderLabel>
-          <AdminGridHeaderLabel sx={{ justifySelf: "end" }}>Email sent</AdminGridHeaderLabel>
+          <AdminGridHeaderLabel>Email sent</AdminGridHeaderLabel>
           <Box />
         </Box>
         {visibleItems.map((set) => (
