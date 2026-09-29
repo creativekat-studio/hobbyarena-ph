@@ -26,6 +26,7 @@ import {
 import { alpha, useTheme } from "@mui/material/styles";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import { MONO_FONT, getStatAccents } from "../theme.js";
+import { ADMIN_ACTION_BUTTON_SX } from "./adminChipSx.js";
 import { getSurfaces } from "../lib/surfaces.js";
 import { useColorMode } from "../lib/colorMode.jsx";
 import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHeader.jsx";
@@ -63,7 +64,7 @@ import {
 } from "./adminTableHeader.jsx";
 import AddOrderDialog from "./AddOrderDialog.jsx";
 import ExportOrdersDialog from "./ExportOrdersDialog.jsx";
-import { MergedOrdersPanel, sendMergedOrderEmails } from "./MergeOrdersGrid.jsx";
+import { MergedOrdersPanel } from "./MergeOrdersGrid.jsx";
 import { evaluateMergeSelection } from "../lib/orderMergeSimulation.js";
 import AdminOrderAccordionRow, {
   ORDER_TABLE_MIN_WIDTH,
@@ -151,7 +152,7 @@ export default function OrdersPage() {
   const outletContext = useOutletContext();
   const surfaces = outletContext?.surfaces || getSurfaces(theme, mode === "dark");
   const { panelSx, surfaceBorderColor } = surfaces;
-  const { orders, ordersError, ordersReady, archiveOrders, restoreOrders, updateOrder, sendConsolidatedAllocationEmail } = useOrders();
+  const { orders, ordersError, ordersReady, archiveOrders, restoreOrders, updateOrder } = useOrders();
   const { items: inventoryItems } = useInventory();
   const { lines: catalogLines } = useCatalog();
   const costByProductId = useMemo(
@@ -169,7 +170,6 @@ export default function OrdersPage() {
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [rematchOrders, setRematchOrders] = useState([]);
   const [ordersView, setOrdersView] = useState(() => resolveOrdersView(location.state));
-  const [sendingOrderId, setSendingOrderId] = useState("");
   const onMergedTab = ordersView === "merged";
 
   useEffect(() => {
@@ -264,16 +264,6 @@ export default function OrdersPage() {
 
   function showIndividualOrders() {
     setOrdersView("individual");
-  }
-
-  async function handleSendOrder(order) {
-    if (!sendConsolidatedAllocationEmail) return;
-    setSendingOrderId(order.id);
-    try {
-      await sendMergedOrderEmails([order], sendConsolidatedAllocationEmail);
-    } finally {
-      setSendingOrderId("");
-    }
   }
 
   function bulkRestore() {
@@ -547,11 +537,11 @@ export default function OrdersPage() {
                 <span>
                   <Button
                     size="small"
-                    variant="outlined"
-                    color="inherit"
+                    variant="contained"
+                    color="primary"
                     disabled={!canMergeSelected}
                     onClick={openMergeSimulation}
-                    sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
+                    sx={ADMIN_ACTION_BUTTON_SX}
                   >
                     {`Merge Orders (${selectedCount})`}
                   </Button>
@@ -561,20 +551,25 @@ export default function OrdersPage() {
             {viewingArchived ? (
               <Button
                 size="small"
-                variant="outlined"
-                color="inherit"
+                variant="contained"
+                color="primary"
                 onClick={bulkRestore}
-                sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
+                sx={ADMIN_ACTION_BUTTON_SX}
               >
                 Restore
               </Button>
             ) : (
               <Button
                 size="small"
-                variant="outlined"
+                variant="contained"
                 color="error"
                 onClick={requestBulkArchive}
-                sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
+                sx={{
+                  ...ADMIN_ACTION_BUTTON_SX,
+                  bgcolor: "error.main",
+                  color: "error.contrastText",
+                  "&:hover": { bgcolor: "error.dark", border: "none" },
+                }}
               >
                 Archive
               </Button>
@@ -586,7 +581,6 @@ export default function OrdersPage() {
             orders={orders}
             ordersReady={ordersReady}
             updateOrder={updateOrder}
-            sendConsolidatedAllocationEmail={sendConsolidatedAllocationEmail}
             surfaceBorderColor={surfaceBorderColor}
             stickyHeaderBg={stickyHeaderBg}
             onBack={showIndividualOrders}
@@ -630,6 +624,7 @@ export default function OrdersPage() {
                 <AdminGridHeaderLabel>Items</AdminGridHeaderLabel>
                 <AdminGridHeaderLabel>Total</AdminGridHeaderLabel>
                 <AdminGridHeaderLabel>Balance</AdminGridHeaderLabel>
+                <AdminGridHeaderLabel>Email sent</AdminGridHeaderLabel>
                 <Box />
               </Box>
 
@@ -643,8 +638,6 @@ export default function OrdersPage() {
                   onOpen={() => openOrder(order.id)}
                   onArchive={() => setArchiveTargetIds([order.id])}
                   onRestore={() => restoreOrders([order.id])}
-                  onSend={sendConsolidatedAllocationEmail ? () => handleSendOrder(order) : undefined}
-                  sending={sendingOrderId === order.id}
                   selected={selectedIds.has(order.id)}
                   onToggleSelect={toggleSelect}
                 />

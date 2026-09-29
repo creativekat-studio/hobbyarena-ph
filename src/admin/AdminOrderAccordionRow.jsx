@@ -13,8 +13,8 @@ import {
 import { alpha, useTheme } from "@mui/material/styles";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "../components/ProductCard.jsx";
-import { ArchiveIcon, RestoreIcon } from "../components/icons.jsx";
-import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
+import { ArchiveIcon, InfoIcon, RestoreIcon } from "../components/icons.jsx";
+import { ADMIN_ACTION_BUTTON_SX, ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
 import { AdminGridHeaderLabel } from "./adminTableHeader.jsx";
 import {
   PAYMENT_COLOR,
@@ -33,10 +33,10 @@ import { lineItemAmount } from "../lib/orderRevenue.js";
 import { buildLiveMergeWorkbook } from "../lib/orderMergeSimulation.js";
 import { formatOrderTimestamp } from "../lib/orderTimestamps.js";
 
-export const ORDER_SUMMARY_GRID = "36px 28px minmax(148px, 1fr) minmax(140px, 1fr) minmax(140px, 0.8fr) minmax(110px, 0.75fr) minmax(120px, 0.85fr) 240px";
-export const ORDER_SUMMARY_GRID_NO_SELECT = "28px minmax(148px, 1fr) minmax(140px, 1fr) minmax(140px, 0.8fr) minmax(110px, 0.75fr) minmax(120px, 0.85fr) 240px";
+export const ORDER_SUMMARY_GRID = "36px 28px minmax(148px, 1fr) minmax(140px, 1fr) minmax(140px, 0.8fr) minmax(110px, 0.75fr) minmax(120px, 0.85fr) 112px 200px";
+export const ORDER_SUMMARY_GRID_NO_SELECT = "28px minmax(148px, 1fr) minmax(140px, 1fr) minmax(140px, 0.8fr) minmax(110px, 0.75fr) minmax(120px, 0.85fr) 112px 200px";
 export const LINEITEM_GRID = "minmax(180px, 1.4fr) minmax(72px, 0.6fr) minmax(110px, 0.75fr) minmax(110px, 0.85fr) minmax(110px, 0.85fr)";
-export const ORDER_TABLE_MIN_WIDTH = 960;
+export const ORDER_TABLE_MIN_WIDTH = 1080;
 const LINEITEM_TABLE_MIN_WIDTH = 720;
 
 export function orderSummaryGridSx(overrides = {}) {
@@ -83,6 +83,30 @@ function emailsSentCount(order) {
   return keys.size;
 }
 
+export function EmailSentMark({ sentCount }) {
+  const count = Number(sentCount) || 0;
+  const sent = count > 0;
+  const timesLabel = `Sent ${count} ${count === 1 ? "time" : "times"}`;
+  return (
+    <Stack direction="row" spacing={0.35} alignItems="center" onClick={(event) => event.stopPropagation()}>
+      <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap" }}>
+        {sent ? "Yes" : "No"}
+      </Typography>
+      {sent ? (
+        <Tooltip arrow placement="top" title={timesLabel}>
+          <Box
+            component="span"
+            sx={{ display: "inline-flex", color: "text.secondary", cursor: "help", lineHeight: 0, "&:hover": { color: "text.primary" } }}
+            aria-label={timesLabel}
+          >
+            <InfoIcon sx={{ fontSize: 14 }} />
+          </Box>
+        </Tooltip>
+      ) : null}
+    </Stack>
+  );
+}
+
 function GridHeaderCell({ children, sx }) {
   return <AdminGridHeaderLabel sx={sx}>{children}</AdminGridHeaderLabel>;
 }
@@ -95,8 +119,6 @@ export default function AdminOrderAccordionRow({
   onToggle,
   onArchive,
   onRestore,
-  onSend,
-  sending = false,
   selected = false,
   onToggleSelect,
   showSelect = true,
@@ -108,7 +130,6 @@ export default function AdminOrderAccordionRow({
   const hasUnseenActivity = !archived && isUnseenOrder(order);
   const kinds = orderKindLabels(order);
   const sentCount = emailsSentCount(order);
-  const sent = sentCount > 0;
   const workbook = useMemo(() => buildLiveMergeWorkbook([order]), [order]);
   const summaryRows = workbook.consolidated || [];
   const knownRows = summaryRows.filter((row) => row.allocationMode !== "pending");
@@ -131,7 +152,7 @@ export default function AdminOrderAccordionRow({
     : (knownRows.length < summaryRows.length ? knownNew : (Number(workbook.totals?.newTotal) || 0));
   const balanceUnset = verificationPending && orderedBalance <= 0;
   const netSign = net < 0 ? "−" : net > 0 ? "+" : "";
-  const netKind = net < 0 ? "Refund" : net > 0 ? "Due" : "Settled";
+  const netKind = net < 0 ? "Refund" : net > 0 ? "Due" : "No balance";
 
   return (
     <Box sx={{ borderBottom: "1px solid", borderColor: surfaceBorderColor, opacity: archived ? 0.72 : 1 }}>
@@ -210,20 +231,33 @@ export default function AdminOrderAccordionRow({
           ) : null}
         </Box>
 
-        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0, flexWrap: "nowrap" }}>
-          <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, whiteSpace: "nowrap" }}>
+        <Box sx={{ minWidth: 0 }}>
+          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: "nowrap" }}>
+            {kinds.map((kind) => (
+              <Chip
+                key={kind}
+                label={kind}
+                variant="outlined"
+                color={kind === "Pre-order" ? "secondary" : "default"}
+                sx={{ ...ADMIN_STATUS_CHIP_SX, flexShrink: 0 }}
+              />
+            ))}
+          </Stack>
+          <Typography
+            component="sub"
+            sx={{
+              display: "block",
+              mt: 0.35,
+              color: "text.secondary",
+              fontSize: "0.68rem",
+              fontFamily: MONO_FONT,
+              lineHeight: 1.2,
+              whiteSpace: "nowrap",
+            }}
+          >
             {lineItems.length} item{lineItems.length === 1 ? "" : "s"}
           </Typography>
-          {kinds.map((kind) => (
-            <Chip
-              key={kind}
-              label={kind}
-              variant="outlined"
-              color={kind === "Pre-order" ? "secondary" : "default"}
-              sx={{ ...ADMIN_STATUS_CHIP_SX, flexShrink: 0 }}
-            />
-          ))}
-        </Stack>
+        </Box>
 
         <Box sx={{ minWidth: 0 }}>
           <Typography sx={{ fontWeight: 800, fontSize: "0.85rem", color: "primary.main", whiteSpace: "nowrap" }}>
@@ -248,62 +282,39 @@ export default function AdminOrderAccordionRow({
           )}
         </Box>
 
+        <EmailSentMark sentCount={sentCount} />
+
         <Stack
+          direction="row"
           spacing={0.5}
-          alignItems="flex-end"
-          sx={{ minWidth: 0 }}
+          alignItems="center"
+          sx={{ justifySelf: "end", width: "fit-content", maxWidth: "100%" }}
           onClick={(event) => event.stopPropagation()}
         >
-          <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
-            {onSend ? (
-              <Button
-                size="small"
-                variant="outlined"
-                disabled={sending}
-                onClick={onSend}
-                sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
-              >
-                {sending ? "Sending…" : "Send email"}
-              </Button>
-            ) : null}
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={onOpen}
-              sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
-            >
-              View
-            </Button>
-            {archived ? (
-              onRestore ? (
-                <Tooltip title="Restore">
-                  <IconButton size="small" aria-label={`Restore ${order.id}`} onClick={onRestore} color="primary">
-                    <RestoreIcon sx={{ fontSize: 18 }} />
-                  </IconButton>
-                </Tooltip>
-              ) : null
-            ) : onArchive ? (
-              <Tooltip title="Archive">
-                <IconButton size="small" aria-label={`Archive ${order.id}`} onClick={onArchive} sx={{ color: "text.secondary" }}>
-                  <ArchiveIcon sx={{ fontSize: 18 }} />
+          <Button
+            size="small"
+            variant="contained"
+            color="primary"
+            onClick={onOpen}
+            sx={ADMIN_ACTION_BUTTON_SX}
+          >
+            View
+          </Button>
+          {archived ? (
+            onRestore ? (
+              <Tooltip title="Restore">
+                <IconButton size="small" aria-label={`Restore ${order.id}`} onClick={onRestore} color="primary">
+                  <RestoreIcon sx={{ fontSize: 18 }} />
                 </IconButton>
               </Tooltip>
-            ) : null}
-          </Stack>
-          <Typography
-            sx={{
-              color: "text.secondary",
-              fontSize: "0.72rem",
-              fontFamily: MONO_FONT,
-              whiteSpace: "nowrap",
-              width: "100%",
-              textAlign: "left",
-            }}
-          >
-            {sent
-              ? `Email sent: ${sentCount} ${sentCount === 1 ? "time" : "times"}`
-              : "Pending email"}
-          </Typography>
+            ) : null
+          ) : onArchive ? (
+            <Tooltip title="Archive">
+              <IconButton size="small" aria-label={`Archive ${order.id}`} onClick={onArchive} sx={{ color: "text.secondary" }}>
+                <ArchiveIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+          ) : null}
         </Stack>
       </Box>
 

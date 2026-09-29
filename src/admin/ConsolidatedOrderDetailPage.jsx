@@ -32,7 +32,7 @@ import {
   resolveOrderStatusForPayment,
 } from "../data/orderWorkflow.js";
 import { ORDER_STATUS_EMAIL_LABELS } from "../lib/orderEmailTriggers.js";
-import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
+import { ADMIN_ACTION_BUTTON_SX, ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
 import {
   ConsolidatedOrderView,
   countMergedEmailsSent,
@@ -601,10 +601,11 @@ export default function ConsolidatedOrderDetailPage() {
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end" flexWrap="wrap" useFlexGap>
             <Button
-              variant="outlined"
+              variant="contained"
+              color="primary"
               disabled={!canSend || dirty}
               onClick={handleSend}
-              sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
+              sx={ADMIN_ACTION_BUTTON_SX}
             >
               {sending ? "Sending…" : sentCount > 0 ? "Resend email" : "Send email"}
             </Button>

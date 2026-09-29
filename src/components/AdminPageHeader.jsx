@@ -1,6 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, cloneElement, isValidElement } from "react";
+import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState, cloneElement, isValidElement } from "react";
 import { createPortal } from "react-dom";
-import { useLocation } from "react-router-dom";
 import { Box, Stack, Typography } from "@mui/material";
 
 /** Vertical rhythm for admin page body — header lives in the top bar. */
@@ -12,7 +11,6 @@ export const ADMIN_HEADER_ACTION_MOBILE_SLOT_ID = "admin-header-action-mobile-sl
 const AdminPageHeaderContext = createContext(null);
 
 export function AdminPageHeaderProvider({ children }) {
-  const location = useLocation();
   const [header, setHeaderState] = useState(null);
   const toolbarSlotRef = useRef(null);
   const mobileSlotRef = useRef(null);
@@ -29,10 +27,6 @@ export function AdminPageHeaderProvider({ children }) {
     });
   }, []);
   const clearHeader = useCallback(() => setHeaderState(null), []);
-
-  useEffect(() => {
-    setHeaderState(null);
-  }, [location.pathname]);
 
   const value = useMemo(
     () => ({ header, setHeader, clearHeader, toolbarSlotRef, mobileSlotRef }),
@@ -153,9 +147,8 @@ export default function AdminPageHeader({ eyebrow, title, subtitle, action }) {
 
   useLayoutEffect(() => {
     setHeader({ eyebrow, title, subtitle });
-  }, [eyebrow, title, subtitle, setHeader]);
-
-  useEffect(() => () => clearHeader(), [clearHeader]);
+    return () => clearHeader();
+  }, [eyebrow, title, subtitle, setHeader, clearHeader]);
 
   const mobileAction = action && isValidElement(action)
     ? cloneElement(action, { key: "admin-header-action-mobile" })
