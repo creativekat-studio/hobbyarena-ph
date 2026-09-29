@@ -47,6 +47,7 @@ import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
 import { InfiniteScrollSentinel } from "../components/InfiniteScrollSentinel.jsx";
 import { useInfiniteScroll } from "../lib/useInfiniteScroll.js";
 import {
+  AdminGridHeaderLabel,
   AdminGridSortHeader,
   AdminListFilterTabs,
   ADMIN_LIST_BULK_BAR_SX,
@@ -62,7 +63,7 @@ import {
 } from "./adminTableHeader.jsx";
 import AddOrderDialog from "./AddOrderDialog.jsx";
 import ExportOrdersDialog from "./ExportOrdersDialog.jsx";
-import { MergedOrdersPanel } from "./MergeOrdersGrid.jsx";
+import { MergedOrdersPanel, sendMergedOrderEmails } from "./MergeOrdersGrid.jsx";
 import { evaluateMergeSelection } from "../lib/orderMergeSimulation.js";
 import AdminOrderAccordionRow, {
   ORDER_TABLE_MIN_WIDTH,
@@ -168,6 +169,7 @@ export default function OrdersPage() {
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [rematchOrders, setRematchOrders] = useState([]);
   const [ordersView, setOrdersView] = useState(() => resolveOrdersView(location.state));
+  const [sendingOrderId, setSendingOrderId] = useState("");
   const onMergedTab = ordersView === "merged";
 
   useEffect(() => {
@@ -188,8 +190,9 @@ export default function OrdersPage() {
   }
 
   function openOrder(id) {
-    navigate(`/admin/orders/${encodeURIComponent(id)}`, {
-      state: { backTo: { path: "/admin/orders", label: "orders", ordersView } },
+    writeStoredOrdersView("individual");
+    navigate(`/admin/orders/consolidated/${encodeURIComponent(id)}`, {
+      state: { backTo: { path: "/admin/orders", label: "orders", ordersView: "individual" }, singleOrder: true },
     });
   }
 
@@ -261,6 +264,16 @@ export default function OrdersPage() {
 
   function showIndividualOrders() {
     setOrdersView("individual");
+  }
+
+  async function handleSendOrder(order) {
+    if (!sendConsolidatedAllocationEmail) return;
+    setSendingOrderId(order.id);
+    try {
+      await sendMergedOrderEmails([order], sendConsolidatedAllocationEmail);
+    } finally {
+      setSendingOrderId("");
+    }
   }
 
   function bulkRestore() {
@@ -440,8 +453,7 @@ export default function OrdersPage() {
         </Tabs>
       </Stack>
 
-      {!onMergedTab ? (
-        <Box sx={{ ...panelSx, ...ADMIN_LIST_FILTER_BAR_SX, flexShrink: 0 }}>
+      <Box sx={{ ...panelSx, ...ADMIN_LIST_FILTER_BAR_SX, flexShrink: 0 }}>
           <Stack spacing={1.25} sx={{ width: "100%", minWidth: 0 }}>
             <Stack
               direction="row"
@@ -469,15 +481,6 @@ export default function OrdersPage() {
                 </Select>
               </FormControl>
               <Box sx={{ flex: 1, minWidth: 8 }} />
-              {selectedCount === 0 ? (
-                <Chip
-                  label={allLoadedSelected ? "Deselect loaded" : "Select loaded"}
-                  onClick={toggleSelectAllLoaded}
-                  disabled={!visibleItems.length}
-                  variant="outlined"
-                  sx={{ fontWeight: 700 }}
-                />
-              ) : null}
               <TextField
                 size="small"
                 placeholder="Search order, customer, item…"
@@ -521,7 +524,6 @@ export default function OrdersPage() {
             </Stack>
           </Stack>
         </Box>
-      ) : null}
 
       <Box sx={{ ...ADMIN_LIST_PANEL_SX, ...panelSx }}>
         {!onMergedTab && selectedCount > 0 ? (
@@ -551,7 +553,7 @@ export default function OrdersPage() {
                     onClick={openMergeSimulation}
                     sx={{ borderColor: surfaceBorderColor, fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
                   >
-                    Merge Orders ({selectedCount})
+                    {`Merge Orders (${selectedCount})`}
                   </Button>
                 </span>
               </Tooltip>
@@ -590,6 +592,10 @@ export default function OrdersPage() {
             onBack={showIndividualOrders}
             onOpenOrder={openOrder}
             onViewSet={openConsolidatedSet}
+            queueFilter={queueFilter}
+            kindFilter={kindFilter}
+            query={query}
+            activeQueue={activeQueue}
           />
         ) : !ordersReady ? (
           <Stack spacing={1.5} alignItems="center" sx={{ py: 6, color: "text.secondary" }}>
@@ -621,8 +627,9 @@ export default function OrdersPage() {
                 <Box />
                 <SortableGridHeader label="Order" sortKey="order" sort={sort} onSort={handleSort} />
                 <SortableGridHeader label="Customer" sortKey="customer" sort={sort} onSort={handleSort} />
-                <SortableGridHeader label="Items" sortKey="items" sort={sort} onSort={handleSort} />
-                <SortableGridHeader label="Status" sortKey="status" sort={sort} onSort={handleSort} />
+                <AdminGridHeaderLabel>Items</AdminGridHeaderLabel>
+                <AdminGridHeaderLabel>Total</AdminGridHeaderLabel>
+                <AdminGridHeaderLabel>Balance</AdminGridHeaderLabel>
                 <Box />
               </Box>
 
@@ -636,6 +643,8 @@ export default function OrdersPage() {
                   onOpen={() => openOrder(order.id)}
                   onArchive={() => setArchiveTargetIds([order.id])}
                   onRestore={() => restoreOrders([order.id])}
+                  onSend={sendConsolidatedAllocationEmail ? () => handleSendOrder(order) : undefined}
+                  sending={sendingOrderId === order.id}
                   selected={selectedIds.has(order.id)}
                   onToggleSelect={toggleSelect}
                 />

@@ -38,6 +38,7 @@ import {
 } from "../data/orderWorkflow.js";
 import { PESO } from "../components/ProductCard.jsx";
 import { orderCustomerTotal } from "../lib/orderRevenue.js";
+import { buildLiveMergeWorkbook } from "../lib/orderMergeSimulation.js";
 import { ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
 import { AdminTableHeaderCell } from "./adminTableHeader.jsx";
 import { OrderTrailPanel } from "./orderDetailShared.jsx";
@@ -229,17 +230,154 @@ export function ConsolidatedTrailTab({
   );
 }
 
+function PendingDash() {
+  return (
+    <Typography component="span" sx={{ fontFamily: MONO_FONT, fontWeight: 700, color: "text.secondary" }}>
+      —
+    </Typography>
+  );
+}
+
+function MemberOrderDialog({ order, surfaceBorderColor, onClose }) {
+  const workbook = useMemo(() => (order ? buildLiveMergeWorkbook([order]) : null), [order]);
+  const lines = workbook?.orderDetails || [];
+  const summary = workbook?.consolidated || [];
+  const known = summary.filter((row) => row.allocationMode !== "pending");
+  const allPending = summary.length > 0 && known.length === 0;
+  const mixed = known.length > 0 && known.length < summary.length;
+  const knownNew = known.reduce((sum, row) => sum + (Number(row.newAmount) || 0), 0);
+  const knownNet = knownNew - known.reduce((sum, row) => sum + (Number(row.totalDp) || 0), 0);
+  const net = mixed ? knownNet : (workbook?.totals?.net || 0);
+  const netLabel = mixed
+    ? (knownNet < 0 ? "Refund" : knownNet > 0 ? "Balance due" : "Settled")
+    : (workbook?.totals?.netLabel || "Settled");
+  const newTotal = mixed ? knownNew : (workbook?.totals?.newTotal || 0);
+
+  return (
+    <Dialog fullWidth maxWidth="md" open={Boolean(order)} onClose={onClose}>
+      <DialogTitle sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 2, pr: 1.5 }}>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: "0.95rem" }}>
+            {order?.id}
+          </Typography>
+          <Typography sx={{ color: "text.secondary", fontFamily: MONO_FONT, fontSize: "0.72rem", mt: 0.25 }}>
+            {order ? formatOrderTimestamp(order) : ""}
+          </Typography>
+        </Box>
+        <Button color="inherit" onClick={onClose} sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, flexShrink: 0 }}>
+          Close
+        </Button>
+      </DialogTitle>
+      <DialogContent sx={{ pt: 0 }}>
+        <TableContainer sx={{ border: "1px solid", borderColor: surfaceBorderColor, borderRadius: 1, mb: 2 }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <AdminTableHeaderCell>Product</AdminTableHeaderCell>
+                <AdminTableHeaderCell align="center">Qty</AdminTableHeaderCell>
+                <AdminTableHeaderCell align="right">Downpayment</AdminTableHeaderCell>
+                <AdminTableHeaderCell align="right">Balance</AdminTableHeaderCell>
+                <AdminTableHeaderCell>Payment</AdminTableHeaderCell>
+                <AdminTableHeaderCell>Status</AdminTableHeaderCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {lines.map((row) => {
+                const payment = migratePaymentStatus(row.payment);
+                const status = migrateOrderStatus(row.status);
+                return (
+                  <TableRow key={row.key}>
+                    <TableCell sx={{ fontWeight: 600, fontSize: "0.82rem" }}>{row.name}</TableCell>
+                    <TableCell align="center" sx={{ fontFamily: MONO_FONT }}>{row.qty}</TableCell>
+                    <TableCell align="right" sx={{ fontFamily: MONO_FONT, whiteSpace: "nowrap" }}>{PESO.format(row.dpAmount)}</TableCell>
+                    <TableCell align="right" sx={{ fontFamily: MONO_FONT, whiteSpace: "nowrap" }}>{PESO.format(row.balanceAmount || 0)}</TableCell>
+                    <TableCell>
+                      <OrderMetaChip label={payment} color={PAYMENT_COLOR[payment] || "default"} />
+                    </TableCell>
+                    <TableCell>
+                      <OrderMetaChip label={orderStatusLabel(status)} color={STATUS_COLOR[status] || "default"} />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+
+        <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: "0.68rem", letterSpacing: 0.8, mb: 1 }}>
+          SUMMARY
+        </Typography>
+        <TableContainer sx={{ border: "1px solid", borderColor: surfaceBorderColor, borderRadius: 1 }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <AdminTableHeaderCell>Product</AdminTableHeaderCell>
+                <AdminTableHeaderCell align="center">Qty</AdminTableHeaderCell>
+                <AdminTableHeaderCell align="right">Downpayment</AdminTableHeaderCell>
+                <AdminTableHeaderCell align="center">Alloc %</AdminTableHeaderCell>
+                <AdminTableHeaderCell align="center">New qty</AdminTableHeaderCell>
+                <AdminTableHeaderCell align="right">New amount</AdminTableHeaderCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {summary.map((row) => {
+                const pending = row.allocationMode === "pending";
+                return (
+                  <TableRow key={row.productKey}>
+                    <TableCell sx={{ fontWeight: 600, fontSize: "0.82rem" }}>{row.name}</TableCell>
+                    <TableCell align="center" sx={{ fontFamily: MONO_FONT }}>{row.totalQty}</TableCell>
+                    <TableCell align="right" sx={{ fontFamily: MONO_FONT, whiteSpace: "nowrap" }}>{PESO.format(row.totalDp)}</TableCell>
+                    <TableCell align="center" sx={{ fontFamily: MONO_FONT }}>
+                      {pending ? <PendingDash /> : `${Number(row.allocationPercent || 0).toFixed(2)}%`}
+                    </TableCell>
+                    <TableCell align="center" sx={{ fontFamily: MONO_FONT }}>
+                      {pending ? <PendingDash /> : row.newQty}
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontFamily: MONO_FONT, whiteSpace: "nowrap" }}>
+                      {pending ? <PendingDash /> : PESO.format(row.newAmount)}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              <TableRow>
+                <TableCell colSpan={5} align="right" sx={{ fontWeight: 700, color: "text.secondary" }}>New total</TableCell>
+                <TableCell align="right" sx={{ fontFamily: MONO_FONT, fontWeight: 800, whiteSpace: "nowrap" }}>
+                  {allPending ? <PendingDash /> : PESO.format(newTotal)}
+                </TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell colSpan={5} align="right" sx={{ fontWeight: 700, color: "text.secondary" }}>Total downpayment</TableCell>
+                <TableCell align="right" sx={{ fontFamily: MONO_FONT, fontWeight: 800, whiteSpace: "nowrap" }}>
+                  {PESO.format(workbook?.totals?.totalDp || 0)}
+                </TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell colSpan={5} align="right" sx={{ fontWeight: 700, color: "text.secondary" }}>
+                  {allPending ? "Settlement" : netLabel}
+                </TableCell>
+                <TableCell align="right" sx={{ fontFamily: MONO_FONT, fontWeight: 800, whiteSpace: "nowrap" }}>
+                  {allPending ? <PendingDash /> : PESO.format(Math.abs(net))}
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function ConsolidatedAccountTab({
   memberOrders,
   contact,
   customerRecord,
   surfaceBorderColor,
-  orderBackTo,
 }) {
   const navigate = useNavigate();
   const { customers, getCustomerProfile } = useCustomers();
   const [copied, setCopied] = useState("");
   const [qrPreview, setQrPreview] = useState(null);
+  const [viewOrder, setViewOrder] = useState(null);
   const displayName = customerRecord?.name || contact.customer;
   const displayEmail = customerRecord?.email || contact.email;
   const address = formatAddress(customerRecord?.address)
@@ -478,9 +616,7 @@ export function ConsolidatedAccountTab({
                         <Button
                           size="small"
                           variant="outlined"
-                          onClick={() => navigate(`/admin/orders/${encodeURIComponent(order.id)}`, {
-                            state: { backTo: orderBackTo },
-                          })}
+                          onClick={() => setViewOrder(order)}
                           sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4 }}
                         >
                           View
@@ -494,6 +630,12 @@ export function ConsolidatedAccountTab({
           </TableContainer>
         </AccountSection>
       </Stack>
+
+      <MemberOrderDialog
+        order={viewOrder}
+        surfaceBorderColor={surfaceBorderColor}
+        onClose={() => setViewOrder(null)}
+      />
 
       <Dialog
         fullWidth

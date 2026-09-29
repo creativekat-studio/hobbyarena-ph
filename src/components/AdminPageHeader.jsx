@@ -118,9 +118,7 @@ export function AdminPageHeaderToolbar({
               </Typography>
             ) : null}
           </Box>
-        ) : (
-          <Typography sx={{ fontWeight: 800, fontSize: "1.1rem", color: "text.secondary" }}>Admin</Typography>
-        )}
+        ) : null}
       </Box>
 
       <Box

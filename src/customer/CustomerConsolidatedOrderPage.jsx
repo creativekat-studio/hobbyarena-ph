@@ -63,6 +63,13 @@ export default function CustomerConsolidatedOrderPage() {
     [set],
   );
   const summary = useMemo(() => summarizeSet(memberOrders), [memberOrders]);
+
+  useEffect(() => {
+    if (window.location.hash !== "#balance-proof") return;
+    const el = document.querySelector("[data-balance-proof]");
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [ordersReady, set]);
   const groupedAt = useMemo(() => {
     let latest = "";
     for (const order of memberOrders) {
@@ -186,5 +193,6 @@ export default function CustomerConsolidatedOrderPage() {
 export function ConsolidatedOrderRedirect({ order }) {
   const setId = String(order?.mergedSetId || "").trim();
   if (!setId || parseConsolidatedOrderId(order?.id)) return null;
-  return <Navigate to={`/account/orders/${encodeURIComponent(setId)}`} replace />;
+  const hash = typeof window !== "undefined" ? window.location.hash : "";
+  return <Navigate to={`/account/orders/${encodeURIComponent(setId)}${hash}`} replace />;
 }

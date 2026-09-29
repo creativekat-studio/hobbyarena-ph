@@ -36,6 +36,7 @@ import {
   migratePaymentStatus,
   optionsIncludingCurrent,
   orderKindLabels,
+  orderMatchesKind,
   orderStatusLabel,
   resolveOrderKindForItem,
   resolveOrderStatusForPayment,
@@ -45,6 +46,9 @@ import {
   groupMergedOrderSets,
   buildLiveMergeWorkbook,
   buildMergeSourceRows,
+  buildMergeWorkbook,
+  defaultMergeSelectionKeys,
+  isCompletedMergeLine,
   productKeyForItem,
 } from "../lib/orderMergeSimulation.js";
 import { isArchivedOrder, isUnseenOrder } from "../lib/ordersStore.jsx";
@@ -705,17 +709,18 @@ function OrderDetailsTable({
                           />
                         ),
                       };
+                      const included = selectedKeys?.has(row.key);
                       return (
                         <Box
                           component="tr"
                           key={row.key}
-                          sx={canSelect && !selectedKeys.has(row.key) ? { opacity: 0.55 } : undefined}
+                          sx={canSelect && !included ? { opacity: 0.55 } : undefined}
                         >
                           {canSelect ? (
                             <Box component="td" sx={checkboxColSx}>
                               <Checkbox
                                 size="small"
-                                checked={selectedKeys.has(row.key)}
+                                checked={included}
                                 onChange={(event) => onSelectedKeysChange(toggleSetKeys(selectedKeys, [row.key], event.target.checked))}
                                 inputProps={{ "aria-label": `Include ${row.name} in consolidated items` }}
                                 sx={checkboxSx}
@@ -1063,7 +1068,7 @@ export function MergeWorkbookView({
   const consolidatedBlock = (
       <Box sx={split ? { gridArea: "items", minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" } : undefined}>
         <Box sx={{ flexShrink: 0 }}>
-          <SectionTitle>Consolidated Items:</SectionTitle>
+          <SectionTitle>Summary:</SectionTitle>
         </Box>
         <Box sx={{ mt: 1, ...(split ? { flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" } : {}) }}>
           <Box sx={split ? { flex: 1, minHeight: 0, overflow: "hidden" } : undefined}>
@@ -1078,7 +1083,16 @@ export function MergeWorkbookView({
               { key: "newQty", label: "New Qty", align: "center", width: "12%" },
               { key: "newAmount", label: "New Total Amount", align: "right", width: "16%" },
             ]}
-            rows={(grid.consolidated || []).map((row) => ({
+            rows={(grid.consolidated || []).map((row) => {
+              const mode = row.allocationMode || (row.allocationOpen === false ? "locked" : "instock");
+              const showPending = mode === "pending";
+              const showInputs = editable && (mode === "entry" || mode === "instock");
+              const pendingValue = (align) => (
+                <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.8rem", fontWeight: 700, textAlign: align, color: "text.secondary" }}>
+                  —
+                </Typography>
+              );
+              return {
               key: row.productKey,
               cells: {
                 product: row.name,
@@ -1092,7 +1106,7 @@ export function MergeWorkbookView({
                     {PESO.format(row.totalDp)}
                   </Typography>
                 ),
-                percent: editable ? (
+                percent: showPending ? pendingValue("center") : showInputs ? (
                   <CompactField
                     type="text"
                     inputMode="decimal"
@@ -1108,7 +1122,7 @@ export function MergeWorkbookView({
                     {Number(row.allocationPercent || 0).toFixed(2)}%
                   </Typography>
                 ),
-                newQty: editable ? (
+                newQty: showPending ? pendingValue("center") : showInputs ? (
                   <CompactField
                     type="text"
                     inputMode="numeric"
@@ -1131,18 +1145,31 @@ export function MergeWorkbookView({
                     {row.newQty}
                   </Typography>
                 ),
-                newAmount: (
+                newAmount: showPending ? pendingValue("right") : (
                   <Typography sx={{ fontFamily: MONO_FONT, fontWeight: 700, fontSize: "0.8rem", textAlign: "right" }}>
                     {PESO.format(row.newAmount)}
                   </Typography>
                 ),
               },
-            }))}
-            footerRows={[
+            };
+            })}
+            footerRows={(() => {
+              const rows = grid.consolidated || [];
+              const knownRows = rows.filter((row) => row.allocationMode !== "pending");
+              const allPending = rows.length > 0 && knownRows.length === 0;
+              const mixed = knownRows.length > 0 && knownRows.length < rows.length;
+              const knownNew = knownRows.reduce((sum, row) => sum + (Number(row.newAmount) || 0), 0);
+              const knownDp = knownRows.reduce((sum, row) => sum + (Number(row.totalDp) || 0), 0);
+              const knownNet = knownNew - knownDp;
+              const net = mixed ? knownNet : (grid.totals?.net || 0);
+              const netLabel = mixed
+                ? (knownNet < 0 ? "Refund" : knownNet > 0 ? "Balance due" : "Settled")
+                : (grid.totals?.netLabel || "Settled");
+              return [
               {
                 key: "new-total",
                 label: "New Total:",
-                value: PESO.format(grid.totals?.newTotal || 0),
+                value: allPending ? "—" : PESO.format(mixed ? knownNew : (grid.totals?.newTotal || 0)),
               },
               {
                 key: "total-dp",
@@ -1151,12 +1178,13 @@ export function MergeWorkbookView({
               },
               {
                 key: "net",
-                label: `${grid.totals?.netLabel || "Settled"}:`,
-                value: PESO.format(Math.abs(grid.totals?.net || 0)),
-                color: moneyColor(grid.totals?.net || 0),
+                label: allPending ? "Settlement:" : `${netLabel}:`,
+                value: allPending ? "—" : PESO.format(Math.abs(net)),
+                color: allPending ? "text.secondary" : moneyColor(net),
                 emphasis: true,
               },
-            ]}
+            ];
+            })()}
           />
           </Box>
           {selectedItems === 0 ? (
@@ -1275,7 +1303,7 @@ export function totalItemQty(rows) {
   return (rows || []).reduce((sum, row) => sum + (Number(row.qty) || 0), 0);
 }
 
-const CONSOLIDATED_SUMMARY_GRID = "28px minmax(148px, 1fr) minmax(140px, 1fr) minmax(140px, 0.8fr) minmax(110px, 0.75fr) minmax(120px, 0.85fr) auto";
+const CONSOLIDATED_SUMMARY_GRID = "28px minmax(148px, 1fr) minmax(140px, 1fr) minmax(140px, 0.8fr) minmax(110px, 0.75fr) minmax(120px, 0.85fr) 240px";
 const CONSOLIDATED_TABLE_MIN_WIDTH = 960;
 const CONSOLIDATED_LINE_GRID = "minmax(180px, 1.4fr) minmax(72px, 0.6fr) minmax(110px, 0.75fr) minmax(110px, 0.85fr) minmax(110px, 0.85fr) auto";
 const CONSOLIDATED_LINE_MIN_WIDTH = 760;
@@ -1703,6 +1731,7 @@ export function ConsolidatedOrderView({
   onAttachmentChange,
   lineDrafts = {},
   selectionResetKey = 0,
+  allocationEditing = false,
 }) {
   const detailWorkbook = useMemo(() => (set ? buildLiveMergeWorkbook(set.orders) : null), [set]);
   const detailKeys = useMemo(
@@ -1713,13 +1742,15 @@ export function ConsolidatedOrderView({
   const [selectedState, setSelectedState] = useState({ sig: "", keys: new Set() });
   const selectedKeys = selectedState.sig === detailKeySig
     ? selectedState.keys
-    : new Set(detailKeys);
+    : new Set(defaultMergeSelectionKeys(detailWorkbook?.orderDetails));
   const setSelectedKeys = (next) => {
     setSelectedState({
       sig: detailKeySig,
       keys: next instanceof Set ? next : new Set(next || []),
     });
   };
+  const [percentByProduct, setPercentByProduct] = useState({});
+  const [newQtyByProduct, setNewQtyByProduct] = useState({});
   const noteControlled = typeof onNoteChange === "function";
   const [note, setNote] = useState("");
   const [attachment, setAttachment] = useState(null);
@@ -1733,7 +1764,9 @@ export function ConsolidatedOrderView({
       setAttachment(extras.attachment);
       setAttachmentError("");
     }
-    setSelectedState({ sig: detailKeySig, keys: new Set(detailKeys) });
+    setSelectedState({ sig: detailKeySig, keys: new Set(defaultMergeSelectionKeys(detailWorkbook?.orderDetails)) });
+    setPercentByProduct({});
+    setNewQtyByProduct({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [set?.id, detailKeySig, selectionResetKey]);
 
@@ -1741,15 +1774,35 @@ export function ConsolidatedOrderView({
     () => (set ? buildLiveMergeWorkbook(set.orders, { includeKeys: selectedKeys }) : null),
     [set, selectedKeys],
   );
+  const draftSig = Object.entries(lineDrafts || {})
+    .map(([key, draft]) => `${key}:${draft?.payment || ""}:${draft?.status || ""}`)
+    .sort()
+    .join("|");
+  const allocationGrid = useMemo(() => {
+    if (!allocationEditing || !set) return null;
+    const statusByRow = {};
+    const paymentByRow = {};
+    for (const [key, draft] of Object.entries(lineDrafts || {})) {
+      if (draft?.status) statusByRow[key] = draft.status;
+      if (draft?.payment) paymentByRow[key] = draft.payment;
+    }
+    return buildMergeWorkbook(set.orders, {
+      percentByProduct,
+      newQtyByProduct,
+      statusByRow,
+      paymentByRow,
+      includeKeys: selectedKeys,
+    });
+  }, [allocationEditing, set, percentByProduct, newQtyByProduct, draftSig, selectedKeys, lineDrafts]);
 
   const selectedSig = [...selectedKeys].sort().join("|");
   useEffect(() => {
     onPayloadChange?.({
-      workbook,
+      workbook: allocationGrid || workbook,
       selectedCount: selectedKeys.size,
       removedOrderIds: orderIdsPendingRemoval(detailWorkbook?.orderDetails, selectedKeys),
     });
-  }, [workbook, selectedSig, selectedKeys, detailWorkbook, onPayloadChange]);
+  }, [workbook, allocationGrid, selectedSig, selectedKeys, detailWorkbook, onPayloadChange]);
 
   if (!set || !detailWorkbook || !workbook) return null;
 
@@ -1757,11 +1810,23 @@ export function ConsolidatedOrderView({
     <Stack spacing={2.5} sx={layout === "split" ? { height: "100%", minHeight: 0 } : undefined}>
       <MergeWorkbookView
         workbook={detailWorkbook}
-        gridWorkbook={workbook}
+        gridWorkbook={allocationGrid || workbook}
         orders={set.orders}
         selectedKeys={selectedKeys}
         onSelectedKeysChange={setSelectedKeys}
-        editable={editable}
+        editable={allocationEditing || editable}
+        percentByProduct={percentByProduct}
+        newQtyByProduct={newQtyByProduct}
+        onPercentChange={(productKey, value) => {
+          if (value !== "" && !/^\d*\.?\d*$/.test(value)) return;
+          setPercentByProduct((prev) => ({ ...prev, [productKey]: value }));
+          setNewQtyByProduct((prev) => {
+            const next = { ...prev };
+            delete next[productKey];
+            return next;
+          });
+        }}
+        onNewQtyChange={(productKey, value) => setNewQtyByProduct((prev) => ({ ...prev, [productKey]: value }))}
         onPaymentChange={onPaymentChange}
         onStatusChange={onStatusChange}
         note={noteControlled ? (noteProp ?? "") : note}
@@ -1805,18 +1870,42 @@ export function MergedOrdersPanel({
   onBack,
   onOpenOrder,
   onViewSet,
+  queueFilter = "all",
+  kindFilter = "all",
+  query = "",
+  activeQueue = null,
 }) {
   const theme = useTheme();
   const headerBg = stickyHeaderBg || theme.palette.background.paper;
   const [sendingId, setSendingId] = useState("");
   const [sendError, setSendError] = useState("");
   const [expandedSetId, setExpandedSetId] = useState(null);
-  const sets = useMemo(
+  const viewingArchived = queueFilter === "archived";
+  const groupedSets = useMemo(
     () => withConsolidatedDisplayIds(
-      groupMergedOrderSets((orders || []).filter((order) => !isArchivedOrder(order))),
+      groupMergedOrderSets((orders || []).filter((order) => (
+        viewingArchived ? isArchivedOrder(order) : !isArchivedOrder(order)
+      ))),
     ),
-    [orders],
+    [orders, viewingArchived],
   );
+  const sets = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return groupedSets.filter((set) => {
+      const members = set.orders || [];
+      if (kindFilter !== "all" && !members.some((order) => orderMatchesKind(order, kindFilter))) return false;
+      if (needle) {
+        const haystack = [
+          displayConsolidatedOrderId(set),
+          set.id,
+          ...members.flatMap((order) => [order.id, order.customer, order.email, order.items]),
+        ].join(" ").toLowerCase();
+        if (!haystack.includes(needle)) return false;
+      }
+      if (queueFilter === "all" || viewingArchived) return true;
+      return members.some((order) => activeQueue?.match?.(order));
+    });
+  }, [groupedSets, kindFilter, query, queueFilter, viewingArchived, activeQueue]);
   const {
     visibleItems,
     rootRef: scrollRootRef,
@@ -1828,14 +1917,14 @@ export function MergedOrdersPanel({
 
   useEffect(() => {
     if (!updateOrder) return;
-    for (const set of sets) {
+    for (const set of groupedSets) {
       if (!set.displayId || set.displayId === set.id) continue;
       for (const order of set.orders) {
         if (order.mergedSetId === set.displayId) continue;
         updateOrder(order.id, { mergedSetId: set.displayId });
       }
     }
-  }, [sets, updateOrder]);
+  }, [groupedSets, updateOrder]);
 
   function toggleSetAccordion(id) {
     setExpandedSetId((current) => (current === id ? null : id));
@@ -1863,16 +1952,21 @@ export function MergedOrdersPanel({
   }
 
   if (!sets.length) {
+    const filteredOut = groupedSets.length > 0;
     return (
       <Stack spacing={1.5} alignItems="center" sx={{ py: 6, px: 3, color: "text.secondary" }}>
-        <Typography sx={{ fontWeight: 800, color: "text.primary" }}>No consolidated orders yet.</Typography>
-        <Button
-          variant="outlined"
-          onClick={onBack}
-          sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
-        >
-          Go back to Individual orders
-        </Button>
+        <Typography sx={{ fontWeight: 800, color: "text.primary" }}>
+          {filteredOut ? "No consolidated orders match your filters." : "No consolidated orders yet."}
+        </Typography>
+        {filteredOut ? null : (
+          <Button
+            variant="outlined"
+            onClick={onBack}
+            sx={{ fontFamily: MONO_FONT, fontSize: "0.72rem", letterSpacing: 0.4 }}
+          >
+            Go back to Individual orders
+          </Button>
+        )}
       </Stack>
     );
   }

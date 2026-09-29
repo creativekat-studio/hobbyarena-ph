@@ -170,6 +170,7 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
 
   return (
     <Box
+      data-balance-proof=""
       sx={{
         mb: 1.5,
         p: 1.5,
