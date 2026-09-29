@@ -382,7 +382,7 @@ function netSummary(totalDp, newTotal) {
     totalDp,
     newTotal,
     net,
-    netLabel: net < 0 ? "Refund" : net > 0 ? "Balance due" : "No balance",
+    netLabel: net < 0 ? "Refund" : net > 0 ? "Balance due" : "Settled",
   };
 }
 
@@ -772,7 +772,7 @@ export function buildConsolidatedEmailOrder(orders, workbook) {
         newTotal: Number(totals.newTotal) || 0,
         totalDp: Number(totals.totalDp) || 0,
         net,
-        netLabel: net < 0 ? "Refund amount" : net > 0 ? "Balance" : "No balance",
+        netLabel: net < 0 ? "Refund amount" : net > 0 ? "Balance" : "Settled",
       },
     },
   };

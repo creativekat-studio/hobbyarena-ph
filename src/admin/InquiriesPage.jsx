@@ -4,7 +4,6 @@ import {
   Box,
   Button,
   Chip,
-  Divider,
   IconButton,
   InputAdornment,
   Stack,
@@ -19,6 +18,7 @@ import AdminSectionTitle from "../components/AdminSectionTitle.jsx";
 import { ChevronLeftIcon, MailIcon, SearchIcon, SparkleIcon } from "../components/icons.jsx";
 import { INQUIRY_STATUS, isUnseenInquiry, useInquiries } from "../lib/inquiriesStore.jsx";
 import { isMobileMdViewport, useIsMobileMd } from "../lib/mobileUi.js";
+import { ADMIN_ACTION_BUTTON_SX, ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
 import {
   AdminListFilterTabs,
   ADMIN_LIST_FILTER_BAR_SX,
@@ -172,26 +172,81 @@ function InquiryListItem({ inquiry, selected, onSelect, surfaceBorderColor }) {
   );
 }
 
-function InquiryPreview({ inquiry, surfaceBorderColor, onStatus, onDelete, onBack }) {
-  const theme = useTheme();
+function InquiryStatusChip({ status }) {
+  return (
+    <Chip
+      label={status}
+      variant="outlined"
+      color={STATUS_COLOR[status] || "default"}
+      sx={ADMIN_STATUS_CHIP_SX}
+    />
+  );
+}
 
+function DetailRow({ label, children, borderColor, last = false }) {
   return (
     <Stack
+      direction="row"
+      spacing={2}
+      alignItems="center"
+      justifyContent="space-between"
       sx={{
-        height: "100%",
-        minHeight: 0,
-        display: "flex",
-        flexDirection: "column",
+        px: 1.5,
+        py: 1.15,
+        borderBottom: last ? "none" : "1px solid",
+        borderColor,
       }}
     >
-      <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ p: { xs: 2, md: 3 }, pb: 2, flexShrink: 0 }}>
+      <Typography
+        sx={{
+          color: "text.secondary",
+          fontSize: "0.68rem",
+          fontFamily: MONO_FONT,
+          fontWeight: 800,
+          letterSpacing: 0.6,
+          textTransform: "uppercase",
+          flexShrink: 0,
+        }}
+      >
+        {label}
+      </Typography>
+      <Box sx={{ minWidth: 0, textAlign: "right" }}>{children}</Box>
+    </Stack>
+  );
+}
+
+const DESTRUCTIVE_BUTTON_SX = {
+  ...ADMIN_ACTION_BUTTON_SX,
+  bgcolor: "error.main",
+  color: "error.contrastText",
+  "&:hover": { bgcolor: "error.dark", border: "none" },
+};
+
+function InquiryPreview({ inquiry, surfaceBorderColor, onStatus, onDelete, onBack }) {
+  const theme = useTheme();
+  const sectionFrame = {
+    border: "1px solid",
+    borderColor: surfaceBorderColor,
+    borderRadius: 1,
+    overflow: "hidden",
+    bgcolor: alpha(theme.palette.background.paper, 0.35),
+  };
+
+  return (
+    <Stack sx={{ height: "100%", minHeight: 0 }}>
+      <Stack
+        direction="row"
+        spacing={1.5}
+        alignItems="flex-start"
+        sx={{ px: { xs: 2, md: 2.5 }, py: 1.75, flexShrink: 0 }}
+      >
         {onBack ? (
           <IconButton
             size="small"
             aria-label="Back to inbox"
             onClick={onBack}
             sx={{
-              mt: 0.5,
+              mt: 0.25,
               flexShrink: 0,
               border: "1px solid",
               borderColor: surfaceBorderColor,
@@ -202,84 +257,117 @@ function InquiryPreview({ inquiry, surfaceBorderColor, onStatus, onDelete, onBac
             <ChevronLeftIcon sx={{ fontSize: 20 }} />
           </IconButton>
         ) : null}
-        <Avatar
-          sx={{
-            width: 48,
-            height: 48,
-            fontSize: "0.95rem",
-            fontWeight: 800,
-            bgcolor: alpha(theme.palette.text.primary, 0.1),
-          }}
-        >
-          {initials(inquiry.name)}
-        </Avatar>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap>
-            <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.2, fontSize: { xs: "1.05rem", md: "1.25rem" } }}>
+            <Typography sx={{ fontWeight: 800, lineHeight: 1.25, fontSize: { xs: "1.05rem", md: "1.2rem" } }}>
               {inquiry.subject || "(no subject)"}
             </Typography>
-            <Chip label={inquiry.status} size="small" color={STATUS_COLOR[inquiry.status]} variant="outlined" />
+            <InquiryStatusChip status={inquiry.status} />
           </Stack>
-          <Typography sx={{ color: "text.secondary", fontSize: "0.85rem", mt: 0.5 }}>
-            {inquiry.name} · {inquiry.email}
-          </Typography>
-          <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", fontFamily: MONO_FONT, mt: 0.25 }}>
-            {formatDate(inquiry.date)}
+          <Typography sx={{ color: "text.secondary", fontSize: "0.8rem", mt: 0.5 }}>
+            {inquiry.name}
+            {inquiry.email ? ` · ${inquiry.email}` : ""}
           </Typography>
         </Box>
       </Stack>
 
-      <Divider sx={{ borderColor: surfaceBorderColor }} />
-
       <Box
         sx={{
-          flex: "1 1 0%",
+          flex: 1,
           minHeight: 0,
           overflow: "auto",
-          p: { xs: 2, md: 3 },
-          WebkitOverflowScrolling: "touch",
-          overscrollBehavior: "contain",
+          px: { xs: 2, md: 2.5 },
+          pb: 2,
+          display: "grid",
+          gridTemplateColumns: { xs: "minmax(0, 1fr)", md: "minmax(0, 1.7fr) minmax(240px, 0.8fr)" },
+          gridTemplateRows: { xs: "auto auto", md: "minmax(0, 1fr)" },
+          gap: 2,
+          alignItems: "stretch",
         }}
       >
-        <Box
-          sx={{
-            maxWidth: 640,
-            p: 2.5,
-            borderRadius: 1,
-            bgcolor: alpha(theme.palette.text.primary, 0.03),
-            border: "1px solid",
-            borderColor: surfaceBorderColor,
-          }}
-        >
-          <Typography sx={{ whiteSpace: "pre-wrap", lineHeight: 1.75, fontSize: "0.92rem" }}>
-            {inquiry.message}
-          </Typography>
+        <Box sx={{ minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <AdminSectionTitle sx={{ fontSize: "0.82rem", mb: 1 }}>Message</AdminSectionTitle>
+          <Box sx={{ ...sectionFrame, flex: 1, minHeight: 160, overflow: "auto", p: { xs: 1.75, md: 2.25 } }}>
+            <Typography sx={{ whiteSpace: "pre-wrap", lineHeight: 1.7, fontSize: "0.92rem" }}>
+              {inquiry.message}
+            </Typography>
+          </Box>
+        </Box>
+
+        <Box sx={{ minWidth: 0 }}>
+          <AdminSectionTitle sx={{ fontSize: "0.82rem", mb: 1 }}>From</AdminSectionTitle>
+          <Box sx={sectionFrame}>
+            <DetailRow label="Name" borderColor={surfaceBorderColor}>
+              <Typography sx={{ fontWeight: 700, fontSize: "0.85rem" }}>{inquiry.name}</Typography>
+            </DetailRow>
+            <DetailRow label="Email" borderColor={surfaceBorderColor}>
+              <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.75rem", wordBreak: "break-all" }}>
+                {inquiry.email || "—"}
+              </Typography>
+            </DetailRow>
+            <DetailRow label="Received" borderColor={surfaceBorderColor}>
+              <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.75rem" }}>{formatDate(inquiry.date)}</Typography>
+            </DetailRow>
+            <DetailRow label="Status" borderColor={surfaceBorderColor} last>
+              <InquiryStatusChip status={inquiry.status} />
+            </DetailRow>
+          </Box>
         </Box>
       </Box>
 
-      <Divider sx={{ borderColor: surfaceBorderColor }} />
-
-      <Stack direction="row" spacing={1.5} sx={{ p: { xs: 2, md: 2.5 }, flexWrap: "wrap", gap: 1, flexShrink: 0 }}>
+      <Stack
+        direction="row"
+        spacing={1}
+        alignItems="center"
+        flexWrap="wrap"
+        useFlexGap
+        sx={{
+          px: { xs: 2, md: 2.5 },
+          py: 1.5,
+          flexShrink: 0,
+          borderTop: "1px solid",
+          borderColor: surfaceBorderColor,
+        }}
+      >
         <Button
+          size="small"
           variant="contained"
           color="primary"
           component="a"
           href={`mailto:${inquiry.email}?subject=Re: ${encodeURIComponent(inquiry.subject || "Your inquiry")}`}
-          startIcon={<MailIcon sx={{ fontSize: 18 }} />}
-          sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase" }}
+          startIcon={<MailIcon sx={{ fontSize: 16 }} />}
+          sx={ADMIN_ACTION_BUTTON_SX}
         >
           Reply by email
         </Button>
         {inquiry.status !== INQUIRY_STATUS.HANDLED ? (
-          <Button variant="outlined" color="success" onClick={() => onStatus(inquiry.id, INQUIRY_STATUS.HANDLED)}>
+          <Button
+            size="small"
+            variant="contained"
+            color="primary"
+            onClick={() => onStatus(inquiry.id, INQUIRY_STATUS.HANDLED)}
+            sx={ADMIN_ACTION_BUTTON_SX}
+          >
             Mark handled
           </Button>
         ) : (
-          <Button variant="outlined" color="inherit" onClick={() => onStatus(inquiry.id, INQUIRY_STATUS.READ)} sx={{ borderColor: surfaceBorderColor }}>
+          <Button
+            size="small"
+            variant="contained"
+            color="primary"
+            onClick={() => onStatus(inquiry.id, INQUIRY_STATUS.READ)}
+            sx={ADMIN_ACTION_BUTTON_SX}
+          >
             Reopen
           </Button>
         )}
-        <Button variant="outlined" color="error" onClick={() => onDelete(inquiry.id)}>
+        <Button
+          size="small"
+          variant="contained"
+          color="error"
+          onClick={() => onDelete(inquiry.id)}
+          sx={DESTRUCTIVE_BUTTON_SX}
+        >
           Delete
         </Button>
       </Stack>
@@ -363,7 +451,14 @@ export default function InquiriesPage() {
           title={(
             <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
               <span>Inquiries</span>
-              {unreadCount > 0 ? <Chip label={`${unreadCount} new`} color="primary" size="small" sx={{ fontWeight: 800 }} /> : null}
+              {unreadCount > 0 ? (
+                <Chip
+                  label={`${unreadCount} new`}
+                  color="primary"
+                  variant="outlined"
+                  sx={ADMIN_STATUS_CHIP_SX}
+                />
+              ) : null}
             </Stack>
           )}
           subtitle="Messages from the storefront contact form."

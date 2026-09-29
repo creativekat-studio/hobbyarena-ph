@@ -33,8 +33,8 @@ import { lineItemAmount } from "../lib/orderRevenue.js";
 import { buildLiveMergeWorkbook } from "../lib/orderMergeSimulation.js";
 import { formatOrderTimestamp } from "../lib/orderTimestamps.js";
 
-export const ORDER_SUMMARY_GRID = "36px 28px minmax(148px, 1fr) minmax(140px, 1fr) minmax(140px, 0.8fr) minmax(110px, 0.75fr) minmax(120px, 0.85fr) 112px 200px";
-export const ORDER_SUMMARY_GRID_NO_SELECT = "28px minmax(148px, 1fr) minmax(140px, 1fr) minmax(140px, 0.8fr) minmax(110px, 0.75fr) minmax(120px, 0.85fr) 112px 200px";
+export const ORDER_SUMMARY_GRID = "36px 28px minmax(148px, 0.9fr) minmax(200px, 1.6fr) minmax(120px, 0.65fr) minmax(150px, 1.15fr) minmax(160px, 1.25fr) 88px 148px";
+export const ORDER_SUMMARY_GRID_NO_SELECT = "28px minmax(148px, 0.9fr) minmax(200px, 1.6fr) minmax(120px, 0.65fr) minmax(150px, 1.15fr) minmax(160px, 1.25fr) 88px 148px";
 export const LINEITEM_GRID = "minmax(180px, 1.4fr) minmax(72px, 0.6fr) minmax(110px, 0.75fr) minmax(110px, 0.85fr) minmax(110px, 0.85fr)";
 export const ORDER_TABLE_MIN_WIDTH = 1080;
 const LINEITEM_TABLE_MIN_WIDTH = 720;
@@ -88,7 +88,7 @@ export function EmailSentMark({ sentCount }) {
   const sent = count > 0;
   const timesLabel = `Sent ${count} ${count === 1 ? "time" : "times"}`;
   return (
-    <Stack direction="row" spacing={0.35} alignItems="center" onClick={(event) => event.stopPropagation()}>
+    <Stack direction="row" spacing={0.35} alignItems="center" onClick={(event) => event.stopPropagation()} sx={{ justifySelf: "end" }}>
       <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap" }}>
         {sent ? "Yes" : "No"}
       </Typography>
@@ -152,7 +152,7 @@ export default function AdminOrderAccordionRow({
     : (knownRows.length < summaryRows.length ? knownNew : (Number(workbook.totals?.newTotal) || 0));
   const balanceUnset = verificationPending && orderedBalance <= 0;
   const netSign = net < 0 ? "−" : net > 0 ? "+" : "";
-  const netKind = net < 0 ? "Refund" : net > 0 ? "Due" : "No balance";
+  const netKind = net < 0 ? "Refund" : net > 0 ? "Due" : "Settled";
 
   return (
     <Box sx={{ borderBottom: "1px solid", borderColor: surfaceBorderColor, opacity: archived ? 0.72 : 1 }}>
