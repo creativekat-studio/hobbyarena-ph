@@ -699,6 +699,258 @@ function renderOverrideBody(order, bodyOverride, emailType) {
 }
 
 
+function itemFocusBlock(order) {
+  const item = getUpdatedItem(order);
+  const lineItems = normalizeLineItems(order);
+  const c = EMAIL_BRAND.colors;
+
+  if (item) {
+    const tag = item.tag
+      ? `<span style="display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:${c.muted};background:${c.page}">${escapeHtml(item.tag)}</span>`
+      : "";
+
+    return `
+      <div style="margin:0 0 20px;padding:14px 16px;border-radius:8px;background:${c.page};border:1px solid ${c.border}">
+        <p style="margin:0 0 6px;font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:${c.muted}">
+          Item updated
+        </p>
+        <p style="margin:0 0 8px;font-family:Inter,Arial,sans-serif;font-size:16px;font-weight:700;line-height:1.35;color:${c.ink}">
+          ${escapeHtml(itemLabel(item))}${tag}
+        </p>
+        <p style="margin:0;font-family:Inter,Arial,sans-serif;font-size:13px;line-height:1.5;color:${c.muted}">
+          ${escapeHtml(item.status ? orderStatusLabel(item.status) : "—")}${item.payment ? ` · ${escapeHtml(item.payment)}` : ""}
+        </p>
+      </div>
+    `;
+  }
+
+  if (lineItems.length <= 1) return "";
+
+  const rows = lineItems.map((line) => {
+    const tag = line.tag
+      ? `<span style="display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:${c.muted};background:${c.page}">${escapeHtml(line.tag)}</span>`
+      : "";
+    return `
+      <div style="margin:0 0 10px;padding:10px 0;border-bottom:1px solid ${c.border}">
+        <p style="margin:0 0 4px;font-family:Inter,Arial,sans-serif;font-size:15px;font-weight:700;line-height:1.35;color:${c.ink}">
+          ${escapeHtml(itemLabel(line))}${tag}
+        </p>
+        <p style="margin:0;font-family:Inter,Arial,sans-serif;font-size:13px;line-height:1.5;color:${c.muted}">
+          ${escapeHtml(line.status ? orderStatusLabel(line.status) : "—")}${line.payment ? ` · ${escapeHtml(line.payment)}` : ""}
+        </p>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <div style="margin:0 0 20px;padding:14px 16px;border-radius:8px;background:${c.page};border:1px solid ${c.border}">
+      <p style="margin:0 0 10px;font-family:Inter,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:${c.muted}">
+        Items in this update (${lineItems.length})
+      </p>
+      ${rows}
+    </div>
+  `;
+}
+
+function showBalancePaidRow(emailType) {
+  return emailType === "ready_for_pickup" || emailType === "order_fulfilled";
+}
+
+function lineIsPreorder(item) {
+  return item?.tag === "Pre-order";
+}
+
+function statusLineMoney(item, useAllocation) {
+  const orderedQty = Math.max(1, Number(item.quantity) || 1);
+  const allocated = Math.max(0, Number(item.allocatedQty) || 0);
+  const billQty = useAllocation && allocated > 0 ? Math.min(allocated, orderedQty) : orderedQty;
+  const qtyLabel = useAllocation && allocated > 0 ? `${billQty} of ${orderedQty}` : String(orderedQty);
+  const unitPrice = itemUnitPrice(item);
+  const lineTotal = useAllocation && allocated > 0
+    ? unitPrice * billQty
+    : itemFinalTotal({ ...item, allocatedQty: 0 });
+  return {
+    qtyLabel,
+    unitLabel: unitPrice > 0 ? formatPeso(unitPrice) : "—",
+    totalLabel: lineTotal > 0 ? formatPeso(lineTotal) : "—",
+  };
+}
+
+/** Original invoice columns, in the same desktop table / mobile stack as order details. */
+function statusLineItemsGrid(tableItems, { highlightId = null, useAllocation = false } = {}) {
+  const c = EMAIL_BRAND.colors;
+  const wideRows = tableItems.map((item) => {
+    const money = statusLineMoney(item, useAllocation);
+    const tag = item.tag
+      ? `<span style="display:block;margin-top:2px;font-size:12px;color:${c.muted}">${escapeHtml(item.tag)}</span>`
+      : "";
+    const statusMeta = item.status
+      ? `<span style="display:block;margin-top:4px;font-size:12px;color:${c.muted}">${escapeHtml(item.status)}${item.payment ? ` · ${escapeHtml(item.payment)}` : ""}</span>`
+      : "";
+    const name = `${escapeHtml(item.name || "Item")}${tag}${statusMeta}`;
+    return `
+      <tr>
+        ${gridBodyCell(name, { strong: Boolean(highlightId && item.id === highlightId) })}
+        ${gridBodyCell(money.unitLabel, { align: "right", muted: true, nowrap: true })}
+        ${gridBodyCell(money.qtyLabel, { align: "center", muted: true, nowrap: true })}
+        ${gridBodyCell(money.totalLabel, { align: "right", nowrap: true })}
+      </tr>
+    `;
+  }).join("");
+  const narrowRows = tableItems.map((item) => {
+    const money = statusLineMoney(item, useAllocation);
+    const tag = item.tag ? ` · ${escapeHtml(item.tag)}` : "";
+    return `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 14px;border-bottom:1px solid ${c.border}">
+        <tr>
+          <td style="padding:0 0 8px;font-family:Inter,Arial,sans-serif;font-size:14px;font-weight:600;line-height:1.4;color:${c.text}">
+            ${escapeHtml(item.name || "Item")}${tag}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 0 12px">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              ${stackLine("Unit price", money.unitLabel)}
+              ${stackLine("Qty", money.qtyLabel)}
+              ${stackLine("Total", money.totalLabel)}
+            </table>
+          </td>
+        </tr>
+      </table>
+    `;
+  }).join("");
+  const heading = tableItems.length > 1 ? sectionHeading("Items in this email") : sectionHeading("Order details");
+  return `
+    ${heading}
+    <table role="presentation" class="consolidated-table" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px">
+      <tr>
+        ${gridHeaderCell("Item")}
+        ${gridHeaderCell("Unit Price", { align: "right" })}
+        ${gridHeaderCell("Qty", { align: "center" })}
+        ${gridHeaderCell("Total", { align: "right" })}
+      </tr>
+      ${wideRows}
+    </table>
+    <div class="consolidated-stack" style="display:none;max-height:0;overflow:hidden;">${narrowRows}</div>
+  `;
+}
+
+function invoiceSummary(order, emailType) {
+  const item = getUpdatedItem(order);
+  const lineItems = normalizeLineItems(order);
+  const rows = [];
+  const dp = depositPercentOf(order);
+  const bal = balancePercentOf(order);
+
+  const tableItems = item?.id
+    ? lineItems.filter((line) => line.id === item.id)
+    : lineItems;
+  const hasAllocation = tableItems.some((line) => (Number(line.allocatedQty) || 0) > 0);
+  const finalTotal = tableItems.reduce((sum, line) => sum + itemFinalTotal(line), 0);
+  const useDepositLabels = item
+    ? lineIsPreorder(item)
+    : tableItems.some(lineIsPreorder) || isPreorderEmailContext(order);
+
+  if (item) {
+    if (item.depositPaid > 0) {
+      rows.push({
+        label: useDepositLabels ? `Deposit paid (${dp}%)` : "Amount paid",
+        value: formatPeso(item.depositPaid),
+      });
+    }
+    if ((item.creditAmount || 0) > 0) {
+      rows.push({ label: "Order credit", value: formatPeso(item.creditAmount) });
+    }
+    if (item.balanceDue > 0) {
+      rows.push({
+        label: useDepositLabels ? `Balance due now (${bal}%)` : "Balance due now",
+        value: formatPeso(item.balanceDue),
+        strong: true,
+      });
+    } else if (useDepositLabels && showBalancePaidRow(emailType) && hasAllocation) {
+      const balancePaid = Math.max(0, finalTotal - (Number(item.depositPaid) || 0));
+      if (balancePaid > 0) {
+        rows.push({ label: `Balance paid (${bal}%)`, value: formatPeso(balancePaid) });
+      }
+    }
+    const itemRefund = refundTotalForEmail(order, emailType, item);
+    if (itemRefund > 0) {
+      rows.push({ label: "Refund amount (this item)", value: formatPeso(itemRefund), strong: true });
+    }
+  } else if (lineItems.length > 1) {
+    const depositTotal = lineItems.reduce((sum, line) => sum + line.depositPaid, 0);
+    const creditTotal = lineItems.reduce((sum, line) => sum + (line.creditAmount || 0), 0);
+    const balanceTotal = lineItems.reduce((sum, line) => sum + line.balanceDue, 0);
+    const refundTotal = refundTotalForEmail(order, emailType);
+    if (depositTotal > 0) {
+      rows.push({
+        label: useDepositLabels ? `Deposit paid (${dp}%)` : "Amount paid",
+        value: formatPeso(depositTotal),
+      });
+    }
+    if (creditTotal > 0) {
+      rows.push({ label: "Order credit", value: formatPeso(creditTotal) });
+    }
+    if (balanceTotal > 0) {
+      rows.push({
+        label: useDepositLabels ? `Balance due now (${bal}%)` : "Balance due now",
+        value: formatPeso(balanceTotal),
+        strong: true,
+      });
+    } else if (useDepositLabels && showBalancePaidRow(emailType) && hasAllocation) {
+      const balancePaid = Math.max(0, finalTotal - depositTotal);
+      if (balancePaid > 0) {
+        rows.push({ label: `Balance paid (${bal}%)`, value: formatPeso(balancePaid) });
+      }
+    }
+    if (refundTotal > 0) {
+      rows.push({ label: "Refund amount (selected items)", value: formatPeso(refundTotal), strong: true });
+    }
+  } else {
+    rows.push({
+      label: useDepositLabels ? `Paid now DP (${dp}%)` : "Amount paid",
+      value: formatPeso(order.total),
+    });
+    if ((order.creditAmount || 0) > 0) {
+      rows.push({ label: "Order credit", value: formatPeso(order.creditAmount) });
+    }
+    if (order.balanceDue > 0) {
+      rows.push({
+        label: useDepositLabels ? `Balance Due (${bal}%)` : "Balance due",
+        value: formatPeso(order.balanceDue),
+        strong: true,
+      });
+    } else if (useDepositLabels && showBalancePaidRow(emailType) && hasAllocation) {
+      const depositPaid = Number(order.total) || 0;
+      const balancePaid = Math.max(0, finalTotal - depositPaid);
+      if (balancePaid > 0) {
+        rows.push({ label: `Balance paid (${bal}%)`, value: formatPeso(balancePaid) });
+      }
+    }
+    const fallbackRefund = refundTotalForEmail(order, emailType);
+    if (fallbackRefund > 0) {
+      rows.push({ label: "Refund amount", value: formatPeso(fallbackRefund), strong: true });
+    }
+  }
+
+  if (useDepositLabels && hasAllocation && finalTotal > 0) {
+    rows.push({ label: "Total (allocated)", value: formatPeso(finalTotal), strong: true });
+  }
+
+  const lines = ["Order details"];
+  for (const line of tableItems) {
+    const money = statusLineMoney(line, hasAllocation);
+    lines.push(`${line.name || "Item"}  ${money.unitLabel}  ×${money.qtyLabel}  ${money.totalLabel}`);
+  }
+  for (const row of rows) lines.push(`${row.label}: ${row.value}`);
+
+  const html = `
+    ${statusLineItemsGrid(tableItems, { highlightId: item?.id, useAllocation: hasAllocation })}
+    ${rows.length ? `${totalsBlock(rows)}<div style="clear:both"></div>` : ""}
+  `;
+  return { html, lines };
+}
+
 function preorderMilestones(item, emailType) {
   const map = {
     deposit_received: [
@@ -968,6 +1220,15 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
   const actionNotes = options.actionNotes && typeof options.actionNotes === "object"
     ? options.actionNotes
     : null;
+  const showSummary = [
+    "balance_due_full",
+    "balance_due_partial",
+    "partial_refund_pending",
+    "full_refund_pending",
+    "partial_refund_sent",
+    "ready_for_pickup",
+    "order_fulfilled",
+  ].includes(emailType);
   const showMilestones = [
     "deposit_received",
     "balance_due_full",
@@ -981,7 +1242,7 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
   ].includes(emailType);
 
   const isConsolidated = emailType === "consolidated_allocation";
-  const singleSections = isConsolidated ? null : singleOrderEmailSections(order);
+  const statusSections = showSummary && !isConsolidated ? invoiceSummary(order, emailType) : null;
   const net = consolidatedNet(order);
   const resolvedSubject = subjectOverride
     ? subjectOverride.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => buildPlaceholderMap(order, emailType)[key] ?? "")
@@ -993,8 +1254,9 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     </p>
     ${orderMeta(order, { consolidated: isConsolidated })}
     ${bodyLead(template.lead(order))}
+    ${!showSummary && !isConsolidated ? itemFocusBlock(order) : ""}
     ${bodyOverride ? renderOverrideBody(order, bodyOverride, emailType) : bodyText(template.body(order))}
-    ${isConsolidated ? consolidatedEmailTables(order) : (singleSections?.html || "")}
+    ${isConsolidated ? consolidatedEmailTables(order) : (statusSections?.html || "")}
     ${showMilestones && !isConsolidated ? preorderMilestones(item, emailType) : ""}
     ${customerActionButtonsBlock(emailType, order, { showMessenger: showMessengerButton, actionNotes })}
     ${order.statusAttachment ? statusAttachmentBlock(order.statusAttachment) : ""}
@@ -1045,8 +1307,8 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     if (String(order.notes || "").trim()) {
       text.push("", "Note", String(order.notes).trim());
     }
-  } else if (singleSections?.lines?.length) {
-    text.push("", ...singleSections.lines);
+  } else if (statusSections?.lines?.length) {
+    text.push("", ...statusSections.lines);
   }
 
   if (BALANCE_ACTION_EMAIL_TYPES.has(emailType) || (isConsolidated && net > 0)) {

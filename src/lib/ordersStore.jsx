@@ -3,6 +3,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { getDataSource } from "./firebase/config.js";
 import { getFirebaseAuth } from "./firebase/app.js";
 import { subscribeAllOrders, subscribeCustomerOrders, upsertOrder, patchCustomerOrderTrail } from "./firebase/repositories/orders.js";
+import { uploadOrderProofFromDataUrl } from "./firebase/repositories/uploads.js";
 import { createOrderViaApi } from "./createOrderApi.js";
 import { isAdminAccount } from "./firebase/auth.js";
 import { shouldExposeAdminSession } from "../auth/authSurface.js";
@@ -28,6 +29,7 @@ import {
   resolveOrderKind,
   resolveOrderKindForItem,
   syncOrderRollup,
+  completedStatusHardStop,
   validateAllocationForStatus,
   findLatestAdminTrailAttachment,
   isSetLevelMergedAttachment,
@@ -59,7 +61,6 @@ import { resolveOrderStatusEmailTypeForCurrentState, ORDER_STATUS_EMAIL_LABELS }
 import { buildConsolidatedEmailOrder, buildLiveMergeWorkbook } from "./orderMergeSimulation.js";
 import { getActionNotes, getEmailBodyOverride, getEmailSubjectOverride, getPreorderReminderConfig, getShowMessengerButton } from "./emailTemplatesStore.js";
 import { normalizeProofDataUrl } from "./imageCompression.js";
-import { uploadOrderProofFromDataUrl } from "./firebase/repositories/uploads.js";
 import { useInventory } from "./inventoryStore.jsx";
 
 const STORAGE_KEY = "hobbyarena:orders";
@@ -676,11 +677,24 @@ export function OrdersProvider({ children }) {
       setOrders((current) => {
         const next = current.map((row) => {
           if (!idSet.has(row.id)) return row;
+          const previousUrl = row.mergedEmailAttachment?.url || "";
+          const nextUrl = persistAttachment?.url || "";
+          const attachmentChanged = Boolean(nextUrl) && nextUrl !== previousUrl;
+          const trailEntry = attachmentChanged
+            ? buildTrailEntry({
+              title: "Attachment uploaded",
+              status: row.status,
+              payment: row.payment,
+              note: persistAttachment.label || "Attachment",
+              attachment: buildTrailAttachment(nextUrl, persistAttachment.label || "Attachment", "admin"),
+            })
+            : null;
           const updated = {
             ...row,
             mergedEmailNote: note,
             mergedEmailAttachment: persistAttachment,
             mergedEmailSavedAt: at,
+            ...(trailEntry ? { trail: [...(row.trail || []), trailEntry] } : {}),
           };
           persistOrder(updated);
           return updated;
@@ -1000,9 +1014,19 @@ export function OrdersProvider({ children }) {
       let resolvedAttachment = attachment;
       if (attachment?.url) {
         const compressedUrl = await normalizeProofDataUrl(attachment.url);
-        resolvedAttachment = compressedUrl === attachment.url
-          ? attachment
-          : { ...attachment, url: compressedUrl };
+        let url = compressedUrl;
+        if (firebaseEnabled && String(compressedUrl).startsWith("data:")) {
+          try {
+            url = await uploadOrderProofFromDataUrl(id, compressedUrl, attachment.label || "Attachment");
+          } catch (error) {
+            console.warn("[orders] Could not upload status attachment:", error);
+          }
+        }
+        resolvedAttachment = {
+          ...attachment,
+          url,
+          ...(String(url).startsWith("http") ? { storageUrl: url } : {}),
+        };
       }
 
       setOrders((prev) => {
@@ -1015,6 +1039,7 @@ export function OrdersProvider({ children }) {
 
           const prevItem = items.find((item) => item.id === targetId);
           if (!prevItem) return o;
+          if (completedStatusHardStop(prevItem.status, status)) return o;
 
           const lineItems = items.map((item) =>
             item.id === targetId

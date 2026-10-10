@@ -29,6 +29,8 @@ import {
   allocationLabelForItem,
   getOrderLineItems,
   getOrderStatusOptionsForPayment,
+  restrictOrderStatusOptions,
+  restrictPaymentOptions,
   getPaymentOptionsForKind,
   isPreorderOrder,
   lineItemTrailLabel,
@@ -149,7 +151,10 @@ function LineChipSelect({ value, options, onChange, colorMap, labelFor = (entry)
 
 function LinePaymentSelect({ item, value, onChange }) {
   const kind = resolveOrderKindForItem(item);
-  const options = optionsIncludingCurrent(getPaymentOptionsForKind(kind), value);
+  const options = optionsIncludingCurrent(
+    restrictPaymentOptions(item?.status, kind, getPaymentOptionsForKind(kind)),
+    value,
+  );
   return (
     <LineChipSelect
       value={value}
@@ -162,9 +167,9 @@ function LinePaymentSelect({ item, value, onChange }) {
 
 function LineStatusSelect({ item, payment, value, onChange }) {
   const kind = resolveOrderKindForItem(item);
-  const options = optionsIncludingCurrent(
+  const options = restrictOrderStatusOptions(
+    item?.status,
     getOrderStatusOptionsForPayment(payment || item?.payment, kind),
-    value,
   );
   return (
     <LineChipSelect
@@ -1743,6 +1748,7 @@ export function ConsolidatedOrderView({
   };
   const [percentByProduct, setPercentByProduct] = useState({});
   const [newQtyByProduct, setNewQtyByProduct] = useState({});
+  const [allocationTouched, setAllocationTouched] = useState(false);
   const noteControlled = typeof onNoteChange === "function";
   const [note, setNote] = useState("");
   const [attachment, setAttachment] = useState(null);
@@ -1757,8 +1763,15 @@ export function ConsolidatedOrderView({
       setAttachmentError("");
     }
     setSelectedState({ sig: detailKeySig, keys: new Set(defaultMergeSelectionKeys(detailWorkbook?.orderDetails)) });
-    setPercentByProduct({});
-    setNewQtyByProduct({});
+    const seededPercents = {};
+    const seededQty = {};
+    for (const row of detailWorkbook?.consolidated || []) {
+      seededPercents[row.productKey] = String(Number(row.allocationPercent) || 0);
+      seededQty[row.productKey] = String(row.newQty || 0);
+    }
+    setPercentByProduct(seededPercents);
+    setNewQtyByProduct(seededQty);
+    setAllocationTouched(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [set?.id, detailKeySig, selectionResetKey]);
 
@@ -1791,10 +1804,11 @@ export function ConsolidatedOrderView({
   useEffect(() => {
     onPayloadChange?.({
       workbook: allocationGrid || workbook,
+      allocationTouched,
       selectedCount: selectedKeys.size,
       removedOrderIds: orderIdsPendingRemoval(detailWorkbook?.orderDetails, selectedKeys),
     });
-  }, [workbook, allocationGrid, selectedSig, selectedKeys, detailWorkbook, onPayloadChange]);
+  }, [workbook, allocationGrid, allocationTouched, selectedSig, selectedKeys, detailWorkbook, onPayloadChange]);
 
   if (!set || !detailWorkbook || !workbook) return null;
 
@@ -1811,6 +1825,7 @@ export function ConsolidatedOrderView({
         newQtyByProduct={newQtyByProduct}
         onPercentChange={(productKey, value) => {
           if (value !== "" && !/^\d*\.?\d*$/.test(value)) return;
+          setAllocationTouched(true);
           setPercentByProduct((prev) => ({ ...prev, [productKey]: value }));
           setNewQtyByProduct((prev) => {
             const next = { ...prev };
@@ -1818,7 +1833,10 @@ export function ConsolidatedOrderView({
             return next;
           });
         }}
-        onNewQtyChange={(productKey, value) => setNewQtyByProduct((prev) => ({ ...prev, [productKey]: value }))}
+        onNewQtyChange={(productKey, value) => {
+          setAllocationTouched(true);
+          setNewQtyByProduct((prev) => ({ ...prev, [productKey]: value }));
+        }}
         onPaymentChange={onPaymentChange}
         onStatusChange={onStatusChange}
         note={noteControlled ? (noteProp ?? "") : note}

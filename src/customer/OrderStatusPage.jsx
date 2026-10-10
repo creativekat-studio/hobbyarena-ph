@@ -14,8 +14,11 @@ import { TruckIcon } from "../components/icons.jsx";
 import {
   STATUS_COLOR,
   migrateOrderStatus,
+  getOrderLineItems,
+  itemNeedsBalanceProof,
+  itemNeedsRefundDetails,
+  orderDueTodayBalance,
   orderNeedsBalancePayment,
-  orderOutstandingBalance,
   orderStatusLabel,
 } from "../data/orderWorkflow.js";
 import { orderCustomerDisplayTotal } from "../lib/orderRevenue.js";
@@ -26,8 +29,9 @@ import { useOrders, getOrdersForEmail } from "../lib/ordersStore.jsx";
 import { parseConsolidatedOrderId } from "../lib/orderIds.js";
 import { setAuthSurface } from "../auth/authSurface.js";
 import CustomerConsolidatedOrderPage, { ConsolidatedOrderRedirect } from "./CustomerConsolidatedOrderPage.jsx";
+import CustomerBalanceProofUpload from "../components/CustomerBalanceProofUpload.jsx";
+import CustomerRefundDetails, { CustomerBalanceDueNotice } from "../components/CustomerRefundDetails.jsx";
 import {
-  BalanceDueBadge,
   CustomerBackToOrders,
   formatDeliverTo,
   OrderLineItem,
@@ -107,12 +111,10 @@ export default function OrderStatusPage() {
                   {PESO.format(orderCustomerDisplayTotal(order))}
                 </Typography>
                 <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>Final price</Typography>
-                {orderOutstandingBalance(order) > 0 ? (
-                  <BalanceDueBadge
-                    amount={orderOutstandingBalance(order)}
-                    urgent={orderNeedsBalancePayment(order)}
-                    sx={{ mt: 0.75 }}
-                  />
+                {orderDueTodayBalance(order) > 0 && orderNeedsBalancePayment(order) ? (
+                  <Box sx={{ mt: 1.25, textAlign: "left" }}>
+                    <CustomerBalanceDueNotice amount={orderDueTodayBalance(order)} embedded />
+                  </Box>
                 ) : null}
               </Box>
             </Stack>
@@ -137,6 +139,25 @@ export default function OrderStatusPage() {
                 <Typography sx={{ fontSize: "0.88rem" }}>{formatDeliverTo(order)}</Typography>
               </Stack>
             </SummaryRow>
+            {orderDueTodayBalance(order) > 0 && orderNeedsBalancePayment(order) ? (
+              <Stack spacing={1} sx={{ mt: 1.5 }}>
+                {getOrderLineItems(order).filter((item) => itemNeedsBalanceProof(item)).map((item) => (
+                  <CustomerBalanceProofUpload
+                    key={item.id}
+                    order={order}
+                    item={item}
+                    surfaceBorderColor={surfaceBorderColor}
+                  />
+                ))}
+              </Stack>
+            ) : null}
+            {getOrderLineItems(order).some((item) => itemNeedsRefundDetails(item)) ? (
+              <Stack spacing={1} sx={{ mt: 1.5 }}>
+                {getOrderLineItems(order).filter((item) => itemNeedsRefundDetails(item)).map((item) => (
+                  <CustomerRefundDetails key={item.id} order={order} item={item} embedded />
+                ))}
+              </Stack>
+            ) : null}
             {orderOpenCredit(order) > 0 ? (
               <SummaryRow label="Order credit">
                 <Typography sx={{ fontSize: "0.88rem", fontWeight: 700, color: "warning.main" }}>
@@ -152,7 +173,7 @@ export default function OrderStatusPage() {
             </Typography>
             <Stack spacing={2}>
               {lineItems.length ? lineItems.map((item) => (
-                <OrderLineItem key={item.id} order={order} item={item} surfaceBorderColor={surfaceBorderColor} />
+                <OrderLineItem key={item.id} order={order} item={item} surfaceBorderColor={surfaceBorderColor} hidePaymentActions />
               )) : (
                 <Typography sx={{ fontSize: "0.9rem" }}>{order.items}</Typography>
               )}

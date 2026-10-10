@@ -84,32 +84,56 @@ export default function CustomerRefundDetails({ order, item, amount, active = fa
   const primary = resolvePrimaryPayoutMethod(profile);
   const primaryLabel = formatPayoutMethodLabel(primary);
   const amountLabel = refundAmount > 0 ? PESO.format(refundAmount) : "your payment";
+  const actionSx = {
+    fontFamily: MONO_FONT,
+    fontSize: "0.72rem",
+    fontWeight: 800,
+    letterSpacing: 0.5,
+    boxShadow: "none",
+    "&:hover": { boxShadow: "none" },
+  };
 
   return (
     <StatusNotice
       embedded={embedded}
-      title={`Refund processing · ${amountLabel}`}
+      title={`Refund · ${amountLabel}`}
       detail={primary
-        ? `Sending to your Primary${primaryLabel ? ` · ${primaryLabel}` : ""}`
-        : "Set a Primary account so we can send it"}
-      action={(
+        ? `We will refund on your primary${primaryLabel ? ` · ${primaryLabel}` : ""}.`
+        : "Add the account we should refund."}
+      action={primary ? (
         <Button
           component={RouterLink}
           to={BANK_DETAILS_HREF}
           size="small"
           variant="contained"
           color="warning"
-          sx={{
-            fontFamily: MONO_FONT,
-            fontSize: "0.72rem",
-            fontWeight: 800,
-            letterSpacing: 0.5,
-            boxShadow: "none",
-            "&:hover": { boxShadow: "none" },
-          }}
+          sx={actionSx}
         >
-          {primary ? "Manage Primary" : "Set Primary account"}
+          Change it now
         </Button>
+      ) : (
+        <Stack direction="row" spacing={1}>
+          <Button
+            component={RouterLink}
+            to={BANK_DETAILS_HREF}
+            size="small"
+            variant="contained"
+            color="warning"
+            sx={actionSx}
+          >
+            Upload now
+          </Button>
+          <Button
+            component={RouterLink}
+            to={BANK_DETAILS_HREF}
+            size="small"
+            variant="outlined"
+            color="warning"
+            sx={actionSx}
+          >
+            Set now
+          </Button>
+        </Stack>
       )}
     />
   );

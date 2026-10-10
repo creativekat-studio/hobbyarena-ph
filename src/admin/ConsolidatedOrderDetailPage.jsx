@@ -21,9 +21,10 @@ import AdminPageHeader, { ADMIN_PAGE_SPACING } from "../components/AdminPageHead
 import { useOrders } from "../lib/ordersStore.jsx";
 import { useCustomers } from "../lib/customersStore.jsx";
 import { compareOrdersByOrderNo, displayConsolidatedOrderId } from "../lib/orderIds.js";
-import { removeOrderFromMergedSet } from "../lib/orderMergeSimulation.js";
+import { allocationRecordFromWorkbook, removeOrderFromMergedSet } from "../lib/orderMergeSimulation.js";
 import { formatDateTime, formatOrderTimestamp } from "../lib/orderTimestamps.js";
 import {
+  completedStatusHardStop,
   getActiveStepForItem,
   getOrderLineItems,
   migrateOrderStatus,
@@ -76,6 +77,28 @@ function findPreviousConsolidatedEmail(orders) {
     }
   }
   return latest;
+}
+
+function consolidatedStatementChanged(orders, previous) {
+  if (!previous?.at) return true;
+  const sentAt = Date.parse(previous.at);
+  if (!Number.isFinite(sentAt)) return false;
+  for (const order of orders || []) {
+    for (const entry of order.trail || []) {
+      if (entry.emailType === "consolidated_allocation") continue;
+      const at = Date.parse(entry.at || "");
+      if (!Number.isFinite(at) || at <= sentAt) continue;
+      if (entry.status || entry.payment || entry.title === "Attachment uploaded") return true;
+    }
+    for (const item of getOrderLineItems(order)) {
+      const emailed = (previous.emailLineItems || []).find((row) => row.lineItemId === item.id);
+      if (!emailed) continue;
+      if ((Number(emailed.allocatedQty) || 0) !== (Number(item.allocatedQty) || 0)) return true;
+      if (emailed.status && migrateOrderStatus(emailed.status) !== migrateOrderStatus(item.status)) return true;
+      if (emailed.payment && migratePaymentStatus(emailed.payment) !== migratePaymentStatus(item.payment)) return true;
+    }
+  }
+  return false;
 }
 
 export default function ConsolidatedOrderDetailPage() {
@@ -132,6 +155,7 @@ export default function ConsolidatedOrderDetailPage() {
       if (
         prev
         && prev.workbook === next.workbook
+        && prev.allocationTouched === next.allocationTouched
         && prev.selectedCount === next.selectedCount
         && prevRemoved.length === nextRemoved.length
         && prevRemoved.every((id, index) => id === nextRemoved[index])
@@ -197,7 +221,7 @@ export default function ConsolidatedOrderDetailPage() {
   async function handleSend() {
     if (!set || !payload?.workbook) return;
     const previous = findPreviousConsolidatedEmail(set.orders);
-    if (previous) {
+    if (previous && !consolidatedStatementChanged(set.orders, previous)) {
       setConfirmResend(true);
       return;
     }
@@ -244,6 +268,10 @@ export default function ConsolidatedOrderDetailPage() {
 
   function requestLineChange(row, payment, status) {
     const live = liveItemFromRow(row);
+    if (completedStatusHardStop(live.status, status)) {
+      setSaveError("Completed orders can’t move back to an in-progress status.");
+      return;
+    }
     const transition = evaluateLineTransition(live, payment, status);
     if (transition) {
       setConfirmTransition({
@@ -301,15 +329,44 @@ export default function ConsolidatedOrderDetailPage() {
     setSaveError("");
     setSaving(true);
     const removed = new Set(removedIds);
+    const remainingOrders = (set.orders || []).filter((order) => !removed.has(order.id));
     try {
+      const workbook = payload?.workbook;
+      const allocationTouched = Boolean(payload?.allocationTouched);
+      const saves = new Map();
       for (const draft of Object.values(lineDrafts)) {
-        if (!draft?.orderId || removed.has(draft.orderId)) continue;
-        const simulated = (payload?.workbook?.orderDetails || []).find((row) => row.key === draft.key
-          || (row.orderId === draft.orderId && row.lineItemId === draft.lineItemId));
-        const product = (payload?.workbook?.consolidated || []).find((row) => row.productKey === simulated?.productKey);
-        const enteredAllocation = Boolean(set.standalone)
-          && product?.allocationMode === "entry"
-          && (product?.qtyOverride || Number(product?.allocationPercent) > 0);
+        if (!draft?.orderId || !draft?.lineItemId || removed.has(draft.orderId)) continue;
+        saves.set(`${draft.orderId}::${draft.lineItemId}`, {
+          orderId: draft.orderId,
+          lineItemId: draft.lineItemId,
+          payment: draft.payment,
+          status: draft.status,
+        });
+      }
+      if (allocationTouched) {
+        for (const row of workbook?.orderDetails || []) {
+          if (!row?.orderId || removed.has(row.orderId)) continue;
+          const key = `${row.orderId}::${row.lineItemId}`;
+          const existing = saves.get(key);
+          const order = (set.orders || []).find((entry) => entry.id === row.orderId);
+          const item = getOrderLineItems(order || {}).find((line) => line.id === row.lineItemId);
+          const allocChanged = (item?.allocatedQty ?? 0) !== (Number(row.finalAllocation) || 0);
+          if (!existing && !allocChanged) continue;
+          saves.set(key, {
+            orderId: row.orderId,
+            lineItemId: row.lineItemId,
+            payment: existing?.payment || row.payment,
+            status: existing?.status || row.status,
+            ...(allocChanged ? { allocatedQty: row.finalAllocation } : {}),
+          });
+        }
+      }
+      for (const draft of saves.values()) {
+        const order = (set.orders || []).find((entry) => entry.id === draft.orderId);
+        const item = getOrderLineItems(order || {}).find((line) => line.id === draft.lineItemId);
+        if (item && completedStatusHardStop(item.status, draft.status)) {
+          throw new Error("Completed orders can’t move back to an in-progress status.");
+        }
         await setPaymentAndStatus?.(
           draft.orderId,
           draft.payment,
@@ -317,10 +374,15 @@ export default function ConsolidatedOrderDetailPage() {
           draft.lineItemId,
           "",
           undefined,
-          enteredAllocation ? simulated.finalAllocation : undefined,
+          draft.allocatedQty,
         );
       }
-      const remainingOrders = (set.orders || []).filter((order) => !removed.has(order.id));
+      if (allocationTouched && workbook) {
+        const mergedAllocation = allocationRecordFromWorkbook(workbook);
+        for (const order of remainingOrders) {
+          updateOrder?.(order.id, { mergedAllocation });
+        }
+      }
       if (saveConsolidatedEmailExtras && remainingOrders.length) {
         const saved = await saveConsolidatedEmailExtras(remainingOrders, { note, attachment });
         setNote(saved.note || "");
@@ -398,6 +460,8 @@ export default function ConsolidatedOrderDetailPage() {
   const selectedCount = payload?.selectedCount ?? 0;
   const canSend = Boolean(sendConsolidatedAllocationEmail) && selectedCount > 0 && !sending;
   const previousConsolidatedEmail = findPreviousConsolidatedEmail(set.orders);
+  const resendCurrentStatement = Boolean(previousConsolidatedEmail)
+    && !consolidatedStatementChanged(set.orders, previousConsolidatedEmail);
   const savedExtras = emailExtrasFromOrders(set.orders);
   const savedAt = (set.orders || []).find((order) => order.mergedEmailSavedAt)?.mergedEmailSavedAt || "";
   const lineDirty = Object.keys(lineDrafts).length > 0;
@@ -525,7 +589,7 @@ export default function ConsolidatedOrderDetailPage() {
             }}
             lineDrafts={lineDrafts}
             selectionResetKey={selectionResetKey}
-            allocationEditing={Boolean(set.standalone)}
+            allocationEditing
             onPaymentChange={handlePaymentChange}
             onStatusChange={handleStatusChange}
             onPayloadChange={handlePayloadChange}
@@ -607,7 +671,7 @@ export default function ConsolidatedOrderDetailPage() {
               onClick={handleSend}
               sx={ADMIN_ACTION_BUTTON_SX}
             >
-              {sending ? "Sending…" : sentCount > 0 ? "Resend email" : "Send email"}
+              {sending ? "Sending…" : resendCurrentStatement ? "Resend email" : "Send email"}
             </Button>
             <Button
               variant="outlined"

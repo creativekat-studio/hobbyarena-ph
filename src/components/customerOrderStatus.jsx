@@ -167,7 +167,7 @@ export function SummaryRow({ label, children }) {
   );
 }
 
-export function OrderLineItem({ order, item, surfaceBorderColor, sourceOrderId = "", hideRefund = false, flush = false }) {
+export function OrderLineItem({ order, item, surfaceBorderColor, sourceOrderId = "", hideRefund = false, hidePaymentActions = false, flush = false }) {
   const theme = useTheme();
   const payment = migratePaymentStatus(item.payment);
   const status = migrateOrderStatus(item.status);
@@ -239,8 +239,12 @@ export function OrderLineItem({ order, item, surfaceBorderColor, sourceOrderId =
 
       <Box sx={{ mt: 2.25 }}>
         <CustomerAdminAttachments order={order} item={item} surfaceBorderColor={surfaceBorderColor} />
-        <CustomerBalanceProofUpload order={order} item={item} surfaceBorderColor={surfaceBorderColor} />
-        {hideRefund ? null : <CustomerRefundDetails order={order} item={item} />}
+        {hidePaymentActions ? null : (
+          <>
+            <CustomerBalanceProofUpload order={order} item={item} surfaceBorderColor={surfaceBorderColor} />
+            {hideRefund ? null : <CustomerRefundDetails order={order} item={item} />}
+          </>
+        )}
       </Box>
     </Box>
   );

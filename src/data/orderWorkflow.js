@@ -50,13 +50,11 @@ export const ORDER_STATUSES_BY_PAYMENT = {
   "Fully Paid": [
     "Ready for Pickup",
     "Fulfilled",
-    // Scenario 2: partial allocation settled — keep status + allocated qty (not full order qty).
-    "Partially Fulfilled & Pay Balance",
   ],
   Rejected: ["Refunded", "For Full Refund"],
   Unpaid: ["Unpaid"],
   "For Partial Refund": ["Partially Fulfilled & For Refund"],
-  "Partially Refunded": ["Ready for Pickup", "Fulfilled", "Partially Fulfilled & Pay Balance"],
+  "Partially Refunded": ["Ready for Pickup", "Fulfilled"],
   "For Full Refund": ["For Full Refund"],
   Refunded: ["Refunded"],
 };
@@ -493,10 +491,45 @@ export function activeInstockStep(order) {
   return 1;
 }
 
+const COMPLETED_ORDER_STATUSES = new Set(["Fulfilled", "Refunded"]);
+
+/** Pending, in progress, or completed. Completed cannot move back. */
+export function orderStatusPhase(status) {
+  const normalized = migrateOrderStatus(status);
+  if (COMPLETED_ORDER_STATUSES.has(normalized)) return "completed";
+  if (
+    normalized === "Pending Verification"
+    || normalized === "Awaiting Stock"
+    || normalized === "Unpaid"
+  ) return "pending";
+  return "progress";
+}
+
+/** Completed statuses cannot return to pending or in progress. */
+export function completedStatusHardStop(fromStatus, toStatus) {
+  if (!fromStatus || !toStatus) return false;
+  if (migrateOrderStatus(fromStatus) === migrateOrderStatus(toStatus)) return false;
+  return orderStatusPhase(fromStatus) === "completed" && orderStatusPhase(toStatus) !== "completed";
+}
+
+export function restrictOrderStatusOptions(fromStatus, options) {
+  const list = options || [];
+  if (orderStatusPhase(fromStatus) !== "completed") return list;
+  return list.filter((status) => orderStatusPhase(status) === "completed");
+}
+
+export function restrictPaymentOptions(fromStatus, kind, options) {
+  const list = options || [];
+  if (orderStatusPhase(fromStatus) !== "completed") return list;
+  return list.filter((payment) => (
+    getOrderStatusOptionsForPayment(payment, kind).some((status) => orderStatusPhase(status) === "completed")
+  ));
+}
+
 export const PREORDER_FLOW_STEPS = [
   { key: "placed", label: "Order placed" },
   { key: "deposit", label: "Payment verified" },
-  { key: "allocated", label: "Stock allocated" },
+  { key: "allocated", label: "Awaiting Allocation" },
   { key: "balance", label: "Balance collected" },
   { key: "pickup", label: "Ready for pickup" },
   { key: "done", label: "Fulfilled" },
@@ -878,6 +911,20 @@ export function itemOutstandingBalance(item) {
   if (BALANCE_SETTLED_PAYMENTS.has(migratePaymentStatus(item?.payment))) return 0;
   if (BALANCE_SETTLED_STATUSES.has(migrateOrderStatus(item?.status))) return 0;
   return due;
+}
+
+/** Balance the customer can pay right now — only lines that are actually due. */
+export function itemDueTodayBalance(item) {
+  if (!itemNeedsBalanceProof(item)) return 0;
+  return itemOutstandingBalance(item);
+}
+
+export function orderDueTodayBalance(order) {
+  const items = order?.lineItems;
+  if (Array.isArray(items) && items.length) {
+    return items.reduce((sum, item) => sum + itemDueTodayBalance(item), 0);
+  }
+  return itemDueTodayBalance(order);
 }
 
 /** Display-only: total outstanding balance across an order's line items. */
