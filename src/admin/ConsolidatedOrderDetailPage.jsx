@@ -361,6 +361,9 @@ export default function ConsolidatedOrderDetailPage() {
           });
         }
       }
+      const mergedAllocation = allocationTouched && workbook
+        ? allocationRecordFromWorkbook(workbook)
+        : null;
       for (const draft of saves.values()) {
         const order = (set.orders || []).find((entry) => entry.id === draft.orderId);
         const item = getOrderLineItems(order || {}).find((line) => line.id === draft.lineItemId);
@@ -375,10 +378,12 @@ export default function ConsolidatedOrderDetailPage() {
           "",
           undefined,
           draft.allocatedQty,
+          undefined,
+          undefined,
+          mergedAllocation || undefined,
         );
       }
-      if (allocationTouched && workbook) {
-        const mergedAllocation = allocationRecordFromWorkbook(workbook);
+      if (mergedAllocation) {
         for (const order of remainingOrders) {
           updateOrder?.(order.id, { mergedAllocation });
         }
