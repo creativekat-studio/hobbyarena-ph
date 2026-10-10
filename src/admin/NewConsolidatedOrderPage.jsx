@@ -12,6 +12,7 @@ import {
   allocationRecordFromWorkbook,
   applyMergeSimulationToOrder,
   buildMergeWorkbook,
+  carriedAllocationFromOrders,
   buildMergeSourceRows,
   createMergedSetId,
   defaultMergeSelectionKeys,
@@ -97,8 +98,9 @@ export default function NewConsolidatedOrderPage() {
   const applyLabel = `Apply to order${summary.orderCount === 1 ? "" : "s"} (${summary.orderCount})`;
 
   useEffect(() => {
-    setPercentByProduct({});
-    setNewQtyByProduct({});
+    const carried = carriedAllocationFromOrders(selectedOrders);
+    setPercentByProduct(carried.percentByProduct);
+    setNewQtyByProduct(carried.newQtyByProduct);
     setStatusByRow({});
     setPaymentByRow({});
     setSelectedKeys(new Set(defaultMergeSelectionKeys(sourceRows)));

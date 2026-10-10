@@ -274,14 +274,20 @@ export function buildMergeWorkbook(orders, {
   const products = collectMergeProducts(lines);
 
   const breakdown = products.map((product) => {
-    const allocationPercent = Number.isFinite(Number(percentByProduct[product.productKey]))
-      ? Math.max(0, Number(percentByProduct[product.productKey]))
-      : product.defaultPercent;
+    const rawPercent = percentByProduct[product.productKey];
+    const percentProvided = rawPercent != null && rawPercent !== "" && Number.isFinite(Number(rawPercent));
+    const allocationPercent = percentProvided
+      ? Math.max(0, Number(rawPercent) || 0)
+      : (product.defaultPercent || 0);
     const suggested = suggestedFinalAllocation(product.qty, allocationPercent);
     const override = newQtyByProduct[product.productKey];
-    const newQty = override != null && override !== ""
-      ? Math.max(0, Math.min(product.qty, Math.round(Number(override) || 0)))
+    const hasQtyOverride = override != null && override !== "";
+    const carriedQty = !percentProvided && product.defaultNewQty != null
+      ? Math.max(0, Math.min(product.qty, Math.round(Number(product.defaultNewQty) || 0)))
       : suggested;
+    const newQty = hasQtyOverride
+      ? Math.max(0, Math.min(product.qty, Math.round(Number(override) || 0)))
+      : carriedQty;
     return {
       productKey: product.productKey,
       name: product.name,
@@ -398,6 +404,21 @@ export function allocationRecordFromWorkbook(workbook) {
   );
 }
 
+/** Alloc % and new qty already decided on these orders, for a new merge. */
+export function carriedAllocationFromOrders(orders) {
+  const workbook = buildMergeWorkbook(orders || []);
+  const percentByProduct = {};
+  const newQtyByProduct = {};
+  for (const row of workbook.breakdown || []) {
+    const percent = Number(row.allocationPercent) || 0;
+    const newQty = Number(row.newQty) || 0;
+    if (!(percent > 0) && !(newQty > 0)) continue;
+    percentByProduct[row.productKey] = String(Math.round(percent * 100) / 100);
+    newQtyByProduct[row.productKey] = String(newQty);
+  }
+  return { percentByProduct, newQtyByProduct };
+}
+
 export function allocationMetaFromOrders(orders) {
   const meta = { percentByProduct: {}, newQtyByProduct: {} };
   for (const order of orders || []) {
@@ -405,8 +426,8 @@ export function allocationMetaFromOrders(orders) {
       ? order.mergedAllocation
       : {};
     for (const [productKey, value] of Object.entries(stored)) {
-      if (value?.percent != null && meta.percentByProduct[productKey] == null) {
-        meta.percentByProduct[productKey] = Number(value.percent) || 0;
+      if (value?.percent != null && Number(value.percent) > 0 && meta.percentByProduct[productKey] == null) {
+        meta.percentByProduct[productKey] = Number(value.percent);
       }
       if (value?.newQty != null && meta.newQtyByProduct[productKey] == null) {
         meta.newQtyByProduct[productKey] = Number(value.newQty) || 0;
@@ -502,21 +523,26 @@ export function collectMergeProducts(sourceRows) {
       defaultPercent: 0,
     };
     current.qty += row.qty;
+    current.allocated = (current.allocated || 0) + (Number(row.existingAlloc) || 0);
     current.orders.add(row.orderId);
     current.customers.add(row.email || row.customer);
-    if (!current.defaultPercent && row.defaultPercent) {
-      current.defaultPercent = row.defaultPercent;
-    }
     map.set(row.productKey, current);
   }
-  return [...map.values()].map((product) => ({
-    productKey: product.productKey,
-    name: product.name,
-    qty: product.qty,
-    orderCount: product.orders.size,
-    customerCount: product.customers.size,
-    defaultPercent: product.defaultPercent,
-  }));
+  return [...map.values()].map((product) => {
+    const allocated = Math.max(0, Number(product.allocated) || 0);
+    const defaultPercent = product.qty > 0 && allocated > 0
+      ? Math.round((allocated / product.qty) * 10000) / 100
+      : 0;
+    return {
+      productKey: product.productKey,
+      name: product.name,
+      qty: product.qty,
+      orderCount: product.orders.size,
+      customerCount: product.customers.size,
+      defaultPercent,
+      defaultNewQty: allocated,
+    };
+  });
 }
 
 export function simulateMergeRows(sourceRows, { percentByProduct = {}, finalByRow = {} } = {}) {

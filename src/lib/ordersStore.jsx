@@ -311,6 +311,7 @@ export function OrdersProvider({ children }) {
   const [ordersReady, setOrdersReady] = useState(!firebaseEnabled);
   const syncingRemote = useRef(false);
   const ordersRef = useRef(orders);
+  const persistSeqRef = useRef(new Map());
   const placingOrderRef = useRef(false);
   const proofBackfillRef = useRef(new Set());
 
@@ -441,9 +442,11 @@ export function OrdersProvider({ children }) {
   const api = useMemo(() => {
     const persistOrder = (order) => {
       if (!firebaseEnabled || syncingRemote.current || placingOrderRef.current || !order?.id) return;
+      const seq = (persistSeqRef.current.get(order.id) || 0) + 1;
+      persistSeqRef.current.set(order.id, seq);
       upsertOrder(order)
         .then((saved) => {
-          if (!saved?.id) return;
+          if (!saved?.id || persistSeqRef.current.get(order.id) !== seq) return;
           setOrders((current) => current.map((o) => (o.id === saved.id ? { ...o, ...saved } : o)));
         })
         .catch((error) => {
@@ -1010,6 +1013,7 @@ export function OrdersProvider({ children }) {
       draftAllocatedQty = undefined,
       draftRefundAmount = undefined,
       draftAmountReceived = undefined,
+      mergedAllocation = undefined,
     ) => {
       let resolvedAttachment = attachment;
       if (attachment?.url) {
@@ -1124,6 +1128,7 @@ export function OrdersProvider({ children }) {
             ...o,
             lineItems,
             ...rollup,
+            ...(mergedAllocation ? { mergedAllocation } : {}),
             refundAmount: refundedAmountForOrder({ ...o, lineItems }),
             notificationSeen: seen,
             trail: [...o.trail, trailEntry],
