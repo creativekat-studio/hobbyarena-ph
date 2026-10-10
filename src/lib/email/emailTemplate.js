@@ -362,7 +362,7 @@ export function wrapSimpleEmail({ preheader = "", bodyHtml, footerNote = "" }) {
 /**
  * @param {object[]} lineItems
  * @param {{ highlightId?: string|null, useAllocation?: boolean }} [options]
- *   useAllocation — when allocated qty is set, Qty shows "7 of 10" and Total = unit × allocated
+ *   useAllocation — a short allocation shows "2 of 5". A full allocation shows the quantity. Total = unit × billed qty.
  */
 export function invoiceTable(lineItems, { highlightId = null, useAllocation = false } = {}) {
   const c = EMAIL_BRAND.colors;
@@ -371,9 +371,8 @@ export function invoiceTable(lineItems, { highlightId = null, useAllocation = fa
       const orderedQty = Math.max(1, Number(item.quantity) || 1);
       const allocated = Math.max(0, Number(item.allocatedQty) || 0);
       const billQty = useAllocation && allocated > 0 ? Math.min(allocated, orderedQty) : orderedQty;
-      const qtyLabel = useAllocation && allocated > 0
-        ? `${billQty} of ${orderedQty}`
-        : String(orderedQty);
+      const short = useAllocation && allocated > 0 && allocated < orderedQty;
+      const qtyLabel = short ? `${billQty} of ${orderedQty}` : String(billQty);
       // Prefer payable unit (lineTotal ÷ qty) so per-item discounts show correctly.
       // Fall back to discountPercent on list price, then list price.
       const storedLineTotal = Number(item.lineTotal);

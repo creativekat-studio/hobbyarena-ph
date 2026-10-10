@@ -722,6 +722,31 @@ export function applyMergedLineStatus(order, lineItemId, status, paymentOverride
   };
 }
 
+function consolidatedEmailConclusion(items, net) {
+  const rows = Array.isArray(items) ? items : [];
+  const decided = rows.filter((row) => row?.allocationMode !== "pending" && !row?.allocationPending);
+  const usable = decided.length ? decided : rows;
+  const allocated = usable.reduce((sum, row) => sum + Math.max(0, Number(row?.newQty) || 0), 0);
+  const full = usable.length > 0 && usable.every((row) => {
+    const qty = Math.max(0, Number(row?.totalQty) || 0);
+    const next = Math.max(0, Number(row?.newQty) || 0);
+    return qty > 0 && next >= qty;
+  });
+  if (net < 0 && allocated <= 0) {
+    return { payment: "For Full Refund", status: "For Full Refund" };
+  }
+  if (net < 0) {
+    return { payment: "For Partial Refund", status: "Partially Fulfilled & For Refund" };
+  }
+  if (net > 0 && full) {
+    return { payment: "Awaiting Balance Payment", status: ALLOCATION_FULFILLED_PAY_BALANCE };
+  }
+  if (net > 0) {
+    return { payment: "Awaiting Balance Payment", status: "Partially Fulfilled & Pay Balance" };
+  }
+  return { payment: "Fully Paid", status: "Ready for Pickup" };
+}
+
 export function buildConsolidatedEmailOrder(orders, workbook) {
   const list = (orders || []).filter(Boolean);
   const primary = list[0] || {};
@@ -743,8 +768,7 @@ export function buildConsolidatedEmailOrder(orders, workbook) {
     email: primary.email || "",
     phone: primary.phone || "",
     type: primary.type || "Pre-order",
-    payment: net < 0 ? "For Partial Refund" : net > 0 ? "Awaiting Balance Payment" : "Fully Paid",
-    status: net < 0 ? "Partially Fulfilled & For Refund" : net > 0 ? "Partially Fulfilled & Pay Balance" : "Ready for Pickup",
+    ...consolidatedEmailConclusion(workbook?.consolidated, net),
     date: primary.mergedAt || primary.date || new Date().toISOString(),
     depositPercent: primary.depositPercent || 30,
     refundAmount: net < 0 ? Math.abs(net) : 0,
@@ -772,7 +796,7 @@ export function buildConsolidatedEmailOrder(orders, workbook) {
         newTotal: Number(totals.newTotal) || 0,
         totalDp: Number(totals.totalDp) || 0,
         net,
-        netLabel: net < 0 ? "Refund amount" : net > 0 ? "Balance" : "Settled",
+        netLabel: totals.netLabel || (net < 0 ? "Refund" : net > 0 ? "Balance due" : "Settled"),
       },
     },
   };

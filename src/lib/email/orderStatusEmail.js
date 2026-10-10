@@ -115,6 +115,12 @@ function itemAllocationPending(item) {
   return Boolean(item?.allocationPending || item?.pending);
 }
 
+function formatAllocationPercent(pct) {
+  const rounded = Math.round(Number(pct) * 100) / 100;
+  if (!Number.isFinite(rounded)) return "0%";
+  return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(2)}%`;
+}
+
 function allocationCell(item) {
   if (itemAllocationPending(item)) return pendingMarkup();
   const qty = Number(item?.totalQty) || 0;
@@ -122,7 +128,7 @@ function allocationCell(item) {
   const pct = Number.isFinite(stored)
     ? stored
     : (qty > 0 ? ((Number(item?.newQty) || 0) / qty) * 100 : 0);
-  return `${pct.toFixed(2)}%`;
+  return formatAllocationPercent(pct);
 }
 
 function qtyCell(item) {
@@ -582,7 +588,16 @@ function getUpdatedItem(order) {
 function allocationOfOrdered(item) {
   const qty = Math.max(1, Number(item?.quantity) || 1);
   const allocated = Math.max(0, Number(item?.allocatedQty) || 0);
-  if (allocated <= 0) return null;
+  if (allocated <= 0 || allocated >= qty) return null;
+  return `${Math.min(allocated, qty)} of ${qty}`;
+}
+
+function allocationPhrase(item, order) {
+  const fromItem = allocationOfOrdered(item);
+  if (fromItem) return fromItem;
+  const qty = Math.max(1, Number(item?.quantity ?? order?.qty) || 1);
+  const allocated = Math.max(0, Number(item?.allocatedQty ?? order?.allocatedQty) || 0);
+  if (allocated >= qty) return "100%";
   return `${Math.min(allocated, qty)} of ${qty}`;
 }
 
@@ -651,7 +666,7 @@ function refundTotalForEmail(order, emailType, item = null) {
 function itemLabel(item) {
   const qty = Math.max(1, Number(item?.quantity) || 1);
   const allocPhrase = allocationOfOrdered(item);
-  // Once allocated, always show "7 of 10" (partial or full).
+  // "2 of 5" only when the allocation is short. A full 3 of 3 stays the item name.
   if (allocPhrase) return `${item.name} · ${allocPhrase}`;
   return qty > 1 ? `${item.name} ×${qty}` : item.name;
 }
@@ -677,7 +692,7 @@ function buildPlaceholderMap(order, emailType) {
     refund: formatPeso(refundTotalForEmail(order, emailType, item)),
     allocated,
     qty,
-    allocation: allocationOfOrdered(item) || `${allocated} of ${qty}`,
+    allocation: allocationPhrase(item, order),
     finalTotal: formatPeso(item ? itemFinalTotal(item) : 0),
     orders: consolidatedOrderIds(order).join(", "),
     consolidated: consolidatedId(order),
@@ -764,7 +779,8 @@ function statusLineMoney(item, useAllocation) {
   const orderedQty = Math.max(1, Number(item.quantity) || 1);
   const allocated = Math.max(0, Number(item.allocatedQty) || 0);
   const billQty = useAllocation && allocated > 0 ? Math.min(allocated, orderedQty) : orderedQty;
-  const qtyLabel = useAllocation && allocated > 0 ? `${billQty} of ${orderedQty}` : String(orderedQty);
+  const short = useAllocation && allocated > 0 && allocated < orderedQty;
+  const qtyLabel = short ? `${billQty} of ${orderedQty}` : String(billQty);
   const unitPrice = itemUnitPrice(item);
   const lineTotal = useAllocation && allocated > 0
     ? unitPrice * billQty
@@ -951,6 +967,95 @@ function invoiceSummary(order, emailType) {
   return { html, lines };
 }
 
+function consolidatedItems(order) {
+  return Array.isArray(order?.consolidated?.items) ? order.consolidated.items : [];
+}
+
+function consolidatedKind(order) {
+  const items = consolidatedItems(order);
+  const net = consolidatedNet(order);
+  const decided = items.filter((item) => !itemAllocationPending(item));
+  if (!decided.length) return "pending";
+  const allocated = decided.reduce((sum, item) => sum + Math.max(0, Number(item.newQty) || 0), 0);
+  const full = decided.every((item) => {
+    const qty = Math.max(0, Number(item.totalQty) || 0);
+    const next = Math.max(0, Number(item.newQty) || 0);
+    return qty > 0 && next >= qty;
+  });
+  if (net < 0 && allocated <= 0) return "full_refund";
+  if (net < 0) return "partial_refund";
+  if (net > 0 && full) return "full_balance";
+  if (net > 0) return "partial_balance";
+  if (full) return "settled_full";
+  return "settled_partial";
+}
+
+function consolidatedAllocationPhrase(order) {
+  const items = consolidatedItems(order).filter((item) => !itemAllocationPending(item));
+  return items.map((item) => {
+    const qty = Math.max(0, Number(item.totalQty) || 0);
+    const next = Math.max(0, Number(item.newQty) || 0);
+    const ratio = `${next} of ${qty}`;
+    return items.length === 1 ? ratio : `${item.name || "Item"} (${ratio})`;
+  }).join(", ");
+}
+
+/** Same words as the matching status email. A full 3 of 3 is not a partial allocation. */
+function consolidatedMessage(order) {
+  const id = consolidatedId(order) || order?.id || "your order";
+  const amount = formatPeso(Math.abs(consolidatedNet(order)));
+  const phrase = escapeHtml(consolidatedAllocationPhrase(order));
+  const single = consolidatedItems(order).filter((item) => !itemAllocationPending(item)).length <= 1;
+  const kind = consolidatedKind(order);
+  const messages = {
+    full_balance: {
+      milestone: "balance_due_full",
+      subject: `100% allocation — pay balance — ${id}`,
+      title: "Full allocation confirmed",
+      body: `Great news — this order received <strong>100% allocation</strong>. Please pay the remaining balance of <strong>${amount}</strong>.`,
+    },
+    partial_balance: {
+      milestone: "balance_due_partial",
+      subject: `Partial allocation — pay balance — ${id}`,
+      title: "Partial allocation confirmed",
+      body: `Your allocation is <strong>${phrase}</strong>. Please pay the remaining balance of <strong>${amount}</strong> for your allocated units.`,
+    },
+    partial_refund: {
+      milestone: "partial_refund_pending",
+      subject: `Partial allocation — refund due — ${id}`,
+      title: "Partial allocation — refund due",
+      body: single
+        ? `Only <strong>${phrase}</strong> units were allocated. A refund of <strong>${amount}</strong> is due on the unallocated units.`
+        : `Allocated quantities: <strong>${phrase}</strong>. A refund of <strong>${amount}</strong> is due on the unallocated units.`,
+    },
+    full_refund: {
+      milestone: "full_refund_pending",
+      subject: `No allocation — full refund — ${id}`,
+      title: "No allocation — full refund",
+      body: `We're sorry — <strong>no allocation</strong> was available. Your deposit of <strong>${amount}</strong> will be fully refunded.`,
+    },
+    settled_full: {
+      milestone: null,
+      subject: `Allocation complete — ${id}`,
+      title: "Allocation complete",
+      body: `This order received <strong>100% allocation</strong>. Nothing further is due.`,
+    },
+    settled_partial: {
+      milestone: null,
+      subject: `Allocation confirmed — ${id}`,
+      title: "Allocation confirmed",
+      body: `Your allocation is <strong>${phrase}</strong>. Nothing further is due.`,
+    },
+    pending: {
+      milestone: null,
+      subject: `Allocation update — ${id}`,
+      title: "Allocation update",
+      body: "We reviewed your related orders. Allocation is still pending on the items below.",
+    },
+  };
+  return messages[kind] || messages.pending;
+}
+
 function preorderMilestones(item, emailType) {
   const map = {
     deposit_received: [
@@ -1051,9 +1156,8 @@ const TEMPLATES = {
     body: (order) => {
       const item = getUpdatedItem(order);
       const balance = formatPeso(item?.balanceDue ?? order.balanceDue);
-      const alloc = allocationOfOrdered(item)
-        || `${item?.allocatedQty ?? order.allocatedQty ?? 0} of ${item?.quantity ?? order.qty ?? 1}`;
-      return `Your allocation is <strong>${escapeHtml(alloc)}</strong> units. Please pay the remaining balance of <strong>${balance}</strong> for your allocated units.`;
+      const alloc = allocationPhrase(item, order);
+      return `Your allocation is <strong>${escapeHtml(alloc)}</strong>. Please pay the remaining balance of <strong>${balance}</strong> for your allocated units.`;
     },
     footer: () => "",
   },
@@ -1070,9 +1174,11 @@ const TEMPLATES = {
     body: (order) => {
       const item = getUpdatedItem(order);
       const refund = formatPeso(refundTotalForEmail(order, "partial_refund_pending", item));
-      const alloc = allocationOfOrdered(item)
-        || `${item?.allocatedQty ?? order.allocatedQty ?? 0} of ${item?.quantity ?? order.qty ?? 1}`;
-      return `Only <strong>${escapeHtml(alloc)}</strong> units were allocated. A refund of <strong>${refund}</strong> is due on the unallocated units.`;
+      const alloc = allocationPhrase(item, order);
+      const allocNote = alloc === "100%"
+        ? "This item was <strong>fully allocated</strong>."
+        : `Only <strong>${escapeHtml(alloc)}</strong> units were allocated.`;
+      return `${allocNote} A refund of <strong>${refund}</strong> is due on the unallocated units.`;
     },
     footer: () => getSupportContactHtml(),
   },
@@ -1193,11 +1299,11 @@ const TEMPLATES = {
     footer: "Stock is not reserved until payment is confirmed.",
   },
   consolidated_allocation: {
-    subject: () => "Allocation confirmed",
+    subject: (order) => consolidatedMessage(order).subject,
     preheader: "Your allocated quantities are confirmed.",
     title: "Allocation confirmed",
     lead: (order) => `Hello <strong>${escapeHtml(order.customer)}</strong>,`,
-    body: () => "We reviewed your related orders and confirmed the allocated quantities below.",
+    body: (order) => consolidatedMessage(order).body,
     footer: (order) => (consolidatedNet(order) < 0 ? getSupportContactHtml() : ""),
   },
 };
@@ -1242,12 +1348,13 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
   ].includes(emailType);
 
   const isConsolidated = emailType === "consolidated_allocation";
+  const consolidated = isConsolidated ? consolidatedMessage(order) : null;
   const statusSections = showSummary && !isConsolidated ? invoiceSummary(order, emailType) : null;
   const net = consolidatedNet(order);
   const resolvedSubject = subjectOverride
     ? subjectOverride.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => buildPlaceholderMap(order, emailType)[key] ?? "")
     : template.subject(order);
-  const heading = isConsolidated ? escapeHtml(resolvedSubject) : template.title;
+  const heading = escapeHtml(consolidated?.title || template.title);
   const bodyHtml = `
     <p style="margin:0 0 6px;font-family:Inter,Arial,sans-serif;font-size:22px;font-weight:700;line-height:1.3;color:${EMAIL_BRAND.colors.ink}">
       ${heading}
@@ -1258,6 +1365,7 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     ${bodyOverride ? renderOverrideBody(order, bodyOverride, emailType) : bodyText(template.body(order))}
     ${isConsolidated ? consolidatedEmailTables(order) : (statusSections?.html || "")}
     ${showMilestones && !isConsolidated ? preorderMilestones(item, emailType) : ""}
+    ${consolidated?.milestone ? preorderMilestones(item, consolidated.milestone) : ""}
     ${customerActionButtonsBlock(emailType, order, { showMessenger: showMessengerButton, actionNotes })}
     ${order.statusAttachment ? statusAttachmentBlock(order.statusAttachment) : ""}
   `;
@@ -1268,7 +1376,7 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
 
   const links = getEmailLinks();
   const text = [
-    isConsolidated ? resolvedSubject : template.title,
+    consolidated?.title || template.title,
     "",
     isConsolidated
       ? (consolidatedId(order) ? `${consolidatedId(order)} · ${formatEmailDate(order.date)}` : formatEmailDate(order.date))

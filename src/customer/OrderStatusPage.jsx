@@ -17,8 +17,7 @@ import {
   getOrderLineItems,
   itemNeedsBalanceProof,
   itemNeedsRefundDetails,
-  orderDueTodayBalance,
-  orderNeedsBalancePayment,
+  pendingRefundAmountForOrder,
   orderStatusLabel,
 } from "../data/orderWorkflow.js";
 import { orderCustomerDisplayTotal } from "../lib/orderRevenue.js";
@@ -30,7 +29,7 @@ import { parseConsolidatedOrderId } from "../lib/orderIds.js";
 import { setAuthSurface } from "../auth/authSurface.js";
 import CustomerConsolidatedOrderPage, { ConsolidatedOrderRedirect } from "./CustomerConsolidatedOrderPage.jsx";
 import CustomerBalanceProofUpload from "../components/CustomerBalanceProofUpload.jsx";
-import CustomerRefundDetails, { CustomerBalanceDueNotice } from "../components/CustomerRefundDetails.jsx";
+import CustomerRefundDetails from "../components/CustomerRefundDetails.jsx";
 import {
   CustomerBackToOrders,
   formatDeliverTo,
@@ -58,6 +57,14 @@ export default function OrderStatusPage() {
     [customerOrders, orderId],
   );
   const lineItems = order?.lineItems ?? [];
+  const dueLines = useMemo(
+    () => (order ? getOrderLineItems(order).filter((item) => itemNeedsBalanceProof(item)).map((item) => ({ order, item })) : []),
+    [order],
+  );
+  const refundLines = useMemo(
+    () => (order ? getOrderLineItems(order).filter((item) => itemNeedsRefundDetails(item)) : []),
+    [order],
+  );
 
   useEffect(() => {
     if (window.location.hash !== "#balance-proof") return;
@@ -111,11 +118,6 @@ export default function OrderStatusPage() {
                   {PESO.format(orderCustomerDisplayTotal(order))}
                 </Typography>
                 <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>Final price</Typography>
-                {orderDueTodayBalance(order) > 0 && orderNeedsBalancePayment(order) ? (
-                  <Box sx={{ mt: 1.25, textAlign: "left" }}>
-                    <CustomerBalanceDueNotice amount={orderDueTodayBalance(order)} embedded />
-                  </Box>
-                ) : null}
               </Box>
             </Stack>
 
@@ -139,24 +141,23 @@ export default function OrderStatusPage() {
                 <Typography sx={{ fontSize: "0.88rem" }}>{formatDeliverTo(order)}</Typography>
               </Stack>
             </SummaryRow>
-            {orderDueTodayBalance(order) > 0 && orderNeedsBalancePayment(order) ? (
-              <Stack spacing={1} sx={{ mt: 1.5 }}>
-                {getOrderLineItems(order).filter((item) => itemNeedsBalanceProof(item)).map((item) => (
-                  <CustomerBalanceProofUpload
-                    key={item.id}
-                    order={order}
-                    item={item}
-                    surfaceBorderColor={surfaceBorderColor}
-                  />
-                ))}
-              </Stack>
+            {dueLines.length ? (
+              <Box sx={{ mt: 1.5 }}>
+                <CustomerBalanceProofUpload
+                  lines={dueLines}
+                  surfaceBorderColor={surfaceBorderColor}
+                />
+              </Box>
             ) : null}
-            {getOrderLineItems(order).some((item) => itemNeedsRefundDetails(item)) ? (
-              <Stack spacing={1} sx={{ mt: 1.5 }}>
-                {getOrderLineItems(order).filter((item) => itemNeedsRefundDetails(item)).map((item) => (
-                  <CustomerRefundDetails key={item.id} order={order} item={item} embedded />
-                ))}
-              </Stack>
+            {refundLines.length ? (
+              <Box sx={{ mt: 1.5 }}>
+                <CustomerRefundDetails
+                  order={order}
+                  amount={pendingRefundAmountForOrder(order)}
+                  active
+                  embedded
+                />
+              </Box>
             ) : null}
             {orderOpenCredit(order) > 0 ? (
               <SummaryRow label="Order credit">

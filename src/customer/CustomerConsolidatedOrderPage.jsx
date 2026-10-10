@@ -27,7 +27,7 @@ import { useAuth } from "../auth/AuthProvider.jsx";
 import { useOrders, getOrdersForEmail } from "../lib/ordersStore.jsx";
 import { setAuthSurface } from "../auth/authSurface.js";
 import CustomerBalanceProofUpload from "../components/CustomerBalanceProofUpload.jsx";
-import CustomerRefundDetails, { CustomerBalanceDueNotice } from "../components/CustomerRefundDetails.jsx";
+import CustomerRefundDetails from "../components/CustomerRefundDetails.jsx";
 import {
   CustomerBackToOrders,
   formatDeliverTo,
@@ -86,6 +86,10 @@ export default function CustomerConsolidatedOrderPage() {
       getOrderLineItems(order).map((item) => ({ order, item }))
     )),
     [memberOrders],
+  );
+  const dueLines = useMemo(
+    () => items.filter(({ item }) => itemNeedsBalanceProof(item)),
+    [items],
   );
 
   return (
@@ -149,17 +153,12 @@ export default function CustomerConsolidatedOrderPage() {
 
             {summary.needsRefund || (summary.outstanding > 0 && summary.needsPay) ? (
               <Stack spacing={1} sx={{ mt: 1.5 }}>
-                {summary.outstanding > 0 && summary.needsPay ? (
-                  <CustomerBalanceDueNotice amount={summary.outstanding} embedded />
-                ) : null}
-                {items.filter(({ item }) => itemNeedsBalanceProof(item)).map(({ order, item }) => (
+                {dueLines.length ? (
                   <CustomerBalanceProofUpload
-                    key={`${order.id}-${item.id}`}
-                    order={order}
-                    item={item}
+                    lines={dueLines}
                     surfaceBorderColor={surfaceBorderColor}
                   />
-                ))}
+                ) : null}
                 {summary.needsRefund ? (
                   <CustomerRefundDetails amount={summary.refund} active embedded />
                 ) : null}
