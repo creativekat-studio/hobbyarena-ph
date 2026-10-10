@@ -16,6 +16,7 @@ import {
   Typography,
 } from "@mui/material";
 import { MONO_FONT } from "../theme.js";
+import { useAuth } from "../auth/AuthProvider.jsx";
 import { TrashIcon } from "../components/icons.jsx";
 import ProofImage from "../components/ProofImage.jsx";
 import { useCustomers } from "../lib/customersStore.jsx";
@@ -132,6 +133,7 @@ export default function CustomerPayoutMethodsEditor({
   variant = "admin",
 }) {
   const firebaseEnabled = useFirebaseData();
+  const { user } = useAuth();
   const { customers, getCustomerProfile, saveCustomerPayoutMethods } = useCustomers();
   const qrInputRef = useRef(null);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
@@ -208,12 +210,19 @@ export default function CustomerPayoutMethodsEditor({
     setUploading(true);
     setError("");
     try {
+      const uploadUid = variant === "storefront"
+        ? (user?.uid || ownerUid || profile?.uid || "")
+        : (ownerUid || profile?.uid || user?.uid || "");
       let qrUrl;
-      if (firebaseEnabled) {
+      if (firebaseEnabled && uploadUid) {
         try {
-          qrUrl = await uploadCustomerPayoutFile(file, ownerUid || profile?.uid);
-        } catch {
-          qrUrl = await compressProofFile(file);
+          qrUrl = await uploadCustomerPayoutFile(file, uploadUid);
+        } catch (uploadError) {
+          const fallback = await compressProofFile(file);
+          if (String(fallback).length > 700000) {
+            throw new Error(uploadError?.message || "Could not upload the QR code. Try a smaller image.");
+          }
+          qrUrl = fallback;
         }
       } else {
         qrUrl = await compressProofFile(file);
@@ -515,26 +524,37 @@ export default function CustomerPayoutMethodsEditor({
               />
             </Grid>
             <Grid size={{ xs: 12 }}>
-              <input
-                ref={qrInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/*,application/pdf"
-                hidden
-                onChange={handleQrFile}
-              />
               <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} alignItems={{ xs: "flex-start", sm: "center" }}>
                 <QrThumb method={draft} surfaceBorderColor={surfaceBorderColor} onOpen={setQrPreview} />
                 <Stack spacing={0.5} sx={{ minWidth: 0 }}>
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      disabled={uploading || busy}
-                      onClick={() => qrInputRef.current?.click()}
-                      sx={{ fontFamily: MONO_FONT, fontSize: "0.66rem", letterSpacing: 0.4 }}
-                    >
-                      {uploading ? "Uploading…" : draft.qrUrl ? "Replace QR" : "Upload QR"}
-                    </Button>
+                    <Box sx={{ position: "relative", display: "inline-flex" }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        disabled={uploading || busy}
+                        component="span"
+                        sx={{ fontFamily: MONO_FONT, fontSize: "0.66rem", letterSpacing: 0.4 }}
+                      >
+                        {uploading ? "Uploading…" : draft.qrUrl ? "Replace QR" : "Upload QR"}
+                      </Button>
+                      <Box
+                        component="input"
+                        ref={qrInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/*,application/pdf"
+                        disabled={uploading || busy}
+                        onChange={handleQrFile}
+                        aria-label="Upload QR"
+                        sx={{
+                          position: "absolute",
+                          inset: 0,
+                          opacity: 0,
+                          cursor: "pointer",
+                          fontSize: 0,
+                        }}
+                      />
+                    </Box>
                     {draft.qrUrl ? (
                       <Button
                         size="small"

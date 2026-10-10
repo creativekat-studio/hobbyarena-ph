@@ -20,8 +20,9 @@ import TypeConfirmDialog from "../components/TypeConfirmDialog.jsx";
 import { AdminTableHeaderCell } from "./adminTableHeader.jsx";
 import { useCustomers } from "../lib/customersStore.jsx";
 import { useOrders } from "../lib/ordersStore.jsx";
-import { sortOrdersByOrderNo } from "../lib/orderIds.js";
+import { sortOrdersByOrderNo, displayConsolidatedOrderId, withConsolidatedDisplayIds } from "../lib/orderIds.js";
 import { PESO } from "../components/ProductCard.jsx";
+import { groupMergedOrderSets } from "../lib/orderMergeSimulation.js";
 import {
   deleteCustomersByIds,
   deleteOrdersAndRestock,
@@ -37,8 +38,10 @@ export default function DemoDataResetPanel({ panelSx, surfaceBorderColor }) {
 
   const [customerQuery, setCustomerQuery] = useState("");
   const [orderQuery, setOrderQuery] = useState("");
+  const [consolidatedQuery, setConsolidatedQuery] = useState("");
   const [selectedCustomerIds, setSelectedCustomerIds] = useState(() => new Set());
   const [selectedOrderIds, setSelectedOrderIds] = useState(() => new Set());
+  const [selectedSetIds, setSelectedSetIds] = useState(() => new Set());
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
@@ -75,6 +78,36 @@ export default function DemoDataResetPanel({ panelSx, surfaceBorderColor }) {
     ));
   }, [orders, orderQuery]);
 
+  const consolidatedSets = useMemo(
+    () => withConsolidatedDisplayIds(groupMergedOrderSets(orders || [])),
+    [orders],
+  );
+
+  const consolidatedRows = useMemo(() => {
+    const q = consolidatedQuery.trim().toLowerCase();
+    const rows = consolidatedSets.map((set) => {
+      const members = set.orders || [];
+      const email = members.find((order) => order.email)?.email || "—";
+      return {
+        id: set.id,
+        displayId: displayConsolidatedOrderId(set),
+        customer: set.customer || members[0]?.customer || "—",
+        email,
+        orderCount: members.length,
+        memberIds: members.map((order) => order.id).filter(Boolean),
+        total: members.reduce((sum, order) => sum + (Number(order.total) || 0), 0),
+      };
+    }).filter((row) => row.id);
+    if (!q) return rows;
+    return rows.filter((row) => (
+      row.displayId.toLowerCase().includes(q)
+      || row.id.toLowerCase().includes(q)
+      || row.customer.toLowerCase().includes(q)
+      || row.email.toLowerCase().includes(q)
+      || row.memberIds.some((id) => id.toLowerCase().includes(q))
+    ));
+  }, [consolidatedSets, consolidatedQuery]);
+
   function toggleId(setter, id) {
     setter((prev) => {
       const next = new Set(prev);
@@ -100,6 +133,23 @@ export default function DemoDataResetPanel({ panelSx, surfaceBorderColor }) {
           ok: true,
           message: `Deleted ${summary.ordersDeleted} order${summary.ordersDeleted === 1 ? "" : "s"}. Restocked ${summary.unitsRestocked} unit${summary.unitsRestocked === 1 ? "" : "s"} across ${summary.productsRestocked} product${summary.productsRestocked === 1 ? "" : "s"}.`,
         });
+      } else if (confirm.kind === "consolidated") {
+        const memberIds = consolidatedSets
+          .filter((set) => selectedSetIds.has(set.id))
+          .flatMap((set) => (set.orders || []).map((order) => order.id));
+        const setCount = selectedSetIds.size;
+        const summary = await deleteOrdersAndRestock(memberIds);
+        const removed = new Set(memberIds.map((id) => String(id)));
+        setSelectedSetIds(new Set());
+        setSelectedOrderIds((prev) => {
+          const next = new Set(prev);
+          for (const id of removed) next.delete(id);
+          return next;
+        });
+        setResult({
+          ok: true,
+          message: `Deleted ${setCount} consolidated order${setCount === 1 ? "" : "s"} (${summary.ordersDeleted} member order${summary.ordersDeleted === 1 ? "" : "s"}). Restocked ${summary.unitsRestocked} unit${summary.unitsRestocked === 1 ? "" : "s"} across ${summary.productsRestocked} product${summary.productsRestocked === 1 ? "" : "s"}.`,
+        });
       } else {
         const summary = await deleteCustomersByIds([...selectedCustomerIds]);
         setSelectedCustomerIds(new Set());
@@ -121,10 +171,13 @@ export default function DemoDataResetPanel({ panelSx, surfaceBorderColor }) {
 
   const customerIds = customerRows.map((row) => row.id);
   const orderIds = orderRows.map((row) => row.id);
+  const consolidatedIds = consolidatedRows.map((row) => row.id);
   const allCustomersSelected = customerIds.length > 0
     && customerIds.every((id) => selectedCustomerIds.has(id));
   const allOrdersSelected = orderIds.length > 0
     && orderIds.every((id) => selectedOrderIds.has(id));
+  const allSetsSelected = consolidatedIds.length > 0
+    && consolidatedIds.every((id) => selectedSetIds.has(id));
 
   return (
     <Box sx={{ ...panelSx, p: { xs: 2, md: 2.5 } }}>
@@ -143,11 +196,12 @@ export default function DemoDataResetPanel({ panelSx, surfaceBorderColor }) {
             Danger zone
           </Typography>
           <Typography sx={{ fontWeight: 800, fontSize: "1.05rem", mt: 0.5 }}>
-            Delete demo customers & orders
+            Delete demo customers, orders & consolidated orders
           </Typography>
           <Typography sx={{ color: "text.secondary", fontSize: "0.85rem", mt: 0.75, lineHeight: 1.5, maxWidth: 720 }}>
             Localhost and Vercel preview only. Pick rows to delete — there is no wipe-all.
             Deleting an <strong>order</strong> restores its committed in-stock units.
+            Deleting a <strong>consolidated order</strong> removes every order in that set and restocks them.
             Deleting a <strong>customer</strong> removes the profile only (orders stay until you delete them).
           </Typography>
         </Box>
@@ -301,6 +355,91 @@ export default function DemoDataResetPanel({ panelSx, surfaceBorderColor }) {
                         <TableCell colSpan={4}>
                           <Typography sx={{ color: "text.secondary", fontSize: "0.85rem", py: 2 }}>
                             No orders match.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Stack>
+          </Grid>
+
+          <Grid size={{ xs: 12 }}>
+            <Stack spacing={1.25}>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
+                <Typography sx={{ fontWeight: 800, flex: 1 }}>Consolidated orders</Typography>
+                <TextField
+                  size="small"
+                  placeholder="Filter set / order no. / customer…"
+                  value={consolidatedQuery}
+                  onChange={(event) => setConsolidatedQuery(event.target.value)}
+                  sx={{ minWidth: { sm: 240 } }}
+                />
+                <Button
+                  variant="outlined"
+                  color="error"
+                  disabled={busy || selectedSetIds.size === 0}
+                  onClick={() => setConfirm({
+                    kind: "consolidated",
+                    title: "Delete selected consolidated orders",
+                    description: `Permanently delete ${selectedSetIds.size} consolidated order${selectedSetIds.size === 1 ? "" : "s"} and every order inside ${selectedSetIds.size === 1 ? "it" : "them"}. Committed in-stock units are restored. Type delete to continue.`,
+                  })}
+                  sx={{ fontFamily: MONO_FONT, fontSize: "0.68rem", letterSpacing: 0.4, textTransform: "uppercase" }}
+                >
+                  Delete selected ({selectedSetIds.size})
+                </Button>
+              </Stack>
+
+              <TableContainer sx={{ maxHeight: 360, border: "1px solid", borderColor: surfaceBorderColor, borderRadius: 1 }}>
+                <Table stickyHeader size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          size="small"
+                          checked={allSetsSelected}
+                          indeterminate={selectedSetIds.size > 0 && !allSetsSelected}
+                          onChange={(event) => toggleAll(setSelectedSetIds, consolidatedIds, event.target.checked)}
+                          inputProps={{ "aria-label": "Select all filtered consolidated orders" }}
+                        />
+                      </TableCell>
+                      <AdminTableHeaderCell>Consolidated</AdminTableHeaderCell>
+                      <AdminTableHeaderCell>Customer</AdminTableHeaderCell>
+                      <AdminTableHeaderCell align="right">Orders</AdminTableHeaderCell>
+                      <AdminTableHeaderCell align="right">Total</AdminTableHeaderCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {consolidatedRows.length ? consolidatedRows.map((row) => (
+                      <TableRow key={row.id} hover selected={selectedSetIds.has(row.id)}>
+                        <TableCell padding="checkbox">
+                          <Checkbox
+                            size="small"
+                            checked={selectedSetIds.has(row.id)}
+                            onChange={() => toggleId(setSelectedSetIds, row.id)}
+                            inputProps={{ "aria-label": `Select ${row.displayId}` }}
+                          />
+                        </TableCell>
+                        <TableCell sx={{ fontFamily: MONO_FONT, fontWeight: 700, fontSize: "0.78rem", whiteSpace: "nowrap" }}>
+                          {row.displayId}
+                        </TableCell>
+                        <TableCell>
+                          <Typography sx={{ fontWeight: 600, fontSize: "0.82rem" }}>{row.customer}</Typography>
+                          <Typography sx={{ color: "text.secondary", fontSize: "0.72rem" }}>{row.email}</Typography>
+                        </TableCell>
+                        <TableCell align="right" sx={{ fontFamily: MONO_FONT, fontWeight: 700 }}>
+                          {row.orderCount}
+                        </TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>
+                          {PESO.format(row.total)}
+                        </TableCell>
+                      </TableRow>
+                    )) : (
+                      <TableRow>
+                        <TableCell colSpan={5}>
+                          <Typography sx={{ color: "text.secondary", fontSize: "0.85rem", py: 2 }}>
+                            No consolidated orders match.
                           </Typography>
                         </TableCell>
                       </TableRow>

@@ -50,7 +50,10 @@ import {
   getOrderLineItems,
   getPaymentOptionsForKind,
   getStatusOptionsForKind,
+  completedStatusHardStop,
   getOrderStatusOptionsForPayment,
+  restrictOrderStatusOptions,
+  restrictPaymentOptions,
   resolveOrderStatusForPayment,
   isPreorderOrder,
   lineItemTrailLabel,
@@ -732,7 +735,10 @@ function StepJourney({ fromLabel, toLabel, accent = "primary" }) {
 export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, depositPercent = 30 }) {
   const kind = resolveOrderKindForItem(lineItem);
   const isPreorder = kind === "Pre-order";
-  const paymentOptions = optionsIncludingCurrent(getPaymentOptionsForKind(kind), lineItem.payment);
+  const paymentOptions = optionsIncludingCurrent(
+    restrictPaymentOptions(lineItem.status, kind, getPaymentOptionsForKind(kind)),
+    lineItem.payment,
+  );
   const maxQty = lineItem.quantity ?? 1;
 
   const [draftPayment, setDraftPayment] = useState(lineItem.payment);
@@ -746,7 +752,10 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
   const [saveError, setSaveError] = useState("");
   const [confirmTransition, setConfirmTransition] = useState(null);
 
-  const statusOptions = getOrderStatusOptionsForPayment(draftPayment, kind);
+  const statusOptions = restrictOrderStatusOptions(
+    lineItem.status,
+    getOrderStatusOptionsForPayment(draftPayment, kind),
+  );
   const showReceivedField = shouldCaptureAmountReceived(draftPayment)
     && draftPayment !== lineItem.payment;
   const expectedReceived = expectedAmountReceived(draftPayment, {
@@ -909,6 +918,10 @@ export function OrderStatusControls({ lineItem, onSave, orderId, setAllocation, 
 
     // Warn when a payment/status change moves the order backward or skips ≥2 steps.
     if (paymentStatusDirty) {
+      if (completedStatusHardStop(lineItem.status, draftStatus)) {
+        setSaveError("Completed orders can’t move back to an in-progress status.");
+        return;
+      }
       const transition = evaluateStepTransition(draftAllocatedForSave);
       if (transition) {
         setConfirmTransition({
@@ -2061,11 +2074,19 @@ function defaultEmailItemSelection(lineItems) {
   return new Set(source.map((item) => item.id));
 }
 
-function findPreviousSentEmailEntry(order, emailType) {
+function findPreviousSentEmailEntry(order, emailType, item) {
   if (!emailType) return null;
-  return (order.trail ?? []).find(
-    (entry) => entry.emailStatus === "sent" && entry.emailType === emailType,
-  ) ?? null;
+  const matches = (order.trail ?? []).filter((entry) => {
+    if (entry.emailStatus !== "sent" || entry.emailType !== emailType) return false;
+    if (item?.status && entry.status && migrateOrderStatus(entry.status) !== migrateOrderStatus(item.status)) {
+      return false;
+    }
+    if (item?.payment && entry.payment && migratePaymentStatus(entry.payment) !== migratePaymentStatus(item.payment)) {
+      return false;
+    }
+    return true;
+  });
+  return matches.length ? matches[matches.length - 1] : null;
 }
 
 function formatTrailTimestamp(iso) {
@@ -2293,7 +2314,7 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
       return;
     }
 
-    const previousSend = findPreviousSentEmailEntry(order, previewEmailType);
+    const previousSend = findPreviousSentEmailEntry(order, previewEmailType, selectedItems[0]);
     if (previousSend) {
       setConfirmResendEmail({ emailType: previewEmailType, previousSend });
       return;
@@ -2360,7 +2381,7 @@ export function OrderSummarySidebar({ order, panelSx, scrollable = false, sendOr
           onClick={handleSendEmail}
           sx={{ fontFamily: MONO_FONT, letterSpacing: 0.5, textTransform: "uppercase", flexShrink: 0 }}
         >
-          {sendingEmail ? "Sending…" : "Send email"}
+          {sendingEmail ? "Sending…" : findPreviousSentEmailEntry(order, previewEmailType, selectedItems[0]) ? "Resend email" : "Send email"}
         </Button>
       ) : null}
       headerNotice={sendOrderStatusEmail && sendError ? (

@@ -14,8 +14,9 @@ import { TruckIcon } from "../components/icons.jsx";
 import {
   getOrderLineItems,
   itemNeedsRefundDetails,
+  itemNeedsBalanceProof,
+  orderDueTodayBalance,
   orderNeedsBalancePayment,
-  orderOutstandingBalance,
   pendingRefundAmountForOrder,
 } from "../data/orderWorkflow.js";
 import { orderOpenCredit } from "../lib/orderCredit.js";
@@ -25,6 +26,7 @@ import { formatOrderTimestamp } from "../lib/orderTimestamps.js";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import { useOrders, getOrdersForEmail } from "../lib/ordersStore.jsx";
 import { setAuthSurface } from "../auth/authSurface.js";
+import CustomerBalanceProofUpload from "../components/CustomerBalanceProofUpload.jsx";
 import CustomerRefundDetails, { CustomerBalanceDueNotice } from "../components/CustomerRefundDetails.jsx";
 import {
   CustomerBackToOrders,
@@ -35,7 +37,7 @@ import {
 function summarizeSet(orders) {
   return {
     total: orders.reduce((sum, order) => sum + (orderCustomerDisplayTotal(order) || 0), 0),
-    outstanding: orders.reduce((sum, order) => sum + (orderOutstandingBalance(order) || 0), 0),
+    outstanding: orders.reduce((sum, order) => sum + (orderDueTodayBalance(order) || 0), 0),
     needsPay: orders.some((order) => orderNeedsBalancePayment(order)),
     credit: orders.reduce((sum, order) => sum + (orderOpenCredit(order) || 0), 0),
     refund: orders.reduce((sum, order) => sum + (pendingRefundAmountForOrder(order) || 0), 0),
@@ -147,11 +149,19 @@ export default function CustomerConsolidatedOrderPage() {
 
             {summary.needsRefund || (summary.outstanding > 0 && summary.needsPay) ? (
               <Stack spacing={1} sx={{ mt: 1.5 }}>
-                {summary.needsRefund ? (
-                  <CustomerRefundDetails amount={summary.refund} active embedded />
-                ) : null}
                 {summary.outstanding > 0 && summary.needsPay ? (
                   <CustomerBalanceDueNotice amount={summary.outstanding} embedded />
+                ) : null}
+                {items.filter(({ item }) => itemNeedsBalanceProof(item)).map(({ order, item }) => (
+                  <CustomerBalanceProofUpload
+                    key={`${order.id}-${item.id}`}
+                    order={order}
+                    item={item}
+                    surfaceBorderColor={surfaceBorderColor}
+                  />
+                ))}
+                {summary.needsRefund ? (
+                  <CustomerRefundDetails amount={summary.refund} active embedded />
                 ) : null}
               </Stack>
             ) : null}
@@ -177,6 +187,7 @@ export default function CustomerConsolidatedOrderPage() {
                   surfaceBorderColor={surfaceBorderColor}
                   sourceOrderId={order.id}
                   hideRefund
+                  hidePaymentActions
                   flush
                 />
               </Box>
