@@ -87,13 +87,6 @@ function moneyColor(value) {
   return "text.primary";
 }
 
-const STATUS_NOT_MOVED_MESSAGE = "1 or more order status has not moved. Please update first.";
-
-export function mergeStatusesNeedUpdate(orderDetails, sourceRows) {
-  const original = new Map((sourceRows || []).map((row) => [row.key, row.status || ""]));
-  return (orderDetails || []).some((row) => (row.status || "") === (original.get(row.key) || ""));
-}
-
 function CompactField({ value, onChange, sx, ...props }) {
   return (
     <TextField
@@ -878,7 +871,6 @@ export function MergeWorkbookView({
   onNewQtyChange,
   onPaymentChange,
   onStatusChange,
-  statusWarning = false,
   note = "",
   attachment = null,
   onNoteChange,
@@ -1202,11 +1194,6 @@ export function MergeWorkbookView({
           {selectedItems === 0 ? (
             <Alert severity="info" sx={{ mt: 1 }}>
               Select at least one item in Order Details to include it here.
-            </Alert>
-          ) : null}
-          {editable && onStatusChange && statusWarning ? (
-            <Alert severity="warning" sx={{ mt: 1 }}>
-              {STATUS_NOT_MOVED_MESSAGE}
             </Alert>
           ) : null}
         </Box>

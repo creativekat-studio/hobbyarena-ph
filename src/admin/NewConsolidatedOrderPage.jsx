@@ -23,7 +23,6 @@ import { ADMIN_ACTION_BUTTON_SX, ADMIN_STATUS_CHIP_SX } from "./adminChipSx.js";
 import {
   customerContactFromOrders,
   MergeWorkbookView,
-  mergeStatusesNeedUpdate,
   sendMergedOrderEmails,
   totalItemQty,
 } from "./MergeOrdersGrid.jsx";
@@ -134,11 +133,6 @@ export default function NewConsolidatedOrderPage() {
     }),
     [selectedOrders, percentByProduct, newQtyByProduct, statusByRow, paymentByRow, selectedKeys],
   );
-  const statusesNeedUpdate = useMemo(
-    () => mergeStatusesNeedUpdate(workbook.orderDetails, sourceRows),
-    [workbook.orderDetails, sourceRows],
-  );
-
   function goBackToOrders() {
     goToOrdersList("individual");
   }
@@ -178,20 +172,12 @@ export default function NewConsolidatedOrderPage() {
   }
 
   function applySimulation() {
-    if (statusesNeedUpdate) {
-      setConfirmApply(false);
-      return;
-    }
     const { mergedSetId } = writeSimulation();
     setConfirmApply(false);
     goToCreatedSet(mergedSetId);
   }
 
   async function applyAndSend() {
-    if (statusesNeedUpdate) {
-      setConfirmSend(false);
-      return;
-    }
     setSendError("");
     setSending(true);
     try {
@@ -238,7 +224,7 @@ export default function NewConsolidatedOrderPage() {
     );
   }
 
-  const canApply = mergeGate.canMerge && !sending && !statusesNeedUpdate && selectedKeys.size > 0;
+  const canApply = mergeGate.canMerge && !sending && selectedKeys.size > 0;
 
   return (
     <Stack
@@ -358,7 +344,6 @@ export default function NewConsolidatedOrderPage() {
               onStatusChange={(row, status) => {
                 setStatusByRow((prev) => ({ ...prev, [row.key]: status }));
               }}
-              statusWarning={statusesNeedUpdate}
               note={note}
               attachment={attachment}
               attachmentError={attachmentError}
