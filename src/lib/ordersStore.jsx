@@ -1286,7 +1286,7 @@ export function OrdersProvider({ children }) {
         return next;
       });
 
-    const submitBalanceProof = async (orderId, lineItemId, proofDataUrl, customerEmail) => {
+    const submitBalanceProof = async (orderId, lineItemId, proofDataUrl, customerEmail, submittedAt) => {
       const normalizedEmail = String(customerEmail || "").trim().toLowerCase();
       if (!normalizedEmail) throw new Error("Sign in to upload proof of payment.");
 
@@ -1295,9 +1295,12 @@ export function OrdersProvider({ children }) {
         throw new Error("Order not found.");
       }
 
+      const lineIds = (Array.isArray(lineItemId) ? lineItemId : [lineItemId]).filter(Boolean);
       const items = getOrderLineItems(order);
-      const item = items.find((entry) => entry.id === lineItemId);
-      if (!item || !itemNeedsBalanceProof(item)) {
+      const dueItems = lineIds
+        .map((id) => items.find((entry) => entry.id === id))
+        .filter((entry) => entry && itemNeedsBalanceProof(entry));
+      if (!dueItems.length) {
         throw new Error("Balance payment proof is not required for this item right now.");
       }
       if (!proofDataUrl?.startsWith("data:")) {
@@ -1305,48 +1308,52 @@ export function OrdersProvider({ children }) {
       }
 
       const normalizedProof = await normalizeProofDataUrl(proofDataUrl);
+      const stampedAt = submittedAt || new Date().toISOString();
+      const additions = [];
 
-      const proofId = `bp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-
-      if (!firebaseEnabled) {
-        if (!storeBalanceProof(orderId, lineItemId, normalizedProof, proofId)) {
-          throw new Error("Could not save proof file. Try a smaller image.");
+      for (const item of dueItems) {
+        const proofId = `bp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        if (!firebaseEnabled) {
+          if (!storeBalanceProof(orderId, item.id, normalizedProof, proofId)) {
+            throw new Error("Could not save proof file. Try a smaller image.");
+          }
+        } else {
+          storeBalanceProof(orderId, item.id, normalizedProof, proofId);
         }
-      } else {
-        storeBalanceProof(orderId, lineItemId, normalizedProof, proofId);
-      }
 
-      const priorCount = (order.trail ?? []).filter(
-        (entry) => entry.lineItemId === lineItemId
-          && entry.attachment?.kind === "balance",
-      ).length;
-      const attachment = {
-        ...buildStoredTrailAttachment({
-          label: priorCount > 0 ? `Balance payment proof #${priorCount + 1}` : "Balance payment proof",
-          type: normalizedProof.startsWith("data:application/pdf") ? "pdf" : "image",
-          kind: "balance",
-          lineItemId,
-          proofId,
-        }),
-        ...(firebaseEnabled ? { url: normalizedProof } : {}),
-      };
+        const priorCount = (order.trail ?? []).filter(
+          (entry) => entry.lineItemId === item.id
+            && entry.attachment?.kind === "balance",
+        ).length;
+        const attachment = {
+          ...buildStoredTrailAttachment({
+            label: priorCount > 0 ? `Balance payment proof #${priorCount + 1}` : "Balance payment proof",
+            type: normalizedProof.startsWith("data:application/pdf") ? "pdf" : "image",
+            kind: "balance",
+            lineItemId: item.id,
+            proofId,
+          }),
+          ...(firebaseEnabled ? { url: normalizedProof } : {}),
+        };
+        const entry = buildTrailEntry({
+          title: priorCount > 0 ? "Additional balance proof uploaded" : "Balance payment proof uploaded",
+          status: item.status,
+          payment: "Pending Verification",
+          note: `Customer uploaded proof for the remaining balance of ${formatPeso(item.balanceDue ?? 0)}.`,
+          attachment,
+          lineItemId: item.id,
+          lineItemName: lineItemTrailLabel(item),
+        });
+        entry.at = stampedAt;
+        additions.push(entry);
+      }
 
       const updated = {
         ...order,
         notificationSeen: false,
-        trail: [
-          ...(order.trail ?? []),
-          buildTrailEntry({
-            title: priorCount > 0 ? "Additional balance proof uploaded" : "Balance payment proof uploaded",
-            status: item.status,
-            payment: "Pending Verification",
-            note: `Customer uploaded proof for the remaining balance of ${formatPeso(item.balanceDue ?? 0)}.`,
-            attachment,
-            lineItemId,
-            lineItemName: lineItemTrailLabel(item),
-          }),
-        ],
+        trail: [...(order.trail ?? []), ...additions],
       };
+      ordersRef.current = ordersRef.current.map((row) => (row.id === orderId ? updated : row));
 
       if (firebaseEnabled) {
         try {

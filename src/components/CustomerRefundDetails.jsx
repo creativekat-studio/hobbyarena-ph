@@ -59,17 +59,6 @@ function StatusNotice({ title, detail, action, embedded = false }) {
   );
 }
 
-export function CustomerBalanceDueNotice({ amount, embedded = false }) {
-  if (!(amount > 0)) return null;
-  return (
-    <StatusNotice
-      embedded={embedded}
-      title={`Balance due today · ${PESO.format(amount)}`}
-      detail="Pay this to complete your pre-order."
-    />
-  );
-}
-
 export default function CustomerRefundDetails({ order, item, amount, active = false, embedded = false }) {
   const { user } = useAuth();
   const { getCustomerProfile } = useCustomers();

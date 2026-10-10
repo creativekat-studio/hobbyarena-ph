@@ -55,7 +55,7 @@ function ProofPreviewModal({ open, attachment, onClose, surfaceBorderColor }) {
   );
 }
 
-export default function CustomerBalanceProofUpload({ order, item, surfaceBorderColor }) {
+export default function CustomerBalanceProofUpload({ order, item, lines, surfaceBorderColor }) {
   const theme = useTheme();
   const { user } = useAuth();
   const { content } = useCms();
@@ -92,24 +92,45 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
     });
   }, [banks, showBanks]);
 
+  const targets = useMemo(
+    () => (Array.isArray(lines) && lines.length ? lines : [{ order, item }]).filter((row) => row?.order && row?.item),
+    [lines, order, item],
+  );
+  const dueTargets = useMemo(
+    () => targets.filter((row) => itemNeedsBalanceProof(row.item)),
+    [targets],
+  );
   const uploadedProofs = useMemo(
-    () => (order.trail ?? [])
-      .filter((entry) => entry.lineItemId === item.id && entry.attachment?.kind === "balance")
-      .map((entry) => ({
-        id: entry.id,
-        at: entry.at,
-        label: entry.attachment.label || "Balance payment proof",
-        attachment: entry.attachment,
-      }))
-      .sort((a, b) => new Date(a.at) - new Date(b.at)),
-    [order.trail, item.id],
+    () => {
+      const seen = new Set();
+      const rows = [];
+      for (const row of targets) {
+        for (const entry of row.order.trail ?? []) {
+          if (entry.lineItemId !== row.item.id || entry.attachment?.kind !== "balance") continue;
+          const receiptKey = `${entry.at || ""}|${entry.attachment?.label || ""}`;
+          if (!entry.id || seen.has(entry.id) || seen.has(receiptKey)) continue;
+          seen.add(entry.id);
+          seen.add(receiptKey);
+          rows.push({
+            id: entry.id,
+            order: row.order,
+            lineItemId: entry.lineItemId,
+            at: entry.at,
+            label: entry.attachment.label || "Balance payment proof",
+            attachment: entry.attachment,
+          });
+        }
+      }
+      return rows.sort((a, b) => new Date(a.at) - new Date(b.at));
+    },
+    [targets],
   );
 
-  const needsProof = itemNeedsBalanceProof(item);
+  const needsProof = dueTargets.length > 0;
   if (!needsProof && uploadedProofs.length === 0) return null;
 
-  const balanceDue = itemOutstandingBalance(item);
-  const openCredit = lineOpenCredit(item);
+  const balanceDue = dueTargets.reduce((sum, row) => sum + itemOutstandingBalance(row.item), 0);
+  const openCredit = dueTargets.reduce((sum, row) => sum + lineOpenCredit(row.item), 0);
 
   function uploadButtonLabel() {
     if (proofFile) return "Change file";
@@ -148,7 +169,16 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
     setError("");
     setSuccess("");
     try {
-      await submitBalanceProof(order.id, item.id, proofFile.dataUrl, user?.email);
+      const submittedAt = new Date().toISOString();
+      const byOrder = new Map();
+      for (const row of dueTargets) {
+        const ids = byOrder.get(row.order.id) ?? [];
+        ids.push(row.item.id);
+        byOrder.set(row.order.id, ids);
+      }
+      for (const [orderId, ids] of byOrder) {
+        await submitBalanceProof(orderId, ids, proofFile.dataUrl, user?.email, submittedAt);
+      }
       setSuccess("Proof submitted. We'll verify your balance payment shortly.");
       setProofFile(null);
     } catch (err) {
@@ -159,7 +189,7 @@ export default function CustomerBalanceProofUpload({ order, item, surfaceBorderC
   }
 
   function handleViewProof(entry) {
-    const url = resolveProofAttachmentUrl(order, entry);
+    const url = resolveProofAttachmentUrl(entry.order || order, entry);
     if (!url) return;
     setPreview({
       url,

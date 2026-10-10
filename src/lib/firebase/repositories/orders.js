@@ -326,7 +326,11 @@ export async function patchCustomerOrderTrail(order) {
   const withProofs = await uploadOrderProofAttachments(order);
   const compact = compactOrderForFirestore(withProofs);
   const latestEntry = compact.trail?.[compact.trail.length - 1];
-  const needsProof = latestEntry?.attachment && !latestEntry.attachment.storageUrl && !latestEntry.attachment.purged;
+  const latestAt = latestEntry?.at;
+  const needsProof = (compact.trail ?? []).some((entry) => {
+    if (!latestAt || entry.at !== latestAt || !entry.attachment) return false;
+    return !entry.attachment.storageUrl && !entry.attachment.purged;
+  });
   if (needsProof) {
     throw new Error(
       "We couldn’t upload your file to storage. Please try a smaller image or PDF, "
