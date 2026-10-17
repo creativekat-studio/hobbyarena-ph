@@ -167,7 +167,7 @@ export function SummaryRow({ label, children }) {
   );
 }
 
-export function OrderLineItem({ order, item, surfaceBorderColor, sourceOrderId = "", hideRefund = false, hidePaymentActions = false, flush = false }) {
+export function OrderLineItem({ order, item, surfaceBorderColor, sourceOrderId = "", hideRefund = false, hidePaymentActions = false, hideBalance = false, flush = false }) {
   const theme = useTheme();
   const payment = migratePaymentStatus(item.payment);
   const status = migrateOrderStatus(item.status);
@@ -222,7 +222,7 @@ export function OrderLineItem({ order, item, surfaceBorderColor, sourceOrderId =
         </Box>
 
         <Box sx={{ textAlign: "right", flexShrink: 0 }}>
-          {itemOutstandingBalance(item) > 0 ? (
+          {!hideBalance && itemOutstandingBalance(item) > 0 ? (
             <Typography sx={{ fontSize: "0.72rem", color: itemNeedsBalanceProof(item) ? "warning.main" : "text.secondary", fontWeight: 700 }}>
               {PESO.format(itemOutstandingBalance(item))} {itemNeedsBalanceProof(item) ? "due" : "remaining"}
             </Typography>

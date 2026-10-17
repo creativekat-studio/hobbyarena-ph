@@ -279,8 +279,9 @@ function lineDepositPaid(itemOrOrder, depositPercent = 30) {
 function allocatedFullTotal(itemOrOrder, allocatedQty) {
   const qty = lineQuantity(itemOrOrder);
   const full = lineFullTotal(itemOrOrder);
-  const clamped = Math.max(0, Math.min(qty, allocatedQty));
-  return (full * clamped) / qty;
+  const allocated = Math.max(0, Number(allocatedQty) || 0);
+  if (qty <= 0) return 0;
+  return (full * allocated) / qty;
 }
 
 /** Remaining balance on allocated units: allocated full price − deposit paid. */
@@ -310,7 +311,7 @@ export function refundAfterAllocationWithCredit(orderOrItem, allocatedQty, depos
 
 export function inferStatusesAfterAllocation(order, allocatedQty) {
   const qty = Math.max(1, order.qty ?? 1);
-  const clamped = Math.max(0, Math.min(qty, allocatedQty));
+  const clamped = Math.max(0, Math.round(Number(allocatedQty) || 0));
   let payment = migratePaymentStatus(order.payment);
   let status = migrateOrderStatus(order.status);
 
@@ -1109,18 +1110,18 @@ export function applyPaymentStatusToLineItem(
     if (normalized === ALLOCATION_FULFILLED_PAY_BALANCE) {
       // Full allocation case — only bump to ordered qty when none recorded yet.
       allocatedQty = draftAllocatedQty != null
-        ? Math.max(0, Math.min(qty, draftAllocatedQty))
+        ? Math.max(0, Math.round(Number(draftAllocatedQty) || 0))
         : ((item.allocatedQty ?? 0) > 0 ? item.allocatedQty : qty);
     } else if (normalized === "Fulfilled" || normalized === "Ready for Pickup") {
       // Never invent a full allocation on fulfill — that wiped partials (7 of 10 → 10 of 10).
       if (draftAllocatedQty != null) {
-        allocatedQty = Math.max(0, Math.min(qty, draftAllocatedQty));
+        allocatedQty = Math.max(0, Math.round(Number(draftAllocatedQty) || 0));
       } else {
         allocatedQty = Math.max(0, Number(item.allocatedQty) || 0);
       }
     } else if (statusNeedsAllocation(normalized)) {
       if (draftAllocatedQty != null) {
-        allocatedQty = Math.max(0, Math.min(qty, draftAllocatedQty));
+        allocatedQty = Math.max(0, Math.round(Number(draftAllocatedQty) || 0));
       }
       if (normalized === "For Full Refund") {
         allocatedQty = 0;
@@ -1224,7 +1225,7 @@ export function applyPaymentStatusToLineItem(
 
 export function inferLineItemAfterAllocation(item, allocatedQty) {
   const qty = Math.max(1, item.quantity ?? 1);
-  const clamped = Math.max(0, Math.min(qty, allocatedQty));
+  const clamped = Math.max(0, Math.round(Number(allocatedQty) || 0));
   const currentStatus = migrateOrderStatus(item.status);
   const stubOrder = {
     type: resolveOrderKindForItem(item),

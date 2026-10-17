@@ -156,6 +156,7 @@ export default function ConsolidatedOrderDetailPage() {
         prev
         && prev.workbook === next.workbook
         && prev.allocationTouched === next.allocationTouched
+        && prev.allocationDirty === next.allocationDirty
         && prev.selectedCount === next.selectedCount
         && prevRemoved.length === nextRemoved.length
         && prevRemoved.every((id, index) => id === nextRemoved[index])
@@ -332,7 +333,7 @@ export default function ConsolidatedOrderDetailPage() {
     const remainingOrders = (set.orders || []).filter((order) => !removed.has(order.id));
     try {
       const workbook = payload?.workbook;
-      const allocationTouched = Boolean(payload?.allocationTouched);
+      const allocationTouched = Boolean(payload?.allocationTouched || payload?.allocationDirty);
       const saves = new Map();
       for (const draft of Object.values(lineDrafts)) {
         if (!draft?.orderId || !draft?.lineItemId || removed.has(draft.orderId)) continue;
@@ -472,6 +473,7 @@ export default function ConsolidatedOrderDetailPage() {
   const lineDirty = Object.keys(lineDrafts).length > 0;
   const removedOrderIds = payload?.removedOrderIds || [];
   const dirty = lineDirty
+    || Boolean(payload?.allocationDirty)
     || removedOrderIds.length > 0
     || note !== savedExtras.note
     || attachmentSignature(attachment) !== attachmentSignature(savedExtras.attachment);

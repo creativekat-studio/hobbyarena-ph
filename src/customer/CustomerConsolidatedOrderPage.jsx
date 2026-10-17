@@ -21,6 +21,7 @@ import {
 } from "../data/orderWorkflow.js";
 import { orderOpenCredit } from "../lib/orderCredit.js";
 import { compareOrdersByOrderNo, findCustomerConsolidatedSet, parseConsolidatedOrderId } from "../lib/orderIds.js";
+import { consolidatedCustomerNet } from "../lib/orderMergeSimulation.js";
 import { orderCustomerDisplayTotal } from "../lib/orderRevenue.js";
 import { formatOrderTimestamp } from "../lib/orderTimestamps.js";
 import { useAuth } from "../auth/AuthProvider.jsx";
@@ -91,6 +92,13 @@ export default function CustomerConsolidatedOrderPage() {
     () => items.filter(({ item }) => itemNeedsBalanceProof(item)),
     [items],
   );
+  const settlement = useMemo(() => {
+    if (!memberOrders.length) return null;
+    const net = consolidatedCustomerNet(memberOrders);
+    return net == null ? null : { net };
+  }, [memberOrders]);
+  const netRefund = Boolean(settlement && settlement.net < 0);
+  const netDue = Boolean(settlement && settlement.net > 0);
 
   return (
     <Container maxWidth="md" sx={{ py: { xs: 3, md: 4 }, width: "100%" }}>
@@ -151,16 +159,21 @@ export default function CustomerConsolidatedOrderPage() {
               </Stack>
             ) : null}
 
-            {summary.needsRefund || (summary.outstanding > 0 && summary.needsPay) ? (
+            {(netRefund || netDue || (!settlement && (summary.needsRefund || (summary.outstanding > 0 && summary.needsPay)))) ? (
               <Stack spacing={1} sx={{ mt: 1.5 }}>
-                {dueLines.length ? (
+                {!netRefund && dueLines.length && (netDue || !settlement) ? (
                   <CustomerBalanceProofUpload
                     lines={dueLines}
+                    amount={netDue ? settlement.net : undefined}
                     surfaceBorderColor={surfaceBorderColor}
                   />
                 ) : null}
-                {summary.needsRefund ? (
-                  <CustomerRefundDetails amount={summary.refund} active embedded />
+                {netRefund || (!settlement && summary.needsRefund) ? (
+                  <CustomerRefundDetails
+                    amount={netRefund ? Math.abs(settlement.net) : summary.refund}
+                    active
+                    embedded
+                  />
                 ) : null}
               </Stack>
             ) : null}
@@ -187,6 +200,7 @@ export default function CustomerConsolidatedOrderPage() {
                   sourceOrderId={order.id}
                   hideRefund
                   hidePaymentActions
+                  hideBalance={Boolean(settlement)}
                   flush
                 />
               </Box>

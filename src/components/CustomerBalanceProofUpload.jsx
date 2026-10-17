@@ -55,7 +55,7 @@ function ProofPreviewModal({ open, attachment, onClose, surfaceBorderColor }) {
   );
 }
 
-export default function CustomerBalanceProofUpload({ order, item, lines, surfaceBorderColor }) {
+export default function CustomerBalanceProofUpload({ order, item, lines, amount, surfaceBorderColor }) {
   const theme = useTheme();
   const { user } = useAuth();
   const { content } = useCms();
@@ -129,7 +129,9 @@ export default function CustomerBalanceProofUpload({ order, item, lines, surface
   const needsProof = dueTargets.length > 0;
   if (!needsProof && uploadedProofs.length === 0) return null;
 
-  const balanceDue = dueTargets.reduce((sum, row) => sum + itemOutstandingBalance(row.item), 0);
+  const balanceDue = amount != null
+    ? Math.max(0, Number(amount) || 0)
+    : dueTargets.reduce((sum, row) => sum + itemOutstandingBalance(row.item), 0);
   const openCredit = dueTargets.reduce((sum, row) => sum + lineOpenCredit(row.item), 0);
 
   function uploadButtonLabel() {

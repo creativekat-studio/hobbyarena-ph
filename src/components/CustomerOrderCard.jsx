@@ -10,6 +10,7 @@ import {
   orderStatusLabel,
 } from "../data/orderWorkflow.js";
 import { orderCustomerDisplayTotal } from "../lib/orderRevenue.js";
+import { consolidatedCustomerNet } from "../lib/orderMergeSimulation.js";
 import { formatOrderTimestamp } from "../lib/orderTimestamps.js";
 import { MONO_FONT } from "../theme.js";
 import { PESO } from "./ProductCard.jsx";
@@ -259,6 +260,10 @@ export function CustomerConsolidatedOrderGroup({ setId, orders, surfaceBorderCol
   const total = orders.reduce((sum, order) => sum + (orderCustomerDisplayTotal(order) || 0), 0);
   const outstanding = orders.reduce((sum, order) => sum + (orderOutstandingBalance(order) || 0), 0);
   const needsPay = orders.some((order) => orderNeedsBalancePayment(order));
+  const net = consolidatedCustomerNet(orders);
+  const showRefund = net != null && net < 0;
+  const showDue = net != null ? net > 0 : outstanding > 0;
+  const settled = net === 0;
 
   return (
     <Box
@@ -305,16 +310,25 @@ export function CustomerConsolidatedOrderGroup({ setId, orders, surfaceBorderCol
           <Typography sx={{ fontWeight: 800, color: "primary.main", fontSize: "1rem" }}>
             {PESO.format(total)}
           </Typography>
-          {outstanding > 0 ? (
-            needsPay ? (
-              <Typography sx={{ fontSize: "0.68rem", fontWeight: 800, color: "warning.main", mt: 0.35 }}>
-                Pay {PESO.format(outstanding)} now
-              </Typography>
-            ) : (
-              <Typography sx={{ fontSize: "0.68rem", color: "text.secondary", fontWeight: 600, mt: 0.35 }}>
-                {PESO.format(outstanding)} remaining
-              </Typography>
-            )
+          {showRefund ? (
+            <Typography sx={{ fontSize: "0.68rem", fontWeight: 800, color: "warning.main", mt: 0.35 }}>
+              Refund {PESO.format(Math.abs(net))}
+            </Typography>
+          ) : null}
+          {showDue && (net != null || needsPay) ? (
+            <Typography sx={{ fontSize: "0.68rem", fontWeight: 800, color: "warning.main", mt: 0.35 }}>
+              Pay {PESO.format(net != null ? net : outstanding)} now
+            </Typography>
+          ) : null}
+          {showDue && net == null && !needsPay ? (
+            <Typography sx={{ fontSize: "0.68rem", color: "text.secondary", fontWeight: 600, mt: 0.35 }}>
+              {PESO.format(outstanding)} remaining
+            </Typography>
+          ) : null}
+          {settled ? (
+            <Typography sx={{ fontSize: "0.68rem", color: "text.secondary", fontWeight: 600, mt: 0.35 }}>
+              Settled
+            </Typography>
           ) : null}
           <Typography
             sx={{

@@ -1137,7 +1137,7 @@ export function MergeWorkbookView({
                     }}
                     inputProps={{ "aria-label": `New quantity for ${row.name}` }}
                     sx={{
-                      maxWidth: 56,
+                      maxWidth: 72,
                       mx: "auto",
                       "& .MuiOutlinedInput-root": {
                         bgcolor: alpha(theme.palette.warning.main, 0.16),
@@ -1788,14 +1788,25 @@ export function ConsolidatedOrderView({
   }, [allocationEditing, set, percentByProduct, newQtyByProduct, draftSig, selectedKeys, lineDrafts]);
 
   const selectedSig = [...selectedKeys].sort().join("|");
+  const allocationDirty = useMemo(() => {
+    const savedByKey = new Map((detailWorkbook?.consolidated || []).map((row) => [row.productKey, row]));
+    return (allocationGrid?.consolidated || []).some((row) => {
+      const saved = savedByKey.get(row.productKey);
+      if (!saved) return false;
+      const percentChanged = Math.abs((Number(row.allocationPercent) || 0) - (Number(saved.allocationPercent) || 0)) > 0.001;
+      const qtyChanged = (Number(row.newQty) || 0) !== (Number(saved.newQty) || 0);
+      return percentChanged || qtyChanged;
+    });
+  }, [allocationGrid, detailWorkbook]);
   useEffect(() => {
     onPayloadChange?.({
       workbook: allocationGrid || workbook,
       allocationTouched,
+      allocationDirty,
       selectedCount: selectedKeys.size,
       removedOrderIds: orderIdsPendingRemoval(detailWorkbook?.orderDetails, selectedKeys),
     });
-  }, [workbook, allocationGrid, allocationTouched, selectedSig, selectedKeys, detailWorkbook, onPayloadChange]);
+  }, [workbook, allocationGrid, allocationTouched, allocationDirty, selectedSig, selectedKeys, detailWorkbook, onPayloadChange]);
 
   if (!set || !detailWorkbook || !workbook) return null;
 
