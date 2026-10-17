@@ -61,11 +61,14 @@ function readConsolidated(raw) {
         dpAmount: Number(row?.dpAmount) || 0,
       }))
       : [],
+    statusEmailType: raw.statusEmailType ? String(raw.statusEmailType).trim().slice(0, 40) : "",
     items: Array.isArray(raw.items)
       ? raw.items.slice(0, 40).map((item) => ({
         name: item?.name ? String(item.name).slice(0, 200) : "Item",
         totalQty: Math.max(0, Number(item?.totalQty) || 0),
         totalDp: Number(item?.totalDp) || 0,
+        allocationPercent: Number(item?.allocationPercent) || 0,
+        allocationPending: Boolean(item?.allocationPending),
         newQty: Math.max(0, Number(item?.newQty) || 0),
         newAmount: Number(item?.newAmount) || 0,
       }))
@@ -111,6 +114,7 @@ function readPayload(body) {
       depositPercent: Number(order.depositPercent) || 30,
       date: order.date ? String(order.date) : "",
       ...(order.mergedSetId ? { mergedSetId: String(order.mergedSetId).trim().slice(0, 40) } : {}),
+      ...(order.statusEmailType ? { statusEmailType: String(order.statusEmailType).trim().slice(0, 40) } : {}),
       items: order.items ? String(order.items) : "",
       notes: order.notes ? String(order.notes).trim().slice(0, 2000) : "",
       lineItems: Array.isArray(order.lineItems) ? order.lineItems : [],

@@ -115,7 +115,7 @@ export const DEFAULT_EMAIL_BODIES = {
   partial_refund_pending:
     "Only {{allocation}} units were allocated. A refund of {{refund}} is due on the unallocated units.",
   full_refund_pending:
-    "We're sorry — no allocation was available for this item. Your deposit of {{refund}} will be fully refunded.",
+    "We will refund your full deposit of {{refund}}. None of this order was allocated.",
   partial_refund_sent:
     "We have sent your refund of {{refund}}. Your allocated units are ready for pickup — please schedule pickup with our team.",
   ready_for_pickup:

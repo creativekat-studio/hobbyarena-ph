@@ -31,6 +31,7 @@ import {
   syncOrderRollup,
 } from "../data/orderWorkflow.js";
 import { compareOrdersByOrderNo, displayConsolidatedOrderId, makeConsolidatedOrderId } from "./orderIds.js";
+import { resolveOrderStatusEmailTypeForCurrentState } from "./orderEmailTriggers.js";
 import { lineItemAmount, lineItemDepositPaid, lineItemEffectiveUnitPrice } from "./orderRevenue.js";
 import { roundMoney } from "./money.js";
 
@@ -249,11 +250,14 @@ export function allocationFieldsOpen(lines) {
 
 function distributeNewQty(lines, newQty) {
   let remaining = Math.max(0, Math.round(Number(newQty) || 0));
-  return lines.map((line) => {
-    const take = Math.min(line.qty, remaining);
+  const takes = lines.map((line) => {
+    const take = Math.min(Math.max(0, Number(line.qty) || 0), remaining);
     remaining -= take;
     return take;
   });
+  // A typed qty can exceed the ordered qty. The extra stays on the first row.
+  if (remaining > 0 && takes.length) takes[0] += remaining;
+  return takes;
 }
 
 export function buildMergeWorkbook(orders, {
@@ -283,10 +287,10 @@ export function buildMergeWorkbook(orders, {
     const override = newQtyByProduct[product.productKey];
     const hasQtyOverride = override != null && override !== "";
     const carriedQty = !percentProvided && product.defaultNewQty != null
-      ? Math.max(0, Math.min(product.qty, Math.round(Number(product.defaultNewQty) || 0)))
+      ? Math.max(0, Math.round(Number(product.defaultNewQty) || 0))
       : suggested;
     const newQty = hasQtyOverride
-      ? Math.max(0, Math.min(product.qty, Math.round(Number(override) || 0)))
+      ? Math.max(0, Math.round(Number(override) || 0))
       : carriedQty;
     return {
       productKey: product.productKey,
@@ -314,7 +318,7 @@ export function buildMergeWorkbook(orders, {
     const product = breakdown.find((row) => row.productKey === line.productKey);
     const override = finalByRow[line.key];
     const finalAllocation = override != null && override !== ""
-      ? Math.max(0, Math.min(line.qty, Math.round(Number(override) || 0)))
+      ? Math.max(0, Math.round(Number(override) || 0))
       : allocatedByLine[line.key] || 0;
     const newAmount = roundMoney(finalAllocation * line.unitPrice);
     const finalPrice = roundMoney(newAmount - line.dpAmount);
@@ -511,6 +515,19 @@ export function buildLiveMergeWorkbook(orders, { includeKeys } = {}) {
   };
 }
 
+/**
+ * Set-level money the customer should act on.
+ * Null while any product is still waiting on allocation, so a pending set
+ * is not treated as a refund of the whole deposit.
+ * Negative is a refund, positive is the balance to pay, zero is settled.
+ */
+export function consolidatedCustomerNet(orders) {
+  const workbook = buildLiveMergeWorkbook(orders);
+  const rows = workbook.consolidated || [];
+  if (!rows.length || rows.some((row) => row.allocationMode === "pending")) return null;
+  return Number(workbook.totals?.net) || 0;
+}
+
 export function collectMergeProducts(sourceRows) {
   const map = new Map();
   for (const row of sourceRows) {
@@ -554,7 +571,7 @@ export function simulateMergeRows(sourceRows, { percentByProduct = {}, finalByRo
     const suggested = suggestedFinalAllocation(row.qty, allocationPercent);
     const override = finalByRow[row.key];
     const finalAllocation = override != null && override !== ""
-      ? Math.max(0, Math.min(row.qty, Math.round(Number(override) || 0)))
+      ? Math.max(0, Math.round(Number(override) || 0))
       : suggested;
     const newAmount = roundMoney(finalAllocation * row.unitPrice);
     const finalPrice = roundMoney(newAmount - row.dpAmount);
@@ -748,29 +765,23 @@ export function applyMergedLineStatus(order, lineItemId, status, paymentOverride
   };
 }
 
-function consolidatedEmailConclusion(items, net) {
-  const rows = Array.isArray(items) ? items : [];
-  const decided = rows.filter((row) => row?.allocationMode !== "pending" && !row?.allocationPending);
-  const usable = decided.length ? decided : rows;
-  const allocated = usable.reduce((sum, row) => sum + Math.max(0, Number(row?.newQty) || 0), 0);
-  const full = usable.length > 0 && usable.every((row) => {
-    const qty = Math.max(0, Number(row?.totalQty) || 0);
-    const next = Math.max(0, Number(row?.newQty) || 0);
-    return qty > 0 && next >= qty;
-  });
-  if (net < 0 && allocated <= 0) {
-    return { payment: "For Full Refund", status: "For Full Refund" };
-  }
-  if (net < 0) {
-    return { payment: "For Partial Refund", status: "Partially Fulfilled & For Refund" };
-  }
-  if (net > 0 && full) {
-    return { payment: "Awaiting Balance Payment", status: ALLOCATION_FULFILLED_PAY_BALANCE };
-  }
-  if (net > 0) {
-    return { payment: "Awaiting Balance Payment", status: "Partially Fulfilled & Pay Balance" };
-  }
-  return { payment: "Fully Paid", status: "Ready for Pickup" };
+function lineEmailContext(line) {
+  const kind = line?.tag || line?.kind || "Pre-order";
+  return {
+    payment: line?.payment,
+    status: line?.status,
+    tag: kind === "Pre-order" ? "Pre-order" : kind,
+    allocatedQty: line?.finalAllocation ?? line?.allocatedQty ?? 0,
+    quantity: line?.qty ?? line?.quantity ?? 1,
+  };
+}
+
+/** The original status email, when every line in the set is on that same step. */
+export function consolidatedStatusEmailType(lines) {
+  const types = (lines || []).map((line) => resolveOrderStatusEmailTypeForCurrentState(lineEmailContext(line)));
+  if (!types.length || types.some((type) => !type)) return null;
+  const unique = [...new Set(types)];
+  return unique.length === 1 ? unique[0] : null;
 }
 
 export function buildConsolidatedEmailOrder(orders, workbook) {
@@ -778,6 +789,10 @@ export function buildConsolidatedEmailOrder(orders, workbook) {
   const primary = list[0] || {};
   const totals = workbook?.totals || {};
   const net = Number(totals.net) || 0;
+  const lines = workbook?.orderDetails || [];
+  const statusEmailType = consolidatedStatusEmailType(lines);
+  const payments = [...new Set(lines.map((line) => line.payment).filter(Boolean))];
+  const statuses = [...new Set(lines.map((line) => line.status).filter(Boolean))];
   const orderIds = list.map((order) => order.id).filter(Boolean);
   const orderDetails = (workbook?.orderDetails || [])
     .slice()
@@ -794,7 +809,9 @@ export function buildConsolidatedEmailOrder(orders, workbook) {
     email: primary.email || "",
     phone: primary.phone || "",
     type: primary.type || "Pre-order",
-    ...consolidatedEmailConclusion(workbook?.consolidated, net),
+    payment: payments.length === 1 ? payments[0] : (primary.payment || ""),
+    status: statuses.length === 1 ? statuses[0] : (primary.status || ""),
+    statusEmailType: statusEmailType || "",
     date: primary.mergedAt || primary.date || new Date().toISOString(),
     depositPercent: primary.depositPercent || 30,
     refundAmount: net < 0 ? Math.abs(net) : 0,
@@ -809,6 +826,7 @@ export function buildConsolidatedEmailOrder(orders, workbook) {
       }),
       orderIds,
       orderDetails,
+      statusEmailType: statusEmailType || "",
       items: (workbook?.consolidated || []).map((row) => ({
         name: row.name,
         totalQty: Number(row.totalQty) || 0,

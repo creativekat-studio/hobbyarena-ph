@@ -133,9 +133,8 @@ export function lineItemDepositPaid(item, depositPercent = 30) {
 
 /** Final price = effective unit price × actual allocation. */
 export function lineItemFinalPrice(item) {
-  const qty = lineItemQty(item);
   const price = lineItemEffectiveUnitPrice(item);
-  const allocated = Math.min(lineItemAllocatedQty(item), qty);
+  const allocated = lineItemAllocatedQty(item);
   return roundMoney(allocated * price);
 }
 
@@ -217,7 +216,7 @@ export function lineItemCogs(item, costByProductId = null) {
   const payment = migratePaymentStatus(item?.payment);
   const status = migrateOrderStatus(item?.status);
 
-  if (allocated > 0) return Math.min(allocated, qty) * cost;
+  if (allocated > 0) return allocated * cost;
 
   // No allocation yet (deposit-only) → no COGS until stock is committed
   if (DEPOSIT_STAGE_PAYMENTS.has(payment) && !COMPLETED_STATUSES.has(status)) {
@@ -301,7 +300,7 @@ function legacyOrderGross(order) {
 
   if (ZERO_REVENUE_PAYMENTS.has(payment) || ZERO_REVENUE_STATUSES.has(status)) return 0;
 
-  if (allocated > 0 && unit > 0) return roundMoney(Math.min(allocated, qty) * unit);
+  if (allocated > 0 && unit > 0) return roundMoney(allocated * unit);
   if (DEPOSIT_STAGE_PAYMENTS.has(payment)) return depositPaid;
   if (FULL_PAID_PAYMENTS.has(payment) || COMPLETED_STATUSES.has(status)) {
     // Prefer payable line total over list fullSubtotal when a discount was applied.
@@ -445,7 +444,8 @@ export function orderAllocatedQtyTotal(order) {
 export function orderQtyLabel(order) {
   const ordered = orderOrderedQty(order);
   const allocated = orderAllocatedQtyTotal(order);
-  if (allocated > 0) return `${Math.min(allocated, ordered)} of ${ordered}`;
+  if (allocated > ordered) return String(allocated);
+  if (allocated > 0 && allocated < ordered) return `${allocated} of ${ordered}`;
   return String(ordered);
 }
 
@@ -456,7 +456,8 @@ export function orderItemsSummaryLabel(order) {
   return items.map((item) => {
     const qty = lineItemQty(item);
     const allocated = lineItemAllocatedQty(item);
-    if (allocated > 0) return `${item.name} · ${Math.min(allocated, qty)} of ${qty}`;
+    if (allocated > qty) return `${item.name} · ${allocated}`;
+    if (allocated > 0) return `${item.name} · ${allocated} of ${qty}`;
     return qty > 1 ? `${item.name} ×${qty}` : item.name;
   }).join(", ");
 }
@@ -475,8 +476,7 @@ export function orderListDisplayTotal(order) {
         sum + (lineItemAllocatedQty(item) > 0 ? lineItemFinalPrice(item) : 0)
       ), 0);
     }
-    const qty = Math.max(1, Number(order?.qty) || 1);
-    const allocated = Math.min(Math.max(0, Number(order?.allocatedQty) || 0), qty);
+    const allocated = Math.max(0, Number(order?.allocatedQty) || 0);
     const price = lineItemEffectiveUnitPrice(order?.lineItems?.[0] || order);
     if (price > 0) return roundMoney(allocated * price);
   }

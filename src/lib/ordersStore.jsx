@@ -731,19 +731,37 @@ export function OrdersProvider({ children }) {
         extras.attachment || fallbackAttachment,
       );
       const persistAttachment = persistableMergedAttachment(attachment);
-      const payload = {
-        emailType: "consolidated_allocation",
-        bodyOverride: getEmailBodyOverride("consolidated_allocation"),
-        subjectOverride: getEmailSubjectOverride("consolidated_allocation"),
-        reminder: getPreorderReminderConfig(),
-        showMessengerButton: getShowMessengerButton("consolidated_allocation"),
-        actionNotes: getActionNotes("consolidated_allocation"),
-        order: {
-          ...buildConsolidatedEmailOrder(list, workbook),
-          ...(note ? { notes: note } : {}),
-          ...(attachment ? { statusAttachment: attachment } : {}),
-        },
-      };
+      let payload;
+      if (list.length === 1) {
+        const only = list[0];
+        const items = getOrderLineItems(only);
+        const types = items.map((item) => resolveOrderStatusEmailTypeForCurrentState(item));
+        const emailType = types[0];
+        if (!emailType || types.some((type) => type !== emailType)) {
+          throw new Error("No status email matches this order's payment and status.");
+        }
+        payload = buildStatusEmailPayload(only, items, items[0], emailType);
+        if (note) payload.order.notes = note;
+        if (attachment) payload.order.statusAttachment = attachment;
+      } else {
+        payload = {
+          emailType: "consolidated_allocation",
+          bodyOverride: getEmailBodyOverride("consolidated_allocation"),
+          subjectOverride: getEmailSubjectOverride("consolidated_allocation"),
+          reminder: getPreorderReminderConfig(),
+          showMessengerButton: getShowMessengerButton("consolidated_allocation"),
+          actionNotes: getActionNotes("consolidated_allocation"),
+          order: {
+            ...buildConsolidatedEmailOrder(list, workbook),
+            ...(note ? { notes: note } : {}),
+            ...(attachment ? { statusAttachment: attachment } : {}),
+          },
+        };
+      }
+      const sentType = payload.emailType;
+      const sentLabel = sentType === "consolidated_allocation"
+        ? "Consolidated email"
+        : (ORDER_STATUS_EMAIL_LABELS[sentType] || "Status email");
       return new Promise((resolve, reject) => {
         queueOrderStatusEmail(payload, ({ ok, result, error }) => {
           const at = new Date().toISOString();
@@ -752,22 +770,24 @@ export function OrdersProvider({ children }) {
             const next = current.map((row) => {
               if (!idSet.has(row.id)) return row;
               const source = list.find((order) => order.id === row.id) || row;
-              const record = { ...buildStatusEmailRecord("consolidated_allocation", source.email, { ok, result, error }), at };
+              const record = { ...buildStatusEmailRecord(sentType, source.email, { ok, result, error }), at };
               const setId = String(source.mergedSetId || primary.mergedSetId || "").trim();
               const verb = !ok ? "Failed" : result?.skipped ? "Skipped" : "Sent";
               const trailEntry = {
                 ...buildStatusEmailTrailEntry(
-                  "consolidated_allocation",
+                  sentType,
                   source.email,
                   getOrderLineItems(source),
                   { ok, result, error },
                 ),
                 at,
                 title: source.email
-                  ? `Consolidated email ${verb} to ${source.email}`
-                  : `Consolidated email ${verb}`,
+                  ? `${sentLabel} ${verb} to ${source.email}`
+                  : `${sentLabel} ${verb}`,
                 note: [
-                  setId ? `Sent as consolidated order ${setId}.` : "Sent as a consolidated order email.",
+                  sentType === "consolidated_allocation"
+                    ? (setId ? `Sent as consolidated order ${setId}.` : "Sent as a consolidated order email.")
+                    : `Sent for ${source.id}.`,
                   note,
                 ].filter(Boolean).join(" "),
                 ...(setId ? { mergedSetId: setId } : {}),
@@ -791,7 +811,7 @@ export function OrdersProvider({ children }) {
           notifyAdminEmailSent({
             ok,
             to: primary.email,
-            emailType: "consolidated_allocation",
+            emailType: sentType,
             messageId: result?.messageId ?? null,
             skipped: Boolean(result?.skipped),
             skipReason: result?.skipReason || null,
