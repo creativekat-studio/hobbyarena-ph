@@ -71,9 +71,41 @@ function readLocalProfiles() {
   }
 }
 
+/** Browser storage is a small cache. QR files stay in Firestore, not in this copy. */
+function slimProfileForLocal(profile) {
+  if (!profile || typeof profile !== "object") return profile;
+  const next = { ...profile };
+  if (typeof next.photoURL === "string" && next.photoURL.startsWith("data:")) {
+    next.photoURL = "";
+  }
+  if (Array.isArray(next.payoutMethods)) {
+    next.payoutMethods = next.payoutMethods.map((method) => {
+      const qrUrl = String(method?.qrUrl || "");
+      if (!qrUrl.startsWith("data:")) return method;
+      return { ...method, qrUrl: "" };
+    });
+  }
+  return next;
+}
+
 function writeLocalProfiles(profiles) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles));
+  const slim = {};
+  for (const [key, profile] of Object.entries(profiles || {})) {
+    slim[key] = slimProfileForLocal(profile);
+  }
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(slim));
+  } catch (error) {
+    console.warn("[customers] Could not cache profiles in this browser:", error);
+    if (getDataSource() === "firebase") {
+      try {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        // The database copy is the one that matters.
+      }
+    }
+  }
 }
 
 function setCacheFromProfiles(profiles) {
@@ -477,7 +509,9 @@ export function CustomersProvider({ children }) {
   const seeded = useRef(false);
 
   useEffect(() => {
-    setCacheFromMap(readLocalProfiles());
+    const local = readLocalProfiles();
+    writeLocalProfiles(local);
+    setCacheFromMap(local);
   }, []);
 
   useEffect(() => {
