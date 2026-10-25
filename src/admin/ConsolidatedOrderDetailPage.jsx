@@ -66,11 +66,11 @@ function resolveBackNavigation(locationState) {
   };
 }
 
-function findPreviousConsolidatedEmail(orders) {
+function findPreviousStatementEmail(orders, emailType) {
   let latest = null;
   for (const order of orders || []) {
     for (const entry of order.trail || []) {
-      if (entry.emailStatus !== "sent" || entry.emailType !== "consolidated_allocation") continue;
+      if (entry.emailStatus !== "sent" || entry.emailType !== emailType) continue;
       if (!latest || (entry.at && latest.at && entry.at > latest.at) || (entry.at && !latest.at)) {
         latest = entry;
       }
@@ -85,7 +85,7 @@ function consolidatedStatementChanged(orders, previous) {
   if (!Number.isFinite(sentAt)) return false;
   for (const order of orders || []) {
     for (const entry of order.trail || []) {
-      if (entry.emailType === "consolidated_allocation") continue;
+      if (entry.emailType === "consolidated_allocation" || entry.emailType === "individual_order") continue;
       const at = Date.parse(entry.at || "");
       if (!Number.isFinite(at) || at <= sentAt) continue;
       if (entry.status || entry.payment || entry.title === "Attachment uploaded") return true;
@@ -121,6 +121,7 @@ export default function ConsolidatedOrderDetailPage() {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
   const [confirmResend, setConfirmResend] = useState(false);
+  const [confirmAttachment, setConfirmAttachment] = useState(false);
   const [payload, setPayload] = useState(null);
   const [note, setNote] = useState("");
   const [attachment, setAttachment] = useState(null);
@@ -202,14 +203,26 @@ export default function ConsolidatedOrderDetailPage() {
     return () => window.removeEventListener("hobbyarena:email-sent", onEmailSent);
   }, []);
 
-  async function performSend() {
+  function statementNeedsResend() {
+    if (!set) return false;
+    const emailType = set.orders.length === 1 ? "individual_order" : "consolidated_allocation";
+    const previous = findPreviousStatementEmail(set.orders, emailType);
+    return Boolean(previous) && !consolidatedStatementChanged(set.orders, previous);
+  }
+
+  function continueSend() {
+    setConfirmAttachment(true);
+  }
+
+  async function performSend(withAttachment) {
     if (!set || !sendConsolidatedAllocationEmail || !payload?.workbook) return;
     setSendError("");
     setSending(true);
     try {
       await sendConsolidatedAllocationEmail(set.orders, {
         note,
-        attachment,
+        attachment: withAttachment ? attachment : null,
+        includeAttachment: Boolean(withAttachment && attachment),
         workbook: payload.workbook,
       });
     } catch (error) {
@@ -221,12 +234,11 @@ export default function ConsolidatedOrderDetailPage() {
 
   async function handleSend() {
     if (!set || !payload?.workbook) return;
-    const previous = findPreviousConsolidatedEmail(set.orders);
-    if (previous && !consolidatedStatementChanged(set.orders, previous)) {
+    if (statementNeedsResend()) {
       setConfirmResend(true);
       return;
     }
-    await performSend();
+    continueSend();
   }
 
   function liveItemFromRow(row) {
@@ -465,7 +477,8 @@ export default function ConsolidatedOrderDetailPage() {
 
   const selectedCount = payload?.selectedCount ?? 0;
   const canSend = Boolean(sendConsolidatedAllocationEmail) && selectedCount > 0 && !sending;
-  const previousConsolidatedEmail = findPreviousConsolidatedEmail(set.orders);
+  const statementEmailType = set.orders.length === 1 ? "individual_order" : "consolidated_allocation";
+  const previousConsolidatedEmail = findPreviousStatementEmail(set.orders, statementEmailType);
   const resendCurrentStatement = Boolean(previousConsolidatedEmail)
     && !consolidatedStatementChanged(set.orders, previousConsolidatedEmail);
   const savedExtras = emailExtrasFromOrders(set.orders);
@@ -800,11 +813,45 @@ export default function ConsolidatedOrderDetailPage() {
         ) : null}
       </Dialog>
 
+      <Dialog open={confirmAttachment} onClose={() => !sending && setConfirmAttachment(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800 }}>Send with attachment?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
+            {attachment
+              ? `Include ${attachment.name || attachment.label || "the attached file"} in this email?`
+              : "No file is attached. Send this email without one?"}
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            color="inherit"
+            disabled={sending}
+            onClick={() => {
+              setConfirmAttachment(false);
+              performSend(false);
+            }}
+          >
+            No
+          </Button>
+          <Button
+            variant="contained"
+            disabled={sending || !attachment}
+            onClick={() => {
+              setConfirmAttachment(false);
+              performSend(true);
+            }}
+            sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase" }}
+          >
+            Yes
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={confirmResend} onClose={() => setConfirmResend(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 800 }}>Send email again?</DialogTitle>
         <DialogContent>
           <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
-            You already sent this email ({ORDER_STATUS_EMAIL_LABELS.consolidated_allocation || "Consolidated Order"})
+            You already sent this email ({ORDER_STATUS_EMAIL_LABELS[statementEmailType] || "Order update"})
             {previousConsolidatedEmail?.at
               ? ` on ${formatDateTime(previousConsolidatedEmail.at)}`
               : ""}
@@ -816,9 +863,9 @@ export default function ConsolidatedOrderDetailPage() {
           <Button
             variant="contained"
             color="warning"
-            onClick={async () => {
+            onClick={() => {
               setConfirmResend(false);
-              await performSend();
+              continueSend();
             }}
             sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase" }}
           >

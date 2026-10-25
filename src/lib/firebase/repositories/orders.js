@@ -104,11 +104,15 @@ export function compactOrderForFirestore(order) {
                 kind: entry.attachment.kind ?? null,
                 lineItemId: entry.attachment.lineItemId ?? entry.lineItemId ?? null,
                 ...(entry.attachment.proofId ? { proofId: entry.attachment.proofId } : {}),
-                ...(entry.attachment.storageUrl
-                  ? { storageUrl: entry.attachment.storageUrl, purged: false }
-                  : entry.attachment.purged
-                    ? { purged: true }
-                    : {}),
+                ...(() => {
+                  const storageUrl = entry.attachment.storageUrl
+                    || (typeof entry.attachment.url === "string" && /^https?:\/\//i.test(entry.attachment.url)
+                      ? entry.attachment.url
+                      : "");
+                  if (storageUrl) return { storageUrl, purged: false };
+                  if (entry.attachment.purged) return { purged: true };
+                  return {};
+                })(),
               },
             }
           : {}),

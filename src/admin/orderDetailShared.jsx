@@ -603,7 +603,7 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
           </Typography>
         ) : null}
 
-        {entry.note && !isEmailEntry ? (
+        {entry.note && !isEmailEntry && !(canView && entry.note.trim() === String(entry.attachment?.label || "").trim()) ? (
           <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", mt: 0.5, lineHeight: 1.45 }}>
             {entry.note}
           </Typography>
@@ -643,7 +643,7 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
               justifyContent: "flex-start",
             }}
           >
-            {entry.attachment?.label || "View proof of payment"}
+            {entry.attachment?.label || (entry.title === "Attachment uploaded" ? "View attachment" : "View proof of payment")}
           </Button>
         ) : null}
 

@@ -245,9 +245,28 @@ export function resolveProofAttachmentUrl(order, entry) {
     return resolveOrderProofUrl(order);
   }
 
-  if (attachment.kind === "admin" || attachment.kind === "file") return null;
+  if (
+    attachment.kind === "admin"
+    || attachment.kind === "consolidated"
+    || entry?.title === "Attachment uploaded"
+  ) {
+    return mergedSetAttachmentUrl(order, entry);
+  }
+
+  if (attachment.kind === "file") return null;
 
   return resolveOrderProofUrl(order);
+}
+
+/** Admin file rows keep the name after save, but older rows lost the link. */
+function mergedSetAttachmentUrl(order, entry) {
+  const merged = order?.mergedEmailAttachment;
+  const url = merged?.storageUrl || merged?.url || "";
+  if (!isHttpUrl(url) && !isDataUrl(url)) return null;
+  const label = String(entry?.attachment?.label || entry?.note || "").trim();
+  const mergedLabel = String(merged.label || merged.name || "").trim();
+  if (label && mergedLabel && label !== mergedLabel) return null;
+  return url;
 }
 
 /** Backfill attachment metadata on deposit proof trail rows (e.g. after Firestore sync). */
