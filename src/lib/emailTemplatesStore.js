@@ -128,6 +128,7 @@ export const DEFAULT_EMAIL_BODIES = {
     "We have not received your payment for this order, so we can no longer hold the stock for you — it has been released and may be purchased by other customers. If you still want the item, please place a new order while stock lasts. If you've already paid, upload proof via your account or Hobby Arena PH and we'll sort it out.",
   consolidated_allocation:
     "We reviewed your related orders and confirmed the allocated quantities below.",
+  individual_order: "{{update}}",
   password_reset: DEFAULT_PASSWORD_RESET_BODY,
 };
 
@@ -154,10 +155,21 @@ function writeStore(map) {
   }
 }
 
+const LEGACY_INDIVIDUAL_BODIES = new Set([
+  "We confirmed the allocated quantities for this order below.",
+]);
+
 /** Custom body override for an email type, or "" if using the default. */
 export function getEmailBodyOverride(emailType) {
   const stored = readStore()[emailType];
-  return typeof stored === "string" ? stored : "";
+  if (typeof stored !== "string") return "";
+  if (emailType === "individual_order" && LEGACY_INDIVIDUAL_BODIES.has(stored.trim())) {
+    const map = readStore();
+    delete map[emailType];
+    writeStore(map);
+    return "";
+  }
+  return stored;
 }
 
 /** All saved overrides keyed by email type. */
@@ -249,10 +261,10 @@ function writeMessengerButtonStore(map) {
 
 export function defaultActionNotes(emailType) {
   const notes = {};
-  if (emailType === "consolidated_allocation" || REFUND_ACTION_EMAIL_TYPES.has(emailType)) {
+  if (emailType === "consolidated_allocation" || emailType === "individual_order" || REFUND_ACTION_EMAIL_TYPES.has(emailType)) {
     notes.refund = DEFAULT_REFUND_ACTION_NOTE;
   }
-  if (emailType === "consolidated_allocation" || BALANCE_ACTION_EMAIL_TYPES.has(emailType)) {
+  if (emailType === "consolidated_allocation" || emailType === "individual_order" || BALANCE_ACTION_EMAIL_TYPES.has(emailType)) {
     notes.balance = DEFAULT_BALANCE_ACTION_NOTE;
   }
   return notes;

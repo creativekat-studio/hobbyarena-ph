@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Box, Button, Chip, CircularProgress, Stack, Tab, Tabs, Typography } from "@mui/material";
+import { Alert, Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Tab, Tabs, Typography } from "@mui/material";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import { MONO_FONT } from "../theme.js";
 import AdminPageHeader from "../components/AdminPageHeader.jsx";
@@ -93,6 +93,8 @@ export default function NewConsolidatedOrderPage() {
   const [note, setNote] = useState("");
   const [attachment, setAttachment] = useState(null);
   const [attachmentError, setAttachmentError] = useState("");
+  const [confirmAttachment, setConfirmAttachment] = useState(false);
+  const [sendWithAttachment, setSendWithAttachment] = useState(false);
   const selectionKey = sourceRows.map((row) => row.key).join("|");
   const applyLabel = `Apply to order${summary.orderCount === 1 ? "" : "s"} (${summary.orderCount})`;
 
@@ -182,7 +184,12 @@ export default function NewConsolidatedOrderPage() {
     setSending(true);
     try {
       const { patched, mergedSetId } = writeSimulation();
-      await sendMergedOrderEmails(patched, sendConsolidatedAllocationEmail, { note, attachment, workbook });
+      await sendMergedOrderEmails(patched, sendConsolidatedAllocationEmail, {
+        note,
+        attachment: sendWithAttachment ? attachment : null,
+        includeAttachment: sendWithAttachment && Boolean(attachment),
+        workbook,
+      });
       setConfirmSend(false);
       goToCreatedSet(mergedSetId);
     } catch (error) {
@@ -418,7 +425,14 @@ export default function NewConsolidatedOrderPage() {
               variant="contained"
               color="primary"
               disabled={!canApply || !sendConsolidatedAllocationEmail}
-              onClick={() => setConfirmSend(true)}
+              onClick={() => {
+                if (attachment) {
+                  setConfirmAttachment(true);
+                  return;
+                }
+                setSendWithAttachment(false);
+                setConfirmSend(true);
+              }}
               sx={ADMIN_ACTION_BUTTON_SX}
             >
               {sending ? "Sending…" : "Send email"}
@@ -435,6 +449,39 @@ export default function NewConsolidatedOrderPage() {
         </Stack>
       </Box>
 
+      <Dialog open={confirmAttachment} onClose={() => !sending && setConfirmAttachment(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800 }}>Send with attachment?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
+            Include {attachment?.name || attachment?.label || "the attached file"} in this email?
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            color="inherit"
+            disabled={sending}
+            onClick={() => {
+              setSendWithAttachment(false);
+              setConfirmAttachment(false);
+              setConfirmSend(true);
+            }}
+          >
+            No
+          </Button>
+          <Button
+            variant="contained"
+            disabled={sending || !attachment}
+            onClick={() => {
+              setSendWithAttachment(true);
+              setConfirmAttachment(false);
+              setConfirmSend(true);
+            }}
+            sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase" }}
+          >
+            Yes
+          </Button>
+        </DialogActions>
+      </Dialog>
       <TypeConfirmDialog
         open={confirmApply}
         onClose={() => setConfirmApply(false)}

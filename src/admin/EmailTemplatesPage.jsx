@@ -80,11 +80,81 @@ const SAMPLE_STATES = {
   full_refund_sent: { payment: "Refunded", status: "Refunded", balanceDue: 0, refundAmount: 450, allocatedQty: 0 },
   payment_not_received: { payment: "Unpaid", status: "Awaiting Stock", balanceDue: 0, refundAmount: 0, allocatedQty: 0 },
   consolidated_allocation: { payment: "For Partial Refund", status: "Partially Fulfilled & For Refund", balanceDue: 0, refundAmount: 30360, allocatedQty: 2 },
+  individual_order: { payment: "Mixed", status: "Mixed", balanceDue: 0, refundAmount: 2760, allocatedQty: 5 },
 };
 
-function buildSampleOrder(recipientEmail, emailType) {
+const INDIVIDUAL_PREVIEW_STATUSES = [
+  "deposit_received",
+  "balance_due_full",
+  "balance_due_partial",
+  "partial_refund_pending",
+  "full_refund_pending",
+  "partial_refund_sent",
+  "ready_for_pickup",
+  "order_fulfilled",
+  "full_refund_sent",
+  "payment_not_received",
+];
+
+function individualSampleTotals(statusType) {
+  const totalDp = 30360;
+  const newTotal = 27600;
+  const gap = 2760;
+  if (statusType === "full_refund_pending" || statusType === "full_refund_sent") {
+    return { newTotal: 0, totalDp, net: -totalDp, netLabel: "Refund", balanceDue: 0, refundAmount: totalDp };
+  }
+  if (statusType === "balance_due_full" || statusType === "balance_due_partial") {
+    return { newTotal, totalDp, net: gap, netLabel: "Balance", balanceDue: gap, refundAmount: 0 };
+  }
+  if (statusType === "ready_for_pickup" || statusType === "order_fulfilled") {
+    return { newTotal: totalDp, totalDp, net: 0, netLabel: "Settled", balanceDue: 0, refundAmount: 0 };
+  }
+  if (statusType === "partial_refund_sent") {
+    return { newTotal, totalDp, net: 0, netLabel: "Settled", balanceDue: 0, refundAmount: gap };
+  }
+  if (statusType === "deposit_received" || statusType === "payment_not_received" || !statusType) {
+    return { newTotal, totalDp, net: 0, netLabel: "Settled", balanceDue: 0, refundAmount: 0 };
+  }
+  return { newTotal, totalDp, net: -gap, netLabel: "Refund", balanceDue: 0, refundAmount: gap };
+}
+
+function buildSampleOrder(recipientEmail, emailType, previewStatus = "partial_refund_pending") {
   const name = "One Piece Mini Tin Pack Set Vol. 4 [TS-04]";
   const state = SAMPLE_STATES[emailType] ?? SAMPLE_STATES.deposit_received;
+  if (emailType === "individual_order") {
+    const totals = individualSampleTotals(previewStatus);
+    return {
+      id: "HA-202607040003",
+      customer: "Hobby Arena",
+      email: recipientEmail,
+      phone: "",
+      type: "Pre-order",
+      payment: state.payment,
+      status: state.status,
+      statusEmailType: previewStatus || "",
+      total: totals.newTotal,
+      balanceDue: totals.balanceDue,
+      refundAmount: totals.refundAmount,
+      depositPercent: 30,
+      date: new Date().toISOString(),
+      items: "Delta Reign 18ct, ME06 36ct",
+      lineItems: [],
+      consolidated: {
+        id: "HA-202607040003",
+        statusEmailType: previewStatus || "",
+        orderIds: ["HA-202607040003"],
+        orderDetails: [
+          { orderId: "HA-202607040003", name: "[Pre-order] Pokemon TCG [ME06] Delta Reign 18ct Booster Box", qty: 10, dpAmount: 13800 },
+          { orderId: "HA-202607040003", name: "[Pre-order] Pokemon TCG [ME06] 36ct Booster Box", qty: 6, dpAmount: 16560 },
+        ],
+        items: [
+          { name: "[Pre-order] Pokemon TCG [ME06] Delta Reign 18ct Booster Box", totalQty: 10, totalDp: 13800, allocationPercent: 40, newQty: 4, newAmount: 18400 },
+          { name: "[Pre-order] Pokemon TCG [ME06] 36ct Booster Box", totalQty: 6, totalDp: 16560, newQty: 1, newAmount: 9200 },
+        ],
+        totals,
+      },
+    };
+  }
   if (emailType === "consolidated_allocation") {
     return {
       id: "HA-202609000356",
@@ -162,7 +232,7 @@ function buildSampleOrder(recipientEmail, emailType) {
   };
 }
 
-function EmailPreview({ emailType, body, subject, reminder, showMessengerButton, actionNotes, surfaceBorderColor }) {
+function EmailPreview({ emailType, body, subject, reminder, showMessengerButton, actionNotes, surfaceBorderColor, previewStatus }) {
   const [state, setState] = useState({ loading: true, html: "", subject: "", error: "" });
 
   useEffect(() => {
@@ -171,7 +241,7 @@ function EmailPreview({ emailType, body, subject, reminder, showMessengerButton,
     const timer = setTimeout(() => {
       try {
         const result = buildOrderStatusEmail(
-          buildSampleOrder(PREVIEW_EMAIL, emailType),
+          buildSampleOrder(PREVIEW_EMAIL, emailType, previewStatus),
           emailType,
           { bodyOverride: body, subjectOverride: subject, reminder, showMessengerButton, actionNotes },
         );
@@ -190,7 +260,7 @@ function EmailPreview({ emailType, body, subject, reminder, showMessengerButton,
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [emailType, body, subject, reminder, showMessengerButton, actionNotes]);
+  }, [emailType, body, subject, reminder, showMessengerButton, actionNotes, previewStatus]);
 
   return (
     <Box sx={{ height: "100%", minHeight: 0, flex: 1, display: "flex", flexDirection: "column" }}>
@@ -270,6 +340,8 @@ function EmailEditor({
   onShowMessengerChange,
   actionNotes,
   onActionNotesChange,
+  previewStatus,
+  onPreviewStatusChange,
 }) {
   const theme = useTheme();
   const [saved, setSaved] = useState(false);
@@ -279,6 +351,8 @@ function EmailEditor({
   const isCustom = draft.trim() !== defaultBody.trim() || Boolean(String(subject || "").trim());
   const selectedFooterId = reminder?.assignmentByType?.[emailType] || "";
   const isConsolidated = emailType === "consolidated_allocation";
+  const isIndividualOrder = emailType === "individual_order";
+  const isAllocationStatement = isConsolidated || isIndividualOrder;
   const noteFields = actionNotes && typeof actionNotes === "object" ? actionNotes : {};
   const hasRefundNote = Object.prototype.hasOwnProperty.call(noteFields, "refund");
   const hasBalanceNote = Object.prototype.hasOwnProperty.call(noteFields, "balance");
@@ -323,7 +397,7 @@ function EmailEditor({
     try {
       const result = await sendOrderStatusEmail({
         emailType,
-        order: buildSampleOrder(testEmail, emailType),
+        order: buildSampleOrder(testEmail, emailType, previewStatus),
         bodyOverride: draft,
         subjectOverride: subject,
         reminder,
@@ -354,6 +428,27 @@ function EmailEditor({
           Sent once for a consolidated order. Edit the subject and message. The before/after item tables and totals stay in the email.
         </Typography>
       ) : null}
+      {isIndividualOrder ? (
+        <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", lineHeight: 1.5 }}>
+          Sent from an individual order. {"{{update}}"} changes with that order's status. Consolidated orders stay on their own template.
+        </Typography>
+      ) : null}
+      {isIndividualOrder ? (
+        <FormControl fullWidth size="small">
+          <InputLabel id="individual-preview-status-label">Preview status</InputLabel>
+          <Select
+            labelId="individual-preview-status-label"
+            label="Preview status"
+            value={previewStatus || ""}
+            onChange={(e) => onPreviewStatusChange?.(e.target.value)}
+          >
+            {INDIVIDUAL_PREVIEW_STATUSES.map((type) => (
+              <MenuItem key={type} value={type}>{ORDER_STATUS_EMAIL_LABELS[type]}</MenuItem>
+            ))}
+            <MenuItem value="">Mixed statuses</MenuItem>
+          </Select>
+        </FormControl>
+      ) : null}
 
       <TextField
         fullWidth
@@ -361,7 +456,7 @@ function EmailEditor({
         label="Subject"
         value={subject || ""}
         onChange={(e) => { onSubjectChange?.(e.target.value); setSaved(false); }}
-        placeholder={isConsolidated ? "Allocation confirmed" : ""}
+        placeholder={isAllocationStatement ? "Allocation confirmed" : ""}
         helperText="Leave blank to keep the default subject."
       />
 
@@ -392,7 +487,10 @@ function EmailEditor({
       />
 
       <PlaceholderGroup>
-        {EMAIL_PLACEHOLDERS.map((placeholder) => (
+        {(isIndividualOrder
+          ? [...EMAIL_PLACEHOLDERS, { token: "{{update}}", description: "Message for this order's status" }]
+          : EMAIL_PLACEHOLDERS
+        ).map((placeholder) => (
           <Chip
             key={placeholder.token}
             label={placeholder.token}
@@ -1221,6 +1319,7 @@ export default function EmailTemplatesPage() {
   const [testEmail, setTestEmail] = useState(admin?.email || "");
   const [feedback, setFeedback] = useState(null);
   const [activeType, setActiveType] = useState(EMAIL_TYPES[0]);
+  const [individualPreviewStatus, setIndividualPreviewStatus] = useState("partial_refund_pending");
   const [pageMode, setPageMode] = useState("templates");
   const draftsRef = useRef(null);
   if (draftsRef.current === null) {
@@ -1407,6 +1506,8 @@ export default function EmailTemplatesPage() {
                 onShowMessengerChange={setMessengerForActive}
                 actionNotes={actionNotesByType[activeType]}
                 onActionNotesChange={setActionNotesForActive}
+                previewStatus={individualPreviewStatus}
+                onPreviewStatusChange={setIndividualPreviewStatus}
               />
 
               <Box
@@ -1430,6 +1531,7 @@ export default function EmailTemplatesPage() {
                   showMessengerButton={messengerByType[activeType] === true}
                   actionNotes={actionNotesByType[activeType]}
                   surfaceBorderColor={surfaceBorderColor}
+                  previewStatus={individualPreviewStatus}
                 />
               </Box>
             </Box>

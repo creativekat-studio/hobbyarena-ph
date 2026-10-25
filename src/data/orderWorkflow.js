@@ -798,10 +798,12 @@ export function syncOrderRollup(lineItems) {
 
 export function buildTrailAttachment(url, label = "Attachment", kind = null) {
   if (!url) return undefined;
+  const http = isHttpUrl(url);
   return {
     url,
+    ...(http ? { storageUrl: url } : {}),
     label,
-    type: url.startsWith("data:application/pdf") ? "pdf" : "image",
+    type: url.startsWith("data:application/pdf") || /\.pdf(\?|#|$)/i.test(url) ? "pdf" : "image",
     ...(kind ? { kind } : {}),
     stored: true,
   };

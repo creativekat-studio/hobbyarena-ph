@@ -49,8 +49,6 @@ import {
   buildLiveMergeWorkbook,
   buildMergeSourceRows,
   buildMergeWorkbook,
-  defaultMergeSelectionKeys,
-  isCompletedMergeLine,
   productKeyForItem,
 } from "../lib/orderMergeSimulation.js";
 import { isArchivedOrder, isUnseenOrder } from "../lib/ordersStore.jsx";
@@ -1726,7 +1724,7 @@ export function ConsolidatedOrderView({
   const [selectedState, setSelectedState] = useState({ sig: "", keys: new Set() });
   const selectedKeys = selectedState.sig === detailKeySig
     ? selectedState.keys
-    : new Set(defaultMergeSelectionKeys(detailWorkbook?.orderDetails));
+    : new Set(detailKeys);
   const setSelectedKeys = (next) => {
     setSelectedState({
       sig: detailKeySig,
@@ -1749,7 +1747,7 @@ export function ConsolidatedOrderView({
       setAttachment(extras.attachment);
       setAttachmentError("");
     }
-    setSelectedState({ sig: detailKeySig, keys: new Set(defaultMergeSelectionKeys(detailWorkbook?.orderDetails)) });
+    setSelectedState({ sig: detailKeySig, keys: new Set(detailKeys) });
     const seededPercents = {};
     const seededQty = {};
     for (const row of detailWorkbook?.consolidated || []) {

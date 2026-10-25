@@ -723,45 +723,70 @@ export function OrdersProvider({ children }) {
       if (!primary.email) throw new Error("Customer email is missing.");
       const workbook = extras.workbook || buildLiveMergeWorkbook(list);
       const note = String(extras.note ?? primary.mergedEmailNote ?? "").trim();
+      const includeAttachment = extras.includeAttachment === true;
       const fallbackAttachment = isSetLevelMergedAttachment(primary.mergedEmailAttachment)
         ? primary.mergedEmailAttachment
         : null;
-      const attachment = await resolveConsolidatedAttachment(
-        primary.id,
-        extras.attachment || fallbackAttachment,
-      );
+      const chosenAttachment = includeAttachment ? (extras.attachment || fallbackAttachment) : null;
+      const attachment = chosenAttachment
+        ? await resolveConsolidatedAttachment(primary.id, chosenAttachment)
+        : null;
       const persistAttachment = persistableMergedAttachment(attachment);
+      const consolidatedPayload = () => ({
+        emailType: "consolidated_allocation",
+        bodyOverride: getEmailBodyOverride("consolidated_allocation"),
+        subjectOverride: getEmailSubjectOverride("consolidated_allocation"),
+        reminder: getPreorderReminderConfig(),
+        showMessengerButton: getShowMessengerButton("consolidated_allocation"),
+        actionNotes: getActionNotes("consolidated_allocation"),
+        order: {
+          ...buildConsolidatedEmailOrder(list, workbook),
+          ...(note ? { notes: note } : {}),
+          ...(attachment ? { statusAttachment: attachment } : {}),
+        },
+      });
       let payload;
       if (list.length === 1) {
         const only = list[0];
         const items = getOrderLineItems(only);
         const types = items.map((item) => resolveOrderStatusEmailTypeForCurrentState(item));
-        const emailType = types[0];
-        if (!emailType || types.some((type) => type !== emailType)) {
+        if (!types.some(Boolean)) {
           throw new Error("No status email matches this order's payment and status.");
         }
-        payload = buildStatusEmailPayload(only, items, items[0], emailType);
-        if (note) payload.order.notes = note;
-        if (attachment) payload.order.statusAttachment = attachment;
-      } else {
+        const agreed = types.every((type) => type && type === types[0]);
+        const statusEmailType = agreed ? types[0] : "";
+        const built = buildConsolidatedEmailOrder(list, workbook);
+        const orderId = String(only.id || "").trim();
         payload = {
-          emailType: "consolidated_allocation",
-          bodyOverride: getEmailBodyOverride("consolidated_allocation"),
-          subjectOverride: getEmailSubjectOverride("consolidated_allocation"),
+          emailType: "individual_order",
+          bodyOverride: getEmailBodyOverride("individual_order"),
+          subjectOverride: getEmailSubjectOverride("individual_order"),
           reminder: getPreorderReminderConfig(),
-          showMessengerButton: getShowMessengerButton("consolidated_allocation"),
-          actionNotes: getActionNotes("consolidated_allocation"),
+          showMessengerButton: getShowMessengerButton("individual_order"),
+          actionNotes: getActionNotes("individual_order"),
           order: {
-            ...buildConsolidatedEmailOrder(list, workbook),
+            ...built,
+            id: orderId,
+            statusEmailType,
+            consolidated: {
+              ...built.consolidated,
+              id: orderId,
+              orderIds: orderId ? [orderId] : built.consolidated?.orderIds,
+              statusEmailType,
+            },
             ...(note ? { notes: note } : {}),
             ...(attachment ? { statusAttachment: attachment } : {}),
           },
         };
+      } else {
+        payload = consolidatedPayload();
       }
       const sentType = payload.emailType;
       const sentLabel = sentType === "consolidated_allocation"
         ? "Consolidated email"
-        : (ORDER_STATUS_EMAIL_LABELS[sentType] || "Status email");
+        : sentType === "individual_order"
+          ? (ORDER_STATUS_EMAIL_LABELS[payload.order.statusEmailType] || "Individual order")
+          : (ORDER_STATUS_EMAIL_LABELS[sentType] || "Status email");
       return new Promise((resolve, reject) => {
         queueOrderStatusEmail(payload, ({ ok, result, error }) => {
           const at = new Date().toISOString();
@@ -800,7 +825,9 @@ export function OrdersProvider({ children }) {
                 emails: [...(row.emails || []), record],
                 trail: [...(row.trail || []), trailEntry],
                 mergedEmailNote: note,
-                mergedEmailAttachment: persistAttachment,
+                ...(includeAttachment
+                  ? { mergedEmailAttachment: persistAttachment || row.mergedEmailAttachment || null }
+                  : {}),
                 mergedEmailSavedAt: at,
               };
               persistOrder(updated);

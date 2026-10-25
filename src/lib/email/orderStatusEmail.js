@@ -39,6 +39,13 @@ function depositPercentOf(order) {
   return Math.max(0, Math.min(100, Number(order?.depositPercent) || 30));
 }
 
+function totalDownpaymentLabel(order, { individual = false } = {}) {
+  if (!individual) return "Total downpayment:";
+  const percent = depositPercentOf(order);
+  const shown = Number.isInteger(percent) ? String(percent) : String(Math.round(percent * 100) / 100);
+  return `Total DP (${shown}%):`;
+}
+
 function balancePercentOf(order) {
   return Math.max(0, 100 - depositPercentOf(order));
 }
@@ -141,7 +148,7 @@ function amountCell(item) {
   return formatPeso(item?.newAmount);
 }
 
-function orderDetailsTable(rows, totalDp) {
+function orderDetailsTable(rows, totalDp, { showTotal = true, totalLabel = "Total downpayment:" } = {}) {
   if (!rows.length) return "";
   const c = EMAIL_BRAND.colors;
   const wideRows = rows.map((row) => `
@@ -186,7 +193,7 @@ function orderDetailsTable(rows, totalDp) {
       ${wideRows}
     </table>
     <div class="consolidated-stack" style="display:none;max-height:0;overflow:hidden;">${narrowRows}</div>
-    ${totalsBlock([{ label: "Total downpayment:", value: formatPeso(totalDp) }])}
+    ${showTotal ? totalsBlock([{ label: totalLabel, value: formatPeso(totalDp) }]) : ""}
     <div style="clear:both;height:20px"></div>
   `;
 }
@@ -251,10 +258,10 @@ function consolidatedNoteBlock(order) {
   `;
 }
 
-function presentationTotalsBlock({ newTotal, totalDp, net, netLabel, totalsPending }) {
+function presentationTotalsBlock({ newTotal, totalDp, net, netLabel, totalsPending, totalLabel = "New total:", downpaymentLabel = "Total downpayment:" }) {
   const rows = [
-    { label: "New total:", value: totalsPending ? dashMarkup() : formatPeso(newTotal) },
-    { label: "Total downpayment:", value: formatPeso(totalDp) },
+    { label: totalLabel, value: totalsPending ? dashMarkup() : formatPeso(newTotal) },
+    { label: downpaymentLabel, value: formatPeso(totalDp) },
     {
       label: `${totalsPending ? "Settlement" : netLabel}:`,
       value: totalsPending ? dashMarkup() : formatPeso(Math.abs(net)),
@@ -283,24 +290,28 @@ function isFullRefundEmail(order) {
   return type === "full_refund_pending" || type === "full_refund_sent";
 }
 
-function consolidatedEmailTables(order) {
+function consolidatedEmailTables(order, { includeSummary = true } = {}) {
   const details = Array.isArray(order?.consolidated?.orderDetails) ? order.consolidated.orderDetails : [];
   const items = Array.isArray(order?.consolidated?.items) ? order.consolidated.items : [];
   const totals = order?.consolidated?.totals || {};
+  const downpaymentLabel = totalDownpaymentLabel(order, { individual: !includeSummary });
   if (isFullRefundEmail(order)) {
     const deposit = Number(totals.totalDp) || 0;
     const refund = Math.abs(Number(totals.net)) || deposit;
-    return `${orderDetailsTable(details, deposit)}${totalsBlock([
+    return `${orderDetailsTable(details, deposit, { totalLabel: downpaymentLabel })}${totalsBlock([
       { label: "Refund:", value: formatPeso(refund), strong: true },
     ])}<div style="clear:both"></div>${consolidatedNoteBlock(order)}`;
   }
   const settlement = consolidatedSettlement(order);
-  return `${orderDetailsTable(details, totals.totalDp)}${summaryItemsTable(items)}${presentationTotalsBlock({
+  const summary = includeSummary ? summaryItemsTable(items) : "";
+  return `${orderDetailsTable(details, totals.totalDp, { showTotal: includeSummary })}${summary}${presentationTotalsBlock({
     newTotal: totals.newTotal,
     totalDp: totals.totalDp,
     net: settlement.net,
     netLabel: settlement.netLabel,
     totalsPending: settlement.totalsPending,
+    totalLabel: includeSummary ? "New total:" : "Total:",
+    downpaymentLabel,
   })}${consolidatedNoteBlock(order)}`;
 }
 
@@ -403,7 +414,7 @@ function customerActionButtonsBlock(emailType, order, { showMessenger = false, a
     showMessenger,
   };
 
-  if (emailType === "consolidated_allocation") {
+  if (emailType === "consolidated_allocation" || emailType === "individual_order") {
     const type = consolidatedStatusEmailType(order);
     if (REFUND_ACTION_EMAIL_TYPES.has(type)) {
       return customerResponseButtons({
@@ -621,7 +632,9 @@ function allocationOfOrdered(item) {
 function allocationPhrase(item, order) {
   const fromItem = allocationOfOrdered(item);
   if (fromItem) return fromItem;
-  const qty = Math.max(1, Number(item?.quantity ?? order?.qty) || 1);
+  const rawQty = item?.quantity ?? order?.qty;
+  if (rawQty == null || rawQty === "") return "";
+  const qty = Math.max(1, Number(rawQty) || 1);
   const allocated = Math.max(0, Number(item?.allocatedQty ?? order?.allocatedQty) || 0);
   if (allocated > qty) return String(allocated);
   if (allocated >= qty) return "100%";
@@ -733,6 +746,7 @@ function buildPlaceholderMap(order, emailType) {
     finalTotal: formatPeso(item ? itemFinalTotal(item) : 0),
     orders: consolidatedOrderIds(order).join(", "),
     consolidated: consolidatedId(order),
+    update: emailType === "individual_order" ? individualOrderMessage(order).body : "",
   };
 }
 
@@ -742,7 +756,9 @@ function renderOverrideBody(order, bodyOverride, emailType) {
   const escaped = escapeHtml(String(bodyOverride).trim());
   const withValues = escaped.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => {
     const value = map[key];
-    return value ? `<strong>${escapeHtml(value)}</strong>` : "";
+    if (!value) return "";
+    if (key === "update") return escapeHtml(value);
+    return `<strong>${escapeHtml(value)}</strong>`;
   });
   return withValues
     .split(/\n{2,}/)
@@ -1017,7 +1033,114 @@ function consolidatedStatusEmailType(order) {
   return String(order?.statusEmailType || order?.consolidated?.statusEmailType || "").trim();
 }
 
-/** Same words as the status email for the status actually saved on the lines. */
+function individualAmounts(order) {
+  const totals = order?.consolidated?.totals || {};
+  const net = consolidatedNet(order);
+  const statedRefund = Number(order?.refundAmount) || 0;
+  const statedBalance = Number(order?.balanceDue) || 0;
+  return {
+    deposit: Number(totals.totalDp) || 0,
+    refund: statedRefund || (net < 0 ? Math.abs(net) : 0),
+    balance: statedBalance || (net > 0 ? net : 0),
+  };
+}
+
+/** One order-level message. The sentence follows the status; the layout stays the same. */
+function individualOrderMessage(order) {
+  const id = String(order?.id || consolidatedId(order) || "your order");
+  const type = consolidatedStatusEmailType(order);
+  const amounts = individualAmounts(order);
+  const refund = formatPeso(type === "full_refund_pending" || type === "full_refund_sent"
+    ? (amounts.deposit || amounts.refund)
+    : amounts.refund);
+  const balance = formatPeso(amounts.balance);
+  const messages = {
+    deposit_received: {
+      subject: `Payment verified — ${id}`,
+      title: "Payment verified",
+      body: "We verified your payment for this order. It is now awaiting stock allocation.",
+    },
+    balance_due_full: {
+      subject: `100% allocation — pay balance — ${id}`,
+      title: "Full allocation confirmed",
+      body: `This order is fully allocated. Please pay the remaining balance of ${balance}.`,
+    },
+    balance_due_partial: {
+      subject: `Partial allocation — pay balance — ${id}`,
+      title: "Partial allocation confirmed",
+      body: `Part of this order was allocated. Please pay the remaining balance of ${balance}.`,
+    },
+    partial_refund_pending: {
+      subject: `Partial allocation — refund due — ${id}`,
+      title: "Partial allocation — refund due",
+      body: `Part of this order was allocated. A refund of ${refund} is due on the rest.`,
+    },
+    full_refund_pending: {
+      subject: `Full refund — ${id}`,
+      title: "Full refund",
+      body: `We will refund the full deposit of ${refund} for this order. None of it was allocated.`,
+    },
+    partial_refund_sent: {
+      subject: `Refund sent — ${id}`,
+      title: "Refund sent",
+      body: `We sent the refund of ${refund} for this order. The allocated items are ready for pickup.`,
+    },
+    ready_for_pickup: {
+      subject: `Ready for pickup — ${id}`,
+      title: "Ready for pickup",
+      body: "This order is ready for pickup. Please schedule a time with our team (Mon–Fri, 8:00 AM – 8:00 PM).",
+    },
+    order_fulfilled: {
+      subject: `Order fulfilled — ${id}`,
+      title: "Order fulfilled",
+      body: "This order is fulfilled. Thank you for shopping with Hobby Arena.",
+    },
+    full_refund_sent: {
+      subject: `Full refund sent — ${id}`,
+      title: "Full refund sent",
+      body: `We sent the full refund of ${refund} for this order. Please confirm once you receive it.`,
+    },
+    payment_not_received: {
+      subject: `Payment not received — ${id}`,
+      title: "We haven't received your payment",
+      body: "We have not received payment for this order, so the stock has been released.",
+    },
+  };
+  const message = messages[type];
+  if (!message) {
+    return {
+      milestone: null,
+      subject: `Order update — ${id}`,
+      title: "Order update",
+      body: "Here is the latest update for this order.",
+    };
+  }
+  return { milestone: type, ...message };
+}
+
+/** Status sentence for a consolidated set. Never borrows a single-item unit count. */
+function consolidatedStatusBody(order, type) {
+  const amounts = individualAmounts(order);
+  const refund = formatPeso(type === "full_refund_pending" || type === "full_refund_sent"
+    ? (amounts.deposit || amounts.refund)
+    : amounts.refund);
+  const balance = formatPeso(amounts.balance);
+  const bodies = {
+    deposit_received: "We verified your payment for these orders. They are now awaiting stock allocation.",
+    balance_due_full: `These orders are fully allocated. Please pay the remaining balance of <strong>${balance}</strong>.`,
+    balance_due_partial: `Part of these orders was allocated. Please pay the remaining balance of <strong>${balance}</strong>.`,
+    partial_refund_pending: `Part of these orders was allocated. A refund of <strong>${refund}</strong> is due on the rest.`,
+    full_refund_pending: `We will refund the full deposit of <strong>${refund}</strong>. None of these orders was allocated.`,
+    partial_refund_sent: `We sent the refund of <strong>${refund}</strong>. The allocated items are ready for pickup.`,
+    ready_for_pickup: "These orders are ready for pickup. Please schedule a time with our team (Mon–Fri, 8:00 AM – 8:00 PM).",
+    order_fulfilled: "These orders are fulfilled. Thank you for shopping with Hobby Arena.",
+    full_refund_sent: `We sent the full refund of <strong>${refund}</strong>. Please confirm once you receive it.`,
+    payment_not_received: "We have not received payment for these orders, so the stock has been released.",
+  };
+  return bodies[type] || "";
+}
+
+/** Same subject and title as the status email. The body stays about the set, not one item. */
 function consolidatedMessage(order) {
   const id = consolidatedId(order) || order?.id || "your order";
   const type = consolidatedStatusEmailType(order);
@@ -1027,7 +1150,7 @@ function consolidatedMessage(order) {
       milestone: null,
       subject: `Order update — ${id}`,
       title: "Order update",
-      body: "These orders are not on the same status, so this note lists them together instead of one status email.",
+      body: "Here is the latest update for these orders.",
     };
   }
   const standIn = { ...order, id };
@@ -1035,7 +1158,7 @@ function consolidatedMessage(order) {
     milestone: type,
     subject: template.subject(standIn),
     title: template.title,
-    body: template.body(standIn),
+    body: consolidatedStatusBody(order, type) || template.body(standIn),
   };
 }
 
@@ -1140,7 +1263,8 @@ const TEMPLATES = {
       const item = getUpdatedItem(order);
       const balance = formatPeso(item?.balanceDue ?? order.balanceDue);
       const alloc = allocationPhrase(item, order);
-      return `Your allocation is <strong>${escapeHtml(alloc)}</strong>. Please pay the remaining balance of <strong>${balance}</strong> for your allocated units.`;
+      const allocNote = alloc ? `Your allocation is <strong>${escapeHtml(alloc)}</strong>. ` : "";
+      return `${allocNote}Please pay the remaining balance of <strong>${balance}</strong> for your allocated units.`;
     },
     footer: () => "",
   },
@@ -1159,9 +1283,11 @@ const TEMPLATES = {
       const refund = formatPeso(refundTotalForEmail(order, "partial_refund_pending", item));
       const alloc = allocationPhrase(item, order);
       const allocNote = alloc === "100%"
-        ? "This item was <strong>fully allocated</strong>."
-        : `Only <strong>${escapeHtml(alloc)}</strong> units were allocated.`;
-      return `${allocNote} A refund of <strong>${refund}</strong> is due on the unallocated units.`;
+        ? "This item was <strong>fully allocated</strong>. "
+        : alloc
+          ? `Only <strong>${escapeHtml(alloc)}</strong> units were allocated. `
+          : "";
+      return `${allocNote}A refund of <strong>${refund}</strong> is due on the unallocated units.`;
     },
     footer: () => getSupportContactHtml(),
   },
@@ -1281,6 +1407,14 @@ const TEMPLATES = {
     body: (order) => consolidatedMessage(order).body,
     footer: (order) => (consolidatedNet(order) < 0 ? getSupportContactHtml() : ""),
   },
+  individual_order: {
+    subject: (order) => individualOrderMessage(order).subject,
+    preheader: "An update on your order.",
+    title: "Order update",
+    lead: (order) => `Hello <strong>${escapeHtml(order.customer)}</strong>,`,
+    body: (order) => individualOrderMessage(order).body,
+    footer: (order) => (consolidatedNet(order) < 0 ? getSupportContactHtml() : ""),
+  },
 };
 
 export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
@@ -1322,8 +1456,12 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     "full_refund_sent",
   ].includes(emailType);
 
-  const isConsolidated = emailType === "consolidated_allocation";
-  const consolidated = isConsolidated ? consolidatedMessage(order) : null;
+  const isConsolidated = emailType === "consolidated_allocation" || emailType === "individual_order";
+  const consolidated = emailType === "individual_order"
+    ? individualOrderMessage(order)
+    : emailType === "consolidated_allocation"
+      ? consolidatedMessage(order)
+      : null;
   const statusSections = showSummary && !isConsolidated ? invoiceSummary(order, emailType) : null;
   const resolvedSubject = subjectOverride
     ? subjectOverride.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => buildPlaceholderMap(order, emailType)[key] ?? "")
@@ -1337,10 +1475,10 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     ${bodyLead(template.lead(order))}
     ${!showSummary && !isConsolidated ? itemFocusBlock(order) : ""}
     ${bodyOverride ? renderOverrideBody(order, bodyOverride, emailType) : bodyText(template.body(order))}
-    ${isConsolidated ? consolidatedEmailTables(order) : (statusSections?.html || "")}
+    ${isConsolidated ? consolidatedEmailTables(order, { includeSummary: emailType !== "individual_order" }) : (statusSections?.html || "")}
     ${!isConsolidated && String(order.notes || "").trim() ? consolidatedNoteBlock(order) : ""}
     ${showMilestones && !isConsolidated ? preorderMilestones(item, emailType) : ""}
-    ${consolidated?.milestone ? preorderMilestones(item, consolidated.milestone) : ""}
+    ${emailType === "consolidated_allocation" && consolidated?.milestone ? preorderMilestones(item, consolidated.milestone) : ""}
     ${customerActionButtonsBlock(emailType, order, { showMessenger: showMessengerButton, actionNotes })}
     ${order.statusAttachment ? statusAttachmentBlock(order.statusAttachment) : ""}
   `;
@@ -1367,29 +1505,34 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
       for (const row of details) {
         text.push(`${row.orderId}  ${row.name}  ×${Math.max(0, Number(row.qty) || 0)}  ${formatPeso(row.dpAmount)}`);
       }
-      text.push(`Total downpayment: ${formatPeso(order.consolidated?.totals?.totalDp)}`);
+      if (emailType !== "individual_order" || isFullRefundEmail(order)) {
+        const label = totalDownpaymentLabel(order, { individual: emailType === "individual_order" });
+        text.push(`${label} ${formatPeso(order.consolidated?.totals?.totalDp)}`);
+      }
     }
     if (isFullRefundEmail(order)) {
       const deposit = Number(order.consolidated?.totals?.totalDp) || 0;
       const refund = Math.abs(Number(order.consolidated?.totals?.net)) || deposit;
       text.push("", `Refund: ${formatPeso(refund)}`);
     } else {
-    text.push("", "Summary");
-    const summaryItems = order.consolidated?.items || [];
-    for (const row of summaryItems) {
-      const allocation = itemAllocationPending(row) ? "Pending" : allocationCell(row).replace(/<[^>]+>/g, "");
-      const nextQty = itemAllocationPending(row) ? "—" : String(Math.max(0, Number(row.newQty) || 0));
-      const nextAmount = itemAllocationPending(row) ? "—" : formatPeso(row.newAmount);
-      text.push(
-        `${row.name}  ×${Math.max(0, Number(row.totalQty) || 0)}  DP ${formatPeso(row.totalDp)}  Allocation ${allocation}  New qty ${nextQty}  New ${nextAmount}`,
-      );
+    if (emailType !== "individual_order") {
+      text.push("", "Summary");
+      const summaryItems = order.consolidated?.items || [];
+      for (const row of summaryItems) {
+        const allocation = itemAllocationPending(row) ? "Pending" : allocationCell(row).replace(/<[^>]+>/g, "");
+        const nextQty = itemAllocationPending(row) ? "—" : String(Math.max(0, Number(row.newQty) || 0));
+        const nextAmount = itemAllocationPending(row) ? "—" : formatPeso(row.newAmount);
+        text.push(
+          `${row.name}  ×${Math.max(0, Number(row.totalQty) || 0)}  DP ${formatPeso(row.totalDp)}  Allocation ${allocation}  New qty ${nextQty}  New ${nextAmount}`,
+        );
+      }
     }
     const totals = order.consolidated?.totals || {};
     const settlement = consolidatedSettlement(order);
     text.push(
       "",
-      `New total: ${settlement.totalsPending ? "—" : formatPeso(totals.newTotal)}`,
-      `Total downpayment: ${formatPeso(totals.totalDp)}`,
+      `${emailType === "individual_order" ? "Total" : "New total"}: ${settlement.totalsPending ? "—" : formatPeso(totals.newTotal)}`,
+      `${totalDownpaymentLabel(order, { individual: emailType === "individual_order" })} ${formatPeso(totals.totalDp)}`,
       `${settlement.totalsPending ? "Settlement" : settlement.netLabel}: ${settlement.totalsPending ? "—" : formatPeso(Math.abs(settlement.net))}`,
     );
     }
