@@ -126,8 +126,7 @@ export const DEFAULT_EMAIL_BODIES = {
     "We have sent your full refund of {{refund}}. Please confirm once received.",
   payment_not_received:
     "We have not received your payment for this order, so we can no longer hold the stock for you — it has been released and may be purchased by other customers. If you still want the item, please place a new order while stock lasts. If you've already paid, upload proof via your account or Hobby Arena PH and we'll sort it out.",
-  consolidated_allocation:
-    "We reviewed your related orders and confirmed the allocated quantities below.",
+  consolidated_allocation: "{{update}}",
   individual_order: "{{update}}",
   password_reset: DEFAULT_PASSWORD_RESET_BODY,
 };
@@ -159,11 +158,17 @@ const LEGACY_INDIVIDUAL_BODIES = new Set([
   "We confirmed the allocated quantities for this order below.",
 ]);
 
+const LEGACY_CONSOLIDATED_BODIES = new Set([
+  "We reviewed your related orders and confirmed the allocated quantities below.",
+]);
+
 /** Custom body override for an email type, or "" if using the default. */
 export function getEmailBodyOverride(emailType) {
   const stored = readStore()[emailType];
   if (typeof stored !== "string") return "";
-  if (emailType === "individual_order" && LEGACY_INDIVIDUAL_BODIES.has(stored.trim())) {
+  const legacy = (emailType === "individual_order" && LEGACY_INDIVIDUAL_BODIES.has(stored.trim()))
+    || (emailType === "consolidated_allocation" && LEGACY_CONSOLIDATED_BODIES.has(stored.trim()));
+  if (legacy) {
     const map = readStore();
     delete map[emailType];
     writeStore(map);

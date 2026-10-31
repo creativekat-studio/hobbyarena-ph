@@ -43,6 +43,38 @@ export function normalizePayoutMethods(list) {
   return methods;
 }
 
+/** Fill a blank QR from another copy of the same method (local cache strips data URLs). */
+export function restorePayoutQrUrls(methods, donors) {
+  const byId = new Map();
+  for (const donor of Array.isArray(donors) ? donors : []) {
+    const id = String(donor?.id || "").trim();
+    const qrUrl = String(donor?.qrUrl || "").trim();
+    if (!id || !qrUrl || byId.has(id)) continue;
+    byId.set(id, donor);
+  }
+  return (Array.isArray(methods) ? methods : []).map((method) => {
+    if (String(method?.qrUrl || "").trim()) return method;
+    const prev = byId.get(String(method?.id || "").trim());
+    if (!prev) return method;
+    return {
+      ...method,
+      qrUrl: String(prev.qrUrl).trim(),
+      qrName: method?.qrName || prev.qrName || "",
+      isPdf: Boolean(method?.isPdf) || Boolean(prev.isPdf),
+    };
+  });
+}
+
+/** Keep every saved method. Earlier copies fill a QR that a later copy lost. */
+export function mergePayoutMethodLists(preferred, fallback) {
+  const preferredList = Array.isArray(preferred) ? preferred : [];
+  const fallbackList = Array.isArray(fallback) ? fallback : [];
+  return normalizePayoutMethods(restorePayoutQrUrls(
+    [...preferredList, ...fallbackList],
+    [...preferredList, ...fallbackList],
+  ));
+}
+
 export function resolvePrimaryPayoutMethodId(methods, preferredId = "") {
   const list = normalizePayoutMethods(methods);
   const preferred = String(preferredId || "").trim();

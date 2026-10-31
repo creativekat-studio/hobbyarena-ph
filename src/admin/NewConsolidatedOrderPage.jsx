@@ -450,13 +450,16 @@ export default function NewConsolidatedOrderPage() {
       </Box>
 
       <Dialog open={confirmAttachment} onClose={() => !sending && setConfirmAttachment(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontWeight: 800 }}>Send with attachment?</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800 }}>Send this email?</DialogTitle>
         <DialogContent>
           <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
-            Include {attachment?.name || attachment?.label || "the attached file"} in this email?
+            Include {attachment?.name || attachment?.label || "the attached file"} with this email, or send the email on its own.
           </Typography>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
+        <DialogActions sx={{ px: 3, pb: 2, flexWrap: "wrap", gap: 1 }}>
+          <Button color="inherit" disabled={sending} onClick={() => setConfirmAttachment(false)}>
+            Cancel
+          </Button>
           <Button
             color="inherit"
             disabled={sending}
@@ -466,7 +469,7 @@ export default function NewConsolidatedOrderPage() {
               setConfirmSend(true);
             }}
           >
-            No
+            Send without file
           </Button>
           <Button
             variant="contained"
@@ -478,7 +481,7 @@ export default function NewConsolidatedOrderPage() {
             }}
             sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase" }}
           >
-            Yes
+            Send with file
           </Button>
         </DialogActions>
       </Dialog>

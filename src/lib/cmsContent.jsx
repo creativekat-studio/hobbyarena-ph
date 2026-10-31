@@ -281,6 +281,24 @@ function cloneContent(payload) {
   return JSON.parse(JSON.stringify(payload));
 }
 
+function bankAccountIds(details) {
+  const accounts = details?.accounts;
+  if (!Array.isArray(accounts)) return [];
+  return accounts.map((account) => String(account?.id || "")).filter(Boolean).sort();
+}
+
+function sameIdList(left, right) {
+  if (left.length !== right.length) return false;
+  return left.every((id, index) => id === right[index]);
+}
+
+/** A snapshot from before Save can arrive after the form is clean and wipe a new account. */
+function remoteBankSnapshotIsStale(remote, guard) {
+  if (!guard) return false;
+  if (Date.now() - guard.at > 20000) return false;
+  return !sameIdList(bankAccountIds(remote?.bankDetails), guard.ids);
+}
+
 const CmsContext = createContext(null);
 
 export function CmsProvider({ children }) {
@@ -296,6 +314,7 @@ export function CmsProvider({ children }) {
   const contentRef = useRef(content);
   const dirtyRef = useRef(false);
   const baselineRef = useRef(cloneContent(content));
+  const savedBankGuard = useRef(null);
 
   contentRef.current = content;
   dirtyRef.current = dirty;
@@ -316,14 +335,12 @@ export function CmsProvider({ children }) {
     return subscribeCmsContent(
       (remote) => {
         syncingRemote.current = true;
-        if (remote) {
-          // Never clobber in-progress admin edits with a remote snapshot.
-          if (!dirtyRef.current) {
-            const next = mergeCmsPayload(remote);
-            setContent(next);
-            baselineRef.current = cloneContent(next);
-            cacheContentLocally(next);
-          }
+        if (remote && !dirtyRef.current && !remoteBankSnapshotIsStale(remote, savedBankGuard.current)) {
+          savedBankGuard.current = null;
+          const next = mergeCmsPayload(remote);
+          setContent(next);
+          baselineRef.current = cloneContent(next);
+          cacheContentLocally(next);
         }
         // If remote is empty, keep the cached draft — do NOT auto-seed Firestore
         // (that previously overwrote live bank details with stale local defaults).
@@ -352,6 +369,10 @@ export function CmsProvider({ children }) {
         await saveCmsContent(payload);
       }
       baselineRef.current = cloneContent(payload);
+      savedBankGuard.current = {
+        at: Date.now(),
+        ids: bankAccountIds(payload.bankDetails),
+      };
       setDirty(false);
       dirtyRef.current = false;
       setSaveOk(true);
@@ -366,6 +387,7 @@ export function CmsProvider({ children }) {
   }, [firebaseEnabled, adminWrite.ready, adminWrite.allowed]);
 
   const discardChanges = useCallback(() => {
+    savedBankGuard.current = null;
     const cached = cloneContent(baselineRef.current);
     setContent(cached);
     setDirty(false);
@@ -489,40 +511,56 @@ export function CmsProvider({ children }) {
     };
     const setBankDetails = (patch) => {
       markDirty();
-      setContent((c) => ({ ...c, bankDetails: { ...c.bankDetails, ...patch } }));
+      setContent((c) => {
+        const next = { ...c, bankDetails: { ...c.bankDetails, ...patch } };
+        contentRef.current = next;
+        return next;
+      });
     };
     const updateBankAccount = (id, patch) => {
       markDirty();
-      setContent((c) => ({
-        ...c,
-        bankDetails: {
-          ...c.bankDetails,
-          accounts: c.bankDetails.accounts.map((a) => (a.id === id ? { ...a, ...patch } : a)),
-        },
-      }));
+      setContent((c) => {
+        const next = {
+          ...c,
+          bankDetails: {
+            ...c.bankDetails,
+            accounts: c.bankDetails.accounts.map((a) => (a.id === id ? { ...a, ...patch } : a)),
+          },
+        };
+        contentRef.current = next;
+        return next;
+      });
     };
     const addBankAccount = (account) => {
       markDirty();
-      setContent((c) => ({
-        ...c,
-        bankDetails: {
-          ...c.bankDetails,
-          accounts: [
-            ...c.bankDetails.accounts,
-            { id: `bank_${Date.now()}`, active: true, qrImage: "", logo: "", ...account },
-          ],
-        },
-      }));
+      setContent((c) => {
+        const next = {
+          ...c,
+          bankDetails: {
+            ...c.bankDetails,
+            accounts: [
+              ...c.bankDetails.accounts,
+              { id: `bank_${Date.now()}`, active: true, qrImage: "", logo: "", ...account },
+            ],
+          },
+        };
+        contentRef.current = next;
+        return next;
+      });
     };
     const removeBankAccount = (id) => {
       markDirty();
-      setContent((c) => ({
-        ...c,
-        bankDetails: {
-          ...c.bankDetails,
-          accounts: c.bankDetails.accounts.filter((a) => a.id !== id),
-        },
-      }));
+      setContent((c) => {
+        const next = {
+          ...c,
+          bankDetails: {
+            ...c.bankDetails,
+            accounts: c.bankDetails.accounts.filter((a) => a.id !== id),
+          },
+        };
+        contentRef.current = next;
+        return next;
+      });
     };
 
     const addBanner = (banner) => {

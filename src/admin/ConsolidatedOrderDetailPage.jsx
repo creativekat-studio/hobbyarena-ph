@@ -156,6 +156,8 @@ export default function ConsolidatedOrderDetailPage() {
       if (
         prev
         && prev.workbook === next.workbook
+        && prev.saveWorkbook === next.saveWorkbook
+        && prev.paymentsMixed === next.paymentsMixed
         && prev.allocationTouched === next.allocationTouched
         && prev.allocationDirty === next.allocationDirty
         && prev.selectedCount === next.selectedCount
@@ -219,12 +221,16 @@ export default function ConsolidatedOrderDetailPage() {
     setSendError("");
     setSending(true);
     try {
-      await sendConsolidatedAllocationEmail(set.orders, {
+      const tickedIds = new Set((payload.workbook?.orderDetails || []).map((row) => row.orderId));
+      const tickedOrders = (set.orders || []).filter((order) => tickedIds.has(order.id));
+      const result = await sendConsolidatedAllocationEmail(tickedOrders.length ? tickedOrders : set.orders, {
         note,
         attachment: withAttachment ? attachment : null,
         includeAttachment: Boolean(withAttachment && attachment),
         workbook: payload.workbook,
+        keepConsolidated: !set.standalone && (set.orders || []).length > 1,
       });
+      if (withAttachment && result?.persistedAttachment) setAttachment(result.persistedAttachment);
     } catch (error) {
       setSendError(error?.message || "Could not send email.");
     } finally {
@@ -319,9 +325,33 @@ export default function ConsolidatedOrderDetailPage() {
     applyLineDraft(pending.row, pending.nextPayment, pending.nextStatus);
   }
 
-  function attachmentSignature(value) {
-    if (!value) return "";
-    return [value.dataUrl || value.url || "", value.name || value.label || "", value.type || ""].join("|");
+  function attachmentLabelOf(value) {
+    return String(value?.name || value?.label || "").trim();
+  }
+
+  function attachmentRemoteUrl(value) {
+    const url = String(value?.url || "");
+    return url.startsWith("http") ? url : "";
+  }
+
+  function attachmentBlob(value) {
+    const data = String(value?.dataUrl || "");
+    if (data.startsWith("data:")) return data;
+    const url = String(value?.url || "");
+    return url.startsWith("data:") ? url : "";
+  }
+
+  function attachmentsMatch(local, saved) {
+    if (!local && !saved) return true;
+    if (!local || !saved) return false;
+    const localRemote = attachmentRemoteUrl(local);
+    const savedRemote = attachmentRemoteUrl(saved);
+    if (localRemote && localRemote === savedRemote) return true;
+    const localBlob = attachmentBlob(local);
+    const savedBlob = attachmentBlob(saved);
+    if (localBlob && localBlob === savedBlob) return true;
+    const label = attachmentLabelOf(local);
+    return Boolean(localBlob && savedRemote && label && label === attachmentLabelOf(saved));
   }
 
   function handleReset() {
@@ -344,7 +374,7 @@ export default function ConsolidatedOrderDetailPage() {
     const removed = new Set(removedIds);
     const remainingOrders = (set.orders || []).filter((order) => !removed.has(order.id));
     try {
-      const workbook = payload?.workbook;
+      const workbook = payload?.saveWorkbook || payload?.workbook;
       const allocationTouched = Boolean(payload?.allocationTouched || payload?.allocationDirty);
       const saves = new Map();
       for (const draft of Object.values(lineDrafts)) {
@@ -489,7 +519,7 @@ export default function ConsolidatedOrderDetailPage() {
     || Boolean(payload?.allocationDirty)
     || removedOrderIds.length > 0
     || note !== savedExtras.note
-    || attachmentSignature(attachment) !== attachmentSignature(savedExtras.attachment);
+    || !attachmentsMatch(attachment, savedExtras.attachment);
 
   return (
     <Stack
@@ -513,7 +543,7 @@ export default function ConsolidatedOrderDetailPage() {
           sx={{ width: "100%" }}
         >
           {emailNotice?.ok && !emailNotice?.skipped
-            ? `Email sent to ${emailNotice.to} (${ORDER_STATUS_EMAIL_LABELS[emailNotice.emailType] || emailNotice.emailType}).`
+            ? `Email sent to ${emailNotice.to}${emailNotice.includedAttachment ? ` with ${emailNotice.attachmentName || "the attached file"}` : ""}.`
             : emailNotice?.skipped
               ? `Email not delivered: ${emailNotice.skipReason || "Resend test mode."}`
               : `Email failed: ${emailNotice?.error || "Unknown error"}`}
@@ -814,35 +844,40 @@ export default function ConsolidatedOrderDetailPage() {
       </Dialog>
 
       <Dialog open={confirmAttachment} onClose={() => !sending && setConfirmAttachment(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontWeight: 800 }}>Send with attachment?</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800 }}>Send this email?</DialogTitle>
         <DialogContent>
           <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
             {attachment
-              ? `Include ${attachment.name || attachment.label || "the attached file"} in this email?`
-              : "No file is attached. Send this email without one?"}
+              ? `Include ${attachment.name || attachment.label || "the attached file"} with this email, or send the email on its own.`
+              : "This email has no file. It will be sent without one."}
           </Typography>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
+        <DialogActions sx={{ px: 3, pb: 2, flexWrap: "wrap", gap: 1 }}>
+          <Button color="inherit" disabled={sending} onClick={() => setConfirmAttachment(false)}>
+            Cancel
+          </Button>
+          {attachment ? (
+            <Button
+              color="inherit"
+              disabled={sending}
+              onClick={() => {
+                setConfirmAttachment(false);
+                performSend(false);
+              }}
+            >
+              Send without file
+            </Button>
+          ) : null}
           <Button
-            color="inherit"
+            variant="contained"
             disabled={sending}
             onClick={() => {
               setConfirmAttachment(false);
-              performSend(false);
-            }}
-          >
-            No
-          </Button>
-          <Button
-            variant="contained"
-            disabled={sending || !attachment}
-            onClick={() => {
-              setConfirmAttachment(false);
-              performSend(true);
+              performSend(Boolean(attachment));
             }}
             sx={{ fontFamily: MONO_FONT, letterSpacing: 0.4, textTransform: "uppercase" }}
           >
-            Yes
+            {attachment ? "Send with file" : "Send email"}
           </Button>
         </DialogActions>
       </Dialog>
