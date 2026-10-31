@@ -83,109 +83,174 @@ const SAMPLE_STATES = {
   individual_order: { payment: "Mixed", status: "Mixed", balanceDue: 0, refundAmount: 2760, allocatedQty: 5 },
 };
 
-const INDIVIDUAL_PREVIEW_STATUSES = [
-  "deposit_received",
-  "balance_due_full",
-  "balance_due_partial",
-  "partial_refund_pending",
-  "full_refund_pending",
-  "partial_refund_sent",
-  "ready_for_pickup",
-  "order_fulfilled",
-  "full_refund_sent",
-  "payment_not_received",
-];
+const SAMPLE_BOX = "[Pre-order] Pokemon TCG [ME06] Delta Reign 18ct Booster Box";
+const SAMPLE_TIN = "[Pre-order] Pokemon TCG [ME06] 36ct Booster Box";
 
-function individualSampleTotals(statusType) {
-  const totalDp = 30360;
-  const newTotal = 27600;
-  const gap = 2760;
-  if (statusType === "full_refund_pending" || statusType === "full_refund_sent") {
-    return { newTotal: 0, totalDp, net: -totalDp, netLabel: "Refund", balanceDue: 0, refundAmount: totalDp };
-  }
-  if (statusType === "balance_due_full" || statusType === "balance_due_partial") {
-    return { newTotal, totalDp, net: gap, netLabel: "Balance", balanceDue: gap, refundAmount: 0 };
-  }
-  if (statusType === "ready_for_pickup" || statusType === "order_fulfilled") {
-    return { newTotal: totalDp, totalDp, net: 0, netLabel: "Settled", balanceDue: 0, refundAmount: 0 };
-  }
-  if (statusType === "partial_refund_sent") {
-    return { newTotal, totalDp, net: 0, netLabel: "Settled", balanceDue: 0, refundAmount: gap };
-  }
-  if (statusType === "deposit_received" || statusType === "payment_not_received" || !statusType) {
-    return { newTotal, totalDp, net: 0, netLabel: "Settled", balanceDue: 0, refundAmount: 0 };
-  }
-  return { newTotal, totalDp, net: -gap, netLabel: "Refund", balanceDue: 0, refundAmount: gap };
+const STATEMENT_SCENARIOS = {
+  individual_order: [
+    { id: "one_balance", label: "1 product — balance due" },
+    { id: "several_balance", label: "Several products — balance due" },
+    { id: "one_refund", label: "1 product — refund due" },
+    { id: "several_refund", label: "Several products — refund due" },
+    { id: "mixed_balance", label: "Mixed statuses — balance due" },
+    { id: "mixed_refund", label: "Mixed statuses — refund due" },
+    { id: "full_refund", label: "Full refund due" },
+    { id: "ready", label: "Ready for pickup" },
+    { id: "verified", label: "Payment verified" },
+  ],
+  consolidated_allocation: [
+    { id: "same_balance", label: "Same status — balance due" },
+    { id: "same_refund", label: "Same status — refund due" },
+    { id: "mixed_balance", label: "Mixed statuses — balance due" },
+    { id: "mixed_refund", label: "Mixed statuses — refund due" },
+    { id: "full_refund", label: "Full refund due" },
+    { id: "ready", label: "Ready for pickup" },
+    { id: "verified", label: "Payment verified" },
+  ],
+};
+
+function statementSample(recipientEmail, { id, statusEmailType = "", details, items, totals }) {
+  const orderIds = [...new Set(details.map((row) => row.orderId))];
+  return {
+    id: orderIds.length === 1 ? orderIds[0] : id,
+    customer: "Hobby Arena",
+    email: recipientEmail,
+    phone: "",
+    type: "Pre-order",
+    payment: "Mixed",
+    status: "Mixed",
+    statusEmailType,
+    total: totals.newTotal,
+    balanceDue: Math.max(0, Number(totals.net) || 0),
+    refundAmount: Number(totals.net) < 0 ? Math.abs(totals.net) : 0,
+    depositPercent: 30,
+    date: new Date().toISOString(),
+    items: items.map((item) => item.name).join(", "),
+    lineItems: [],
+    consolidated: {
+      id,
+      statusEmailType,
+      orderIds,
+      orderDetails: details,
+      items,
+      totals,
+    },
+  };
 }
 
-function buildSampleOrder(recipientEmail, emailType, previewStatus = "partial_refund_pending") {
+function detail(orderId, name, qty, dpAmount) {
+  return { orderId, name, qty, dpAmount };
+}
+
+function product(name, totalQty, totalDp, allocationPercent, newQty, newAmount, extra) {
+  return { name, totalQty, totalDp, allocationPercent, newQty, newAmount, ...extra };
+}
+
+function scenarioOrder(recipientEmail, emailType, scenario) {
+  const one = emailType === "individual_order";
+  const orderA = "HA-202610000201";
+  const orderB = "HA-202610000202";
+  const setId = one ? orderA : "HA-C-202610000099";
+  const fullBox = product(SAMPLE_BOX, 10, 13800, 100, 10, 46000);
+  const fullTin = product(SAMPLE_TIN, 6, 16560, 100, 6, 55200);
+  const partBox = product(SAMPLE_BOX, 10, 13800, 40, 4, 18400);
+  const partTin = product(SAMPLE_TIN, 6, 16560, 17, 1, 9200);
+  const zeroBox = product(SAMPLE_BOX, 10, 13800, 0, 0, 0);
+  const zeroTin = product(SAMPLE_TIN, 6, 16560, 0, 0, 0);
+  const pendingBox = product(SAMPLE_BOX, 10, 13800, 0, 0, 0, { allocationPending: true });
+  const boxDetail = (orderId) => detail(orderId, SAMPLE_BOX, 10, 13800);
+  const tinDetail = (orderId) => detail(orderId, SAMPLE_TIN, 6, 16560);
+
+  if (scenario === "one_balance") {
+    return statementSample(recipientEmail, {
+      id: orderA,
+      statusEmailType: "balance_due_full",
+      details: [detail(orderA, SAMPLE_BOX, 1, 894)],
+      items: [product(SAMPLE_BOX, 1, 894, 100, 1, 2980)],
+      totals: { newTotal: 2980, totalDp: 894, net: 2086, netLabel: "Balance due" },
+    });
+  }
+  if (scenario === "one_refund") {
+    return statementSample(recipientEmail, {
+      id: orderA,
+      statusEmailType: "partial_refund_pending",
+      details: [detail(orderA, SAMPLE_BOX, 5, 4470)],
+      items: [product(SAMPLE_BOX, 5, 4470, 40, 2, 5960)],
+      totals: { newTotal: 5960, totalDp: 4470, net: -2086, netLabel: "Refund due" },
+    });
+  }
+  if (scenario === "several_balance" || scenario === "same_balance") {
+    return statementSample(recipientEmail, {
+      id: setId,
+      statusEmailType: "balance_due_partial",
+      details: one ? [boxDetail(orderA), tinDetail(orderA)] : [boxDetail(orderA), tinDetail(orderB)],
+      items: [fullBox, partTin],
+      totals: { newTotal: 55200, totalDp: 30360, net: 24840, netLabel: "Balance due" },
+    });
+  }
+  if (scenario === "several_refund" || scenario === "same_refund") {
+    return statementSample(recipientEmail, {
+      id: setId,
+      statusEmailType: "partial_refund_pending",
+      details: one ? [boxDetail(orderA), tinDetail(orderA)] : [boxDetail(orderA), tinDetail(orderB)],
+      items: [partBox, zeroTin],
+      totals: { newTotal: 18400, totalDp: 30360, net: -11960, netLabel: "Refund due" },
+    });
+  }
+  if (scenario === "mixed_balance") {
+    return statementSample(recipientEmail, {
+      id: setId,
+      statusEmailType: "",
+      details: one ? [boxDetail(orderA), tinDetail(orderA)] : [boxDetail(orderA), tinDetail(orderB)],
+      items: [fullBox, zeroTin],
+      totals: { newTotal: 46000, totalDp: 30360, net: 15640, netLabel: "Balance due" },
+    });
+  }
+  if (scenario === "mixed_refund") {
+    return statementSample(recipientEmail, {
+      id: setId,
+      statusEmailType: "",
+      details: one ? [boxDetail(orderA), tinDetail(orderA)] : [boxDetail(orderA), tinDetail(orderB)],
+      items: [partBox, zeroTin],
+      totals: { newTotal: 18400, totalDp: 30360, net: -11960, netLabel: "Refund due" },
+    });
+  }
+  if (scenario === "full_refund") {
+    return statementSample(recipientEmail, {
+      id: setId,
+      statusEmailType: "full_refund_pending",
+      details: one ? [boxDetail(orderA)] : [boxDetail(orderA), tinDetail(orderB)],
+      items: one ? [zeroBox] : [zeroBox, zeroTin],
+      totals: { newTotal: 0, totalDp: one ? 13800 : 30360, net: one ? -13800 : -30360, netLabel: "Refund due" },
+    });
+  }
+  if (scenario === "ready") {
+    return statementSample(recipientEmail, {
+      id: setId,
+      statusEmailType: "ready_for_pickup",
+      details: one ? [boxDetail(orderA), tinDetail(orderA)] : [boxDetail(orderA), tinDetail(orderB)],
+      items: [fullBox, fullTin],
+      totals: { newTotal: 101200, totalDp: 30360, net: 0, netLabel: "Settled" },
+    });
+  }
+  return statementSample(recipientEmail, {
+    id: setId,
+    statusEmailType: "deposit_received",
+    details: one ? [boxDetail(orderA)] : [boxDetail(orderA), tinDetail(orderB)],
+    items: one ? [pendingBox] : [pendingBox, product(SAMPLE_TIN, 6, 16560, 0, 0, 0, { allocationPending: true })],
+    totals: { newTotal: 0, totalDp: one ? 13800 : 30360, net: 0, netLabel: "Settled" },
+  });
+}
+
+function buildSampleOrder(recipientEmail, emailType, previewStatus = "") {
   const name = "One Piece Mini Tin Pack Set Vol. 4 [TS-04]";
   const state = SAMPLE_STATES[emailType] ?? SAMPLE_STATES.deposit_received;
-  if (emailType === "individual_order") {
-    const totals = individualSampleTotals(previewStatus);
-    return {
-      id: "HA-202607040003",
-      customer: "Hobby Arena",
-      email: recipientEmail,
-      phone: "",
-      type: "Pre-order",
-      payment: state.payment,
-      status: state.status,
-      statusEmailType: previewStatus || "",
-      total: totals.newTotal,
-      balanceDue: totals.balanceDue,
-      refundAmount: totals.refundAmount,
-      depositPercent: 30,
-      date: new Date().toISOString(),
-      items: "Delta Reign 18ct, ME06 36ct",
-      lineItems: [],
-      consolidated: {
-        id: "HA-202607040003",
-        statusEmailType: previewStatus || "",
-        orderIds: ["HA-202607040003"],
-        orderDetails: [
-          { orderId: "HA-202607040003", name: "[Pre-order] Pokemon TCG [ME06] Delta Reign 18ct Booster Box", qty: 10, dpAmount: 13800 },
-          { orderId: "HA-202607040003", name: "[Pre-order] Pokemon TCG [ME06] 36ct Booster Box", qty: 6, dpAmount: 16560 },
-        ],
-        items: [
-          { name: "[Pre-order] Pokemon TCG [ME06] Delta Reign 18ct Booster Box", totalQty: 10, totalDp: 13800, allocationPercent: 40, newQty: 4, newAmount: 18400 },
-          { name: "[Pre-order] Pokemon TCG [ME06] 36ct Booster Box", totalQty: 6, totalDp: 16560, newQty: 1, newAmount: 9200 },
-        ],
-        totals,
-      },
-    };
-  }
-  if (emailType === "consolidated_allocation") {
-    return {
-      id: "HA-202609000356",
-      customer: "Hobby Arena",
-      email: recipientEmail,
-      phone: "",
-      type: "Pre-order",
-      payment: state.payment,
-      status: state.status,
-      total: 13800,
-      balanceDue: 0,
-      refundAmount: 30360,
-      date: new Date().toISOString(),
-      items: "Delta Reign 18ct, ME06 36ct",
-      lineItems: [],
-      consolidated: {
-        id: "HA-C-202609000001",
-        orderIds: ["HA-202609000356", "HA-202609000355", "HA-202609000354"],
-        orderDetails: [
-          { orderId: "HA-202609000356", name: "[Pre-order] Pokemon TCG [ME06] Delta Reign 18ct Booster Box", qty: 10, dpAmount: 13800 },
-          { orderId: "HA-202609000355", name: "[Pre-order] Pokemon TCG [ME06] Delta Reign 18ct Booster Box", qty: 10, dpAmount: 13800 },
-          { orderId: "HA-202609000354", name: "[Pre-order] Pokemon TCG [ME06] 36ct Booster Box", qty: 6, dpAmount: 16560 },
-        ],
-        items: [
-          { name: "[Pre-order] Pokemon TCG [ME06] Delta Reign 18ct Booster Box", totalQty: 20, totalDp: 27600, newQty: 1, newAmount: 4600 },
-          { name: "[Pre-order] Pokemon TCG [ME06] 36ct Booster Box", totalQty: 6, totalDp: 16560, newQty: 1, newAmount: 9200 },
-        ],
-        totals: { newTotal: 13800, totalDp: 44160, net: -30360, netLabel: "Refund amount" },
-      },
-      notes: "Please send your refund details at your earliest convenience.",
-    };
+  if (emailType === "individual_order" || emailType === "consolidated_allocation") {
+    const choices = STATEMENT_SCENARIOS[emailType];
+    const scenario = choices.some((item) => item.id === previewStatus)
+      ? previewStatus
+      : choices[0].id;
+    return scenarioOrder(recipientEmail, emailType, scenario);
   }
   return {
     id: "HA-202607040003",
@@ -423,29 +488,23 @@ function EmailEditor({
 
   return (
     <Stack spacing={1.5} sx={{ height: "100%", minHeight: 0 }}>
-      {isConsolidated ? (
+      {isAllocationStatement ? (
         <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", lineHeight: 1.5 }}>
-          Sent once for a consolidated order. Edit the subject and message. The before/after item tables and totals stay in the email.
+          One layout for every order. {"{{update}}"} says balance due or refund due. The preview uses a sample, so you do not need to create an order.
         </Typography>
       ) : null}
-      {isIndividualOrder ? (
-        <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", lineHeight: 1.5 }}>
-          Sent from an individual order. {"{{update}}"} changes with that order's status. Consolidated orders stay on their own template.
-        </Typography>
-      ) : null}
-      {isIndividualOrder ? (
+      {isAllocationStatement ? (
         <FormControl fullWidth size="small">
-          <InputLabel id="individual-preview-status-label">Preview status</InputLabel>
+          <InputLabel id={`${emailType}-scenario-label`}>Scenario</InputLabel>
           <Select
-            labelId="individual-preview-status-label"
-            label="Preview status"
-            value={previewStatus || ""}
+            labelId={`${emailType}-scenario-label`}
+            label="Scenario"
+            value={previewStatus || STATEMENT_SCENARIOS[emailType][0].id}
             onChange={(e) => onPreviewStatusChange?.(e.target.value)}
           >
-            {INDIVIDUAL_PREVIEW_STATUSES.map((type) => (
-              <MenuItem key={type} value={type}>{ORDER_STATUS_EMAIL_LABELS[type]}</MenuItem>
+            {STATEMENT_SCENARIOS[emailType].map((scenario) => (
+              <MenuItem key={scenario.id} value={scenario.id}>{scenario.label}</MenuItem>
             ))}
-            <MenuItem value="">Mixed statuses</MenuItem>
           </Select>
         </FormControl>
       ) : null}
@@ -487,8 +546,8 @@ function EmailEditor({
       />
 
       <PlaceholderGroup>
-        {(isIndividualOrder
-          ? [...EMAIL_PLACEHOLDERS, { token: "{{update}}", description: "Message for this order's status" }]
+        {(isAllocationStatement
+          ? [...EMAIL_PLACEHOLDERS, { token: "{{update}}", description: "Balance due, refund due, or the status sentence" }]
           : EMAIL_PLACEHOLDERS
         ).map((placeholder) => (
           <Chip
@@ -606,6 +665,11 @@ function EmailEditor({
           {sending ? "Sending…" : "Send test to me"}
         </Button>
       </Stack>
+      {isAllocationStatement ? (
+        <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", lineHeight: 1.4 }}>
+          Send test uses the scenario above. It does not create an order.
+        </Typography>
+      ) : null}
 
       {saved ? (
         <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, color: theme.palette.success.main }}>
@@ -1319,7 +1383,10 @@ export default function EmailTemplatesPage() {
   const [testEmail, setTestEmail] = useState(admin?.email || "");
   const [feedback, setFeedback] = useState(null);
   const [activeType, setActiveType] = useState(EMAIL_TYPES[0]);
-  const [individualPreviewStatus, setIndividualPreviewStatus] = useState("partial_refund_pending");
+  const [scenarioByType, setScenarioByType] = useState({
+    individual_order: "several_balance",
+    consolidated_allocation: "mixed_balance",
+  });
   const [pageMode, setPageMode] = useState("templates");
   const draftsRef = useRef(null);
   if (draftsRef.current === null) {
@@ -1506,8 +1573,8 @@ export default function EmailTemplatesPage() {
                 onShowMessengerChange={setMessengerForActive}
                 actionNotes={actionNotesByType[activeType]}
                 onActionNotesChange={setActionNotesForActive}
-                previewStatus={individualPreviewStatus}
-                onPreviewStatusChange={setIndividualPreviewStatus}
+                previewStatus={scenarioByType[activeType] || ""}
+                onPreviewStatusChange={(value) => setScenarioByType((current) => ({ ...current, [activeType]: value }))}
               />
 
               <Box
@@ -1531,7 +1598,7 @@ export default function EmailTemplatesPage() {
                   showMessengerButton={messengerByType[activeType] === true}
                   actionNotes={actionNotesByType[activeType]}
                   surfaceBorderColor={surfaceBorderColor}
-                  previewStatus={individualPreviewStatus}
+                  previewStatus={scenarioByType[activeType] || ""}
                 />
               </Box>
             </Box>

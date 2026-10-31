@@ -50,6 +50,63 @@ function balancePercentOf(order) {
   return Math.max(0, 100 - depositPercentOf(order));
 }
 
+function shownPercent(value) {
+  const percent = Math.round(Number(value) * 100) / 100;
+  return Number.isInteger(percent) ? String(percent) : String(percent);
+}
+
+function itemIsFullyAllocated(item) {
+  if (itemAllocationPending(item)) return false;
+  const qty = Number(item?.totalQty) || 0;
+  const next = Number(item?.newQty);
+  if (qty > 0 && Number.isFinite(next)) return next + 0.001 >= qty;
+  const stored = Number(item?.allocationPercent);
+  return Number.isFinite(stored) && stored >= 99.5;
+}
+
+function orderIsFullyAllocated(order) {
+  const items = Array.isArray(order?.consolidated?.items) ? order.consolidated.items : [];
+  if (items.length) return items.every(itemIsFullyAllocated);
+  const totals = order?.consolidated?.totals || {};
+  const allocated = Number(totals.newTotal) || 0;
+  const deposit = Number(totals.totalDp) || 0;
+  const dp = depositPercentOf(order);
+  if (!(allocated > 0) || !(dp > 0)) return false;
+  return Math.abs(deposit - (allocated * dp) / 100) <= 1;
+}
+
+/** Partial refund: deposit paid, the refund, and what was actually allocated. */
+function individualPartialRefundRows(order) {
+  const type = consolidatedStatusEmailType(order);
+  if (type !== "partial_refund_pending" && type !== "partial_refund_sent") return null;
+  const totals = order?.consolidated?.totals || {};
+  const allocated = Number(totals.newTotal) || 0;
+  const deposit = Number(totals.totalDp) || 0;
+  const stated = individualAmounts(order).refund;
+  const refund = stated > 0 ? stated : Math.max(0, deposit - allocated);
+  return [
+    { label: `Deposit paid (${shownPercent(depositPercentOf(order))}%)`, value: formatPeso(deposit) },
+    { label: "Refund amount", value: formatPeso(refund), strong: true },
+    { label: "Total (allocated)", value: formatPeso(allocated), strong: true },
+  ];
+}
+
+/** Ready for pickup / fulfilled at 100%: deposit, balance paid, and the allocated total. */
+function individualFullAllocationPaidRows(order) {
+  const type = consolidatedStatusEmailType(order);
+  if (type !== "ready_for_pickup" && type !== "order_fulfilled") return null;
+  if (!orderIsFullyAllocated(order)) return null;
+  const totals = order?.consolidated?.totals || {};
+  const allocated = Number(totals.newTotal) || 0;
+  const deposit = Number(totals.totalDp) || 0;
+  const balancePaid = Math.max(0, allocated - deposit);
+  return [
+    { label: `Deposit paid (${shownPercent(depositPercentOf(order))}%)`, value: formatPeso(deposit) },
+    { label: `Balance paid (${shownPercent(balancePercentOf(order))}%)`, value: formatPeso(balancePaid) },
+    { label: "Total (allocated)", value: formatPeso(allocated), strong: true },
+  ];
+}
+
 function consolidatedNet(order) {
   const net = Number(order?.consolidated?.totals?.net);
   if (Number.isFinite(net)) return net;
@@ -198,7 +255,7 @@ function orderDetailsTable(rows, totalDp, { showTotal = true, totalLabel = "Tota
   `;
 }
 
-function summaryItemsTable(items) {
+function summaryItemsTable(items, { showNewQty = true, heading = "Summary" } = {}) {
   if (!items.length) return "";
   const c = EMAIL_BRAND.colors;
   const wideRows = items.map((item) => `
@@ -207,8 +264,8 @@ function summaryItemsTable(items) {
       ${gridBodyCell(String(Math.max(0, Number(item.totalQty) || 0)), { align: "center", muted: true, nowrap: true })}
       ${gridBodyCell(formatPeso(item.totalDp), { align: "right", muted: true, nowrap: true })}
       ${gridBodyCell(allocationCell(item), { align: "center", nowrap: true })}
-      ${gridBodyCell(qtyCell(item), { align: "center", nowrap: true })}
-      ${gridBodyCell(amountCell(item), { align: "right", nowrap: true })}
+      ${showNewQty ? gridBodyCell(qtyCell(item), { align: "center", nowrap: true }) : ""}
+      ${showNewQty ? gridBodyCell(amountCell(item), { align: "right", nowrap: true }) : ""}
     </tr>
   `).join("");
   const narrowRows = items.map((item) => `
@@ -224,28 +281,57 @@ function summaryItemsTable(items) {
             ${stackLine("Qty", String(Math.max(0, Number(item.totalQty) || 0)))}
             ${stackLine("Downpayment", formatPeso(item.totalDp))}
             ${stackLine("Allocation", allocationCell(item))}
-            ${stackLine("New qty", qtyCell(item))}
-            ${stackLine("New amount", amountCell(item))}
+            ${showNewQty ? stackLine("New qty", qtyCell(item)) : ""}
+            ${showNewQty ? stackLine("New amount", amountCell(item)) : ""}
           </table>
         </td>
       </tr>
     </table>
   `).join("");
   return `
-    ${sectionHeading("Summary")}
+    ${sectionHeading(heading)}
     <table role="presentation" class="consolidated-table" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px">
       <tr>
         ${gridHeaderCell("Product")}
         ${gridHeaderCell("Qty", { align: "center" })}
         ${gridHeaderCell("Downpayment", { align: "right" })}
         ${gridHeaderCell("Alloc %", { align: "center" })}
-        ${gridHeaderCell("New Qty", { align: "center" })}
-        ${gridHeaderCell("New Amount", { align: "right" })}
+        ${showNewQty ? gridHeaderCell("New Qty", { align: "center" }) : ""}
+        ${showNewQty ? gridHeaderCell("New Amount", { align: "right" }) : ""}
       </tr>
       ${wideRows}
     </table>
     <div class="consolidated-stack" style="display:none;max-height:0;overflow:hidden;">${narrowRows}</div>
   `;
+}
+
+function individualRefundSettlement(order) {
+  const type = consolidatedStatusEmailType(order);
+  if (type !== "partial_refund_pending") return null;
+  const amounts = individualAmounts(order);
+  const refund = amounts.refund || Math.abs(consolidatedNet(order));
+  return { totalsPending: false, net: -Math.abs(refund), netLabel: "Refund" };
+}
+
+function individualLineTableMode(order) {
+  const type = consolidatedStatusEmailType(order);
+  if (type === "balance_due_full") return "full";
+  if (type === "balance_due_partial" || type === "partial_refund_pending" || type === "partial_refund_sent") return "partial";
+  if (type === "full_refund_pending" || type === "full_refund_sent") return "partial";
+  if (type !== "ready_for_pickup" && type !== "order_fulfilled") return null;
+  const items = Array.isArray(order?.consolidated?.items) ? order.consolidated.items : [];
+  if (!items.length) return null;
+  if (orderIsFullyAllocated(order)) return "full";
+  const partial = items.some((item) => {
+    if (itemAllocationPending(item)) return false;
+    const qty = Number(item.totalQty) || 0;
+    const next = Number(item.newQty);
+    const pct = Number(item.allocationPercent);
+    const shortQty = qty > 0 && Number.isFinite(next) && next > 0 && next + 0.001 < qty;
+    const shortPct = Number.isFinite(pct) && pct > 0 && pct < 99.5;
+    return shortQty || shortPct;
+  });
+  return partial ? "partial" : null;
 }
 
 function consolidatedNoteBlock(order) {
@@ -295,24 +381,32 @@ function consolidatedEmailTables(order, { includeSummary = true } = {}) {
   const items = Array.isArray(order?.consolidated?.items) ? order.consolidated.items : [];
   const totals = order?.consolidated?.totals || {};
   const downpaymentLabel = totalDownpaymentLabel(order, { individual: !includeSummary });
-  if (isFullRefundEmail(order)) {
-    const deposit = Number(totals.totalDp) || 0;
-    const refund = Math.abs(Number(totals.net)) || deposit;
-    return `${orderDetailsTable(details, deposit, { totalLabel: downpaymentLabel })}${totalsBlock([
-      { label: "Refund:", value: formatPeso(refund), strong: true },
-    ])}<div style="clear:both"></div>${consolidatedNoteBlock(order)}`;
-  }
-  const settlement = consolidatedSettlement(order);
+  const refundDue = includeSummary ? null : individualRefundSettlement(order);
+  const individualFullRefund = !includeSummary && isFullRefundEmail(order);
+  const settlement = refundDue || consolidatedSettlement(order);
   const summary = includeSummary ? summaryItemsTable(items) : "";
-  return `${orderDetailsTable(details, totals.totalDp, { showTotal: includeSummary })}${summary}${presentationTotalsBlock({
-    newTotal: totals.newTotal,
-    totalDp: totals.totalDp,
-    net: settlement.net,
-    netLabel: settlement.netLabel,
-    totalsPending: settlement.totalsPending,
-    totalLabel: includeSummary ? "New total:" : "Total:",
-    downpaymentLabel,
-  })}${consolidatedNoteBlock(order)}`;
+  const lineMode = includeSummary ? null : individualLineTableMode(order);
+  const paidRows = (!includeSummary && individualPartialRefundRows(order)) || individualFullAllocationPaidRows(order);
+  const detailsHtml = lineMode && items.length
+    ? summaryItemsTable(items, { showNewQty: lineMode === "partial", heading: "Order details" })
+    : orderDetailsTable(details, totals.totalDp, { showTotal: includeSummary && !paidRows });
+  const totalsHtml = individualFullRefund
+    ? `${totalsBlock([
+      { label: downpaymentLabel, value: formatPeso(Number(totals.totalDp) || 0) },
+      { label: "Refund:", value: formatPeso(Math.abs(Number(totals.net)) || Number(totals.totalDp) || 0), strong: true },
+    ])}<div style="clear:both"></div>`
+    : paidRows
+    ? `${totalsBlock(paidRows)}<div style="clear:both"></div>`
+    : presentationTotalsBlock({
+      newTotal: totals.newTotal,
+      totalDp: totals.totalDp,
+      net: settlement.net,
+      netLabel: statementSettlementLabel(order, settlement),
+      totalsPending: settlement.totalsPending,
+      totalLabel: includeSummary ? "New total:" : "Total:",
+      downpaymentLabel,
+    });
+  return `${detailsHtml}${summary}${totalsHtml}${consolidatedNoteBlock(order)}`;
 }
 
 function lineIsPreorderPresentation(order, line) {
@@ -406,6 +500,43 @@ function accountOrderUrl(order, { consolidated = false } = {}) {
   return `${links.displaySiteUrl}/account/orders/${encodeURIComponent(id)}#balance-proof`;
 }
 
+const NO_ACTION_EMAIL_TYPES = new Set([
+  "deposit_received",
+  "partial_refund_sent",
+  "ready_for_pickup",
+  "order_fulfilled",
+  "full_refund_sent",
+  "payment_not_received",
+]);
+
+/** Totals row. Outstanding money is named Balance due or Refund due. */
+function statementSettlementLabel(order, settlement) {
+  const type = consolidatedStatusEmailType(order);
+  if (type === "full_refund_sent") return "Refund";
+  if (settlement?.totalsPending) return "Settlement";
+  if (Number(settlement?.net) > 0) return "Balance due";
+  if (Number(settlement?.net) < 0) return "Refund due";
+  return settlement?.netLabel || "Settled";
+}
+
+/**
+ * Balance due gets Submit Proof. A refund that is still due gets Submit Bank Details.
+ * Mixed lines have no single status, so the shown total decides.
+ * A refund already sent does not ask for bank details again.
+ */
+function statementActionKind(order, emailType) {
+  const statement = emailType === "consolidated_allocation" || emailType === "individual_order";
+  const type = statement ? consolidatedStatusEmailType(order) : emailType;
+  if (REFUND_ACTION_EMAIL_TYPES.has(type)) return "refund";
+  if (BALANCE_ACTION_EMAIL_TYPES.has(type)) return "balance";
+  if (!statement || NO_ACTION_EMAIL_TYPES.has(type)) return null;
+  const settlement = consolidatedSettlement(order);
+  if (settlement.totalsPending) return null;
+  if (Number(settlement.net) > 0) return "balance";
+  if (Number(settlement.net) < 0) return "refund";
+  return null;
+}
+
 function customerActionButtonsBlock(emailType, order, { showMessenger = false, actionNotes } = {}) {
   const links = getEmailLinks();
   const messengerOpts = {
@@ -415,8 +546,8 @@ function customerActionButtonsBlock(emailType, order, { showMessenger = false, a
   };
 
   if (emailType === "consolidated_allocation" || emailType === "individual_order") {
-    const type = consolidatedStatusEmailType(order);
-    if (REFUND_ACTION_EMAIL_TYPES.has(type)) {
+    const kind = statementActionKind(order, emailType);
+    if (kind === "refund") {
       return customerResponseButtons({
         caption: actionNoteText("refund", actionNotes),
         accountLabel: REFUND_BUTTON_LABEL,
@@ -424,7 +555,7 @@ function customerActionButtonsBlock(emailType, order, { showMessenger = false, a
         ...messengerOpts,
       });
     }
-    if (BALANCE_ACTION_EMAIL_TYPES.has(type)) {
+    if (kind === "balance") {
       return customerResponseButtons({
         caption: actionNoteText("balance", actionNotes),
         accountLabel: BALANCE_BUTTON_LABEL,
@@ -746,7 +877,11 @@ function buildPlaceholderMap(order, emailType) {
     finalTotal: formatPeso(item ? itemFinalTotal(item) : 0),
     orders: consolidatedOrderIds(order).join(", "),
     consolidated: consolidatedId(order),
-    update: emailType === "individual_order" ? individualOrderMessage(order).body : "",
+    update: emailType === "individual_order"
+      ? individualOrderMessage(order).body
+      : emailType === "consolidated_allocation"
+        ? consolidatedMessage(order).body
+        : "",
   };
 }
 
@@ -1045,121 +1180,108 @@ function individualAmounts(order) {
   };
 }
 
-/** One order-level message. The sentence follows the status; the layout stays the same. */
-function individualOrderMessage(order) {
-  const id = String(order?.id || consolidatedId(order) || "your order");
+/**
+ * One message for every order email. One product or many, one order or a set:
+ * the tables stay the same, and outstanding money is named in the sentence.
+ */
+function statementMessage(order, { plural = false } = {}) {
+  const id = plural
+    ? (consolidatedId(order) || order?.id || "your orders")
+    : String(order?.id || consolidatedId(order) || "your order");
   const type = consolidatedStatusEmailType(order);
   const amounts = individualAmounts(order);
   const refund = formatPeso(type === "full_refund_pending" || type === "full_refund_sent"
     ? (amounts.deposit || amounts.refund)
     : amounts.refund);
   const balance = formatPeso(amounts.balance);
+  const noun = plural ? "these orders" : "this order";
   const messages = {
     deposit_received: {
       subject: `Payment verified — ${id}`,
       title: "Payment verified",
-      body: "We verified your payment for this order. It is now awaiting stock allocation.",
+      body: `We verified your payment for ${noun}. ${plural ? "They are" : "It is"} now awaiting stock allocation.`,
     },
     balance_due_full: {
-      subject: `100% allocation — pay balance — ${id}`,
-      title: "Full allocation confirmed",
-      body: `This order is fully allocated. Please pay the remaining balance of ${balance}.`,
+      subject: `Balance due — ${id}`,
+      title: "Balance due",
+      body: `Balance due: ${balance}. ${plural ? "These orders are" : "This order is"} fully allocated. Please pay the remaining balance.`,
     },
     balance_due_partial: {
-      subject: `Partial allocation — pay balance — ${id}`,
-      title: "Partial allocation confirmed",
-      body: `Part of this order was allocated. Please pay the remaining balance of ${balance}.`,
+      subject: `Balance due — ${id}`,
+      title: "Balance due",
+      body: `Balance due: ${balance}. Part of ${noun} was allocated. Please pay the remaining balance.`,
     },
     partial_refund_pending: {
-      subject: `Partial allocation — refund due — ${id}`,
-      title: "Partial allocation — refund due",
-      body: `Part of this order was allocated. A refund of ${refund} is due on the rest.`,
+      subject: `Refund due — ${id}`,
+      title: "Refund due",
+      body: `Refund due: ${refund}. Part of ${noun} was allocated.`,
     },
     full_refund_pending: {
-      subject: `Full refund — ${id}`,
-      title: "Full refund",
-      body: `We will refund the full deposit of ${refund} for this order. None of it was allocated.`,
+      subject: `Refund due — ${id}`,
+      title: "Refund due",
+      body: `Refund due: ${refund}. We will refund the full deposit for ${noun}. None of it was allocated.`,
     },
     partial_refund_sent: {
       subject: `Refund sent — ${id}`,
       title: "Refund sent",
-      body: `We sent the refund of ${refund} for this order. The allocated items are ready for pickup.`,
+      body: `We sent the refund of ${refund} for ${noun}. The allocated items are ready for pickup.`,
     },
     ready_for_pickup: {
       subject: `Ready for pickup — ${id}`,
       title: "Ready for pickup",
-      body: "This order is ready for pickup. Please schedule a time with our team (Mon–Fri, 8:00 AM – 8:00 PM).",
+      body: `${plural ? "These orders are" : "This order is"} ready for pickup. Please schedule a time with our team (Mon–Fri, 8:00 AM – 8:00 PM).`,
     },
     order_fulfilled: {
       subject: `Order fulfilled — ${id}`,
       title: "Order fulfilled",
-      body: "This order is fulfilled. Thank you for shopping with Hobby Arena.",
+      body: `${plural ? "These orders are" : "This order is"} fulfilled. Thank you for shopping with Hobby Arena.`,
     },
     full_refund_sent: {
       subject: `Full refund sent — ${id}`,
       title: "Full refund sent",
-      body: `We sent the full refund of ${refund} for this order. Please confirm once you receive it.`,
+      body: `We sent the full refund of ${refund} for ${noun}. Please confirm once you receive it.`,
     },
     payment_not_received: {
       subject: `Payment not received — ${id}`,
       title: "We haven't received your payment",
-      body: "We have not received payment for this order, so the stock has been released.",
+      body: `We have not received payment for ${noun}, so the stock has been released.`,
     },
   };
   const message = messages[type];
-  if (!message) {
+  if (message) return { milestone: type, ...message };
+
+  const settlement = consolidatedSettlement(order);
+  const amount = formatPeso(Math.abs(Number(settlement.net) || 0));
+  if (!settlement.totalsPending && Number(settlement.net) > 0) {
     return {
       milestone: null,
-      subject: `Order update — ${id}`,
-      title: "Order update",
-      body: "Here is the latest update for this order.",
+      subject: `Balance due — ${id}`,
+      title: "Balance due",
+      body: `Balance due: ${amount}. Please pay the remaining balance for ${noun}.`,
     };
   }
-  return { milestone: type, ...message };
-}
-
-/** Status sentence for a consolidated set. Never borrows a single-item unit count. */
-function consolidatedStatusBody(order, type) {
-  const amounts = individualAmounts(order);
-  const refund = formatPeso(type === "full_refund_pending" || type === "full_refund_sent"
-    ? (amounts.deposit || amounts.refund)
-    : amounts.refund);
-  const balance = formatPeso(amounts.balance);
-  const bodies = {
-    deposit_received: "We verified your payment for these orders. They are now awaiting stock allocation.",
-    balance_due_full: `These orders are fully allocated. Please pay the remaining balance of <strong>${balance}</strong>.`,
-    balance_due_partial: `Part of these orders was allocated. Please pay the remaining balance of <strong>${balance}</strong>.`,
-    partial_refund_pending: `Part of these orders was allocated. A refund of <strong>${refund}</strong> is due on the rest.`,
-    full_refund_pending: `We will refund the full deposit of <strong>${refund}</strong>. None of these orders was allocated.`,
-    partial_refund_sent: `We sent the refund of <strong>${refund}</strong>. The allocated items are ready for pickup.`,
-    ready_for_pickup: "These orders are ready for pickup. Please schedule a time with our team (Mon–Fri, 8:00 AM – 8:00 PM).",
-    order_fulfilled: "These orders are fulfilled. Thank you for shopping with Hobby Arena.",
-    full_refund_sent: `We sent the full refund of <strong>${refund}</strong>. Please confirm once you receive it.`,
-    payment_not_received: "We have not received payment for these orders, so the stock has been released.",
-  };
-  return bodies[type] || "";
-}
-
-/** Same subject and title as the status email. The body stays about the set, not one item. */
-function consolidatedMessage(order) {
-  const id = consolidatedId(order) || order?.id || "your order";
-  const type = consolidatedStatusEmailType(order);
-  const template = type ? TEMPLATES[type] : null;
-  if (!template) {
+  if (!settlement.totalsPending && Number(settlement.net) < 0) {
     return {
       milestone: null,
-      subject: `Order update — ${id}`,
-      title: "Order update",
-      body: "Here is the latest update for these orders.",
+      subject: `Refund due — ${id}`,
+      title: "Refund due",
+      body: `Refund due: ${amount} for ${noun}.`,
     };
   }
-  const standIn = { ...order, id };
   return {
-    milestone: type,
-    subject: template.subject(standIn),
-    title: template.title,
-    body: consolidatedStatusBody(order, type) || template.body(standIn),
+    milestone: null,
+    subject: `Order update — ${id}`,
+    title: "Order update",
+    body: `Here is the latest update for ${noun}.`,
   };
+}
+
+function individualOrderMessage(order) {
+  return statementMessage(order, { plural: false });
+}
+
+function consolidatedMessage(order) {
+  return statementMessage(order, { plural: true });
 }
 
 function preorderMilestones(item, emailType) {
@@ -1475,7 +1597,7 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     ${bodyLead(template.lead(order))}
     ${!showSummary && !isConsolidated ? itemFocusBlock(order) : ""}
     ${bodyOverride ? renderOverrideBody(order, bodyOverride, emailType) : bodyText(template.body(order))}
-    ${isConsolidated ? consolidatedEmailTables(order, { includeSummary: emailType !== "individual_order" }) : (statusSections?.html || "")}
+    ${isConsolidated ? consolidatedEmailTables(order, { includeSummary: true }) : (statusSections?.html || "")}
     ${!isConsolidated && String(order.notes || "").trim() ? consolidatedNoteBlock(order) : ""}
     ${showMilestones && !isConsolidated ? preorderMilestones(item, emailType) : ""}
     ${emailType === "consolidated_allocation" && consolidated?.milestone ? preorderMilestones(item, consolidated.milestone) : ""}
@@ -1500,22 +1622,35 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
   ];
   if (isConsolidated) {
     const details = order.consolidated?.orderDetails || [];
-    if (details.length) {
+    const summaryItems = order.consolidated?.items || [];
+    const individualLabels = false;
+    const lineMode = individualLabels ? individualLineTableMode(order) : null;
+    if (lineMode && summaryItems.length) {
+      text.push("", "Order details");
+      for (const row of summaryItems) {
+        const allocation = itemAllocationPending(row) ? "Pending" : allocationCell(row).replace(/<[^>]+>/g, "");
+        const qty = Math.max(0, Number(row.totalQty) || 0);
+        const base = `${row.name}  ×${qty}  DP ${formatPeso(row.totalDp)}  Alloc ${allocation}`;
+        if (lineMode === "partial") {
+          const nextQty = itemAllocationPending(row) ? "—" : String(Math.max(0, Number(row.newQty) || 0));
+          const nextAmount = itemAllocationPending(row) ? "—" : formatPeso(row.newAmount);
+          text.push(`${base}  New qty ${nextQty}  New ${nextAmount}`);
+        } else {
+          text.push(base);
+        }
+      }
+    } else if (details.length) {
       text.push("", "Order details");
       for (const row of details) {
         text.push(`${row.orderId}  ${row.name}  ×${Math.max(0, Number(row.qty) || 0)}  ${formatPeso(row.dpAmount)}`);
       }
-      if (emailType !== "individual_order" || isFullRefundEmail(order)) {
-        const label = totalDownpaymentLabel(order, { individual: emailType === "individual_order" });
+      if ((!individualLabels || isFullRefundEmail(order)) && !individualFullAllocationPaidRows(order)) {
+        const label = totalDownpaymentLabel(order, { individual: individualLabels });
         text.push(`${label} ${formatPeso(order.consolidated?.totals?.totalDp)}`);
       }
     }
-    if (isFullRefundEmail(order)) {
-      const deposit = Number(order.consolidated?.totals?.totalDp) || 0;
-      const refund = Math.abs(Number(order.consolidated?.totals?.net)) || deposit;
-      text.push("", `Refund: ${formatPeso(refund)}`);
-    } else {
-    if (emailType !== "individual_order") {
+    const refundDue = individualLabels ? individualRefundSettlement(order) : null;
+    if (!individualLabels) {
       text.push("", "Summary");
       const summaryItems = order.consolidated?.items || [];
       for (const row of summaryItems) {
@@ -1528,12 +1663,18 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
       }
     }
     const totals = order.consolidated?.totals || {};
-    const settlement = consolidatedSettlement(order);
+    const settlement = refundDue || consolidatedSettlement(order);
+    const paidRows = (individualLabels ? individualPartialRefundRows(order) : null)
+      || individualFullAllocationPaidRows(order);
+    if (paidRows) {
+      text.push("");
+      for (const row of paidRows) text.push(`${row.label}: ${row.value}`);
+    } else {
     text.push(
       "",
-      `${emailType === "individual_order" ? "Total" : "New total"}: ${settlement.totalsPending ? "—" : formatPeso(totals.newTotal)}`,
-      `${totalDownpaymentLabel(order, { individual: emailType === "individual_order" })} ${formatPeso(totals.totalDp)}`,
-      `${settlement.totalsPending ? "Settlement" : settlement.netLabel}: ${settlement.totalsPending ? "—" : formatPeso(Math.abs(settlement.net))}`,
+      `${individualLabels ? "Total" : "New total"}: ${settlement.totalsPending ? "—" : formatPeso(totals.newTotal)}`,
+      `${totalDownpaymentLabel(order, { individual: individualLabels })} ${formatPeso(totals.totalDp)}`,
+      `${statementSettlementLabel(order, settlement)}: ${settlement.totalsPending ? "—" : formatPeso(Math.abs(settlement.net))}`,
     );
     }
     if (String(order.notes || "").trim()) {
@@ -1544,13 +1685,13 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     if (String(order.notes || "").trim()) text.push("", "Note", String(order.notes).trim());
   }
 
-  const actionType = isConsolidated ? consolidatedStatusEmailType(order) : emailType;
-  if (BALANCE_ACTION_EMAIL_TYPES.has(actionType)) {
+  const actionType = isConsolidated ? statementActionKind(order, emailType) : (BALANCE_ACTION_EMAIL_TYPES.has(emailType) ? "balance" : REFUND_ACTION_EMAIL_TYPES.has(emailType) ? "refund" : null);
+  if (actionType === "balance") {
     const note = actionNoteText("balance", actionNotes);
     if (note) text.push("", note);
     text.push("", `${BALANCE_BUTTON_LABEL}:`, accountOrderUrl(order, { consolidated: isConsolidated }));
     if (showMessengerButton) text.push("Message Hobby Arena PH:", links.messengerUrl);
-  } else if (REFUND_ACTION_EMAIL_TYPES.has(actionType)) {
+  } else if (actionType === "refund") {
     const note = actionNoteText("refund", actionNotes);
     if (note) text.push("", note);
     text.push("", `${REFUND_BUTTON_LABEL}:`, links.bankDetailsUrl);

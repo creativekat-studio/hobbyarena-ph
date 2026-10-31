@@ -31,6 +31,7 @@ import {
   orderPayoutMethodId,
   payoutMethodHasBank,
   resolvePrimaryPayoutMethodId,
+  restorePayoutQrUrls,
 } from "../lib/customerPayoutMethods.js";
 
 const EMPTY_DRAFT = {
@@ -134,7 +135,7 @@ export default function CustomerPayoutMethodsEditor({
 }) {
   const firebaseEnabled = useFirebaseData();
   const { user } = useAuth();
-  const { customers, getCustomerProfile, saveCustomerPayoutMethods } = useCustomers();
+  const { customers, cacheRevision, getCustomerProfile, saveCustomerPayoutMethods } = useCustomers();
   const qrInputRef = useRef(null);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [busy, setBusy] = useState(false);
@@ -146,11 +147,40 @@ export default function CustomerPayoutMethodsEditor({
 
   const profile = useMemo(() => {
     const key = String(email || "").trim().toLowerCase();
-    if (!key) return customerRecord;
-    return getCustomerProfile(key)
-      || (customers || []).find((row) => String(row.email || "").trim().toLowerCase() === key)
-      || customerRecord;
-  }, [customers, customerRecord, email, getCustomerProfile]);
+    const uid = String(ownerUid || "").trim();
+    const rows = customers || [];
+    const row = rows.find((entry) => (
+      String(entry.email || "").trim().toLowerCase() === key
+      && uid
+      && String(entry.uid || entry.id || "") === uid
+    )) || rows.find((entry) => String(entry.email || "").trim().toLowerCase() === key) || null;
+    const cached = key ? getCustomerProfile(key) : null;
+    const donors = [
+      ...(Array.isArray(row?.payoutMethods) ? row.payoutMethods : []),
+      ...(Array.isArray(customerRecord?.payoutMethods) ? customerRecord.payoutMethods : []),
+      ...(Array.isArray(cached?.payoutMethods) ? cached.payoutMethods : []),
+    ];
+    const cachedExplicit = Array.isArray(cached?.payoutMethods);
+    const baseMethods = cachedExplicit
+      ? cached.payoutMethods
+      : (row?.payoutMethods || customerRecord?.payoutMethods || []);
+    const payoutMethods = normalizePayoutMethods(restorePayoutQrUrls(baseMethods, donors));
+    const base = cached || row || customerRecord;
+    if (!base) return customerRecord;
+    const samePerson = !cached?.uid || !uid || String(cached.uid) === uid;
+    return {
+      ...(customerRecord || {}),
+      ...(row || {}),
+      ...(samePerson ? (cached || {}) : {}),
+      payoutMethods,
+      primaryPayoutMethodId: (
+        (samePerson ? cached?.primaryPayoutMethodId : "")
+        || row?.primaryPayoutMethodId
+        || customerRecord?.primaryPayoutMethodId
+        || ""
+      ),
+    };
+  }, [cacheRevision, customerRecord, customers, email, getCustomerProfile, ownerUid]);
 
   const methods = useMemo(
     () => normalizePayoutMethods(profile?.payoutMethods),

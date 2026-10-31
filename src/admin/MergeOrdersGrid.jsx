@@ -49,6 +49,7 @@ import {
   buildLiveMergeWorkbook,
   buildMergeSourceRows,
   buildMergeWorkbook,
+  consolidatedPaymentsDiffer,
   productKeyForItem,
 } from "../lib/orderMergeSimulation.js";
 import { isArchivedOrder, isUnseenOrder } from "../lib/ordersStore.jsx";
@@ -878,6 +879,7 @@ export function MergeWorkbookView({
   detailsMaxHeight = 360,
   layout = "stack",
   lineDrafts = {},
+  paymentsMixed = false,
 }) {
   const theme = useTheme();
   const byOrder = useMemo(
@@ -889,7 +891,9 @@ export function MergeWorkbookView({
   const selectedItems = selectedKeys instanceof Set
     ? (workbook.orderDetails || []).filter((row) => selectedKeys.has(row.key)).length
     : totalItems;
-  const selectedHint = `${selectedItems} of ${totalItems} item${totalItems === 1 ? "" : "s"} selected`;
+  const selectedHint = paymentsMixed
+    ? `${selectedItems} of ${totalItems} ticked for the email`
+    : `${selectedItems} of ${totalItems} item${totalItems === 1 ? "" : "s"} selected`;
   const split = layout === "split";
   const [detailsQuery, setDetailsQuery] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -1760,14 +1764,18 @@ export function ConsolidatedOrderView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [set?.id, detailKeySig, selectionResetKey]);
 
-  const workbook = useMemo(
-    () => (set ? buildLiveMergeWorkbook(set.orders, { includeKeys: selectedKeys }) : null),
-    [set, selectedKeys],
-  );
   const draftSig = Object.entries(lineDrafts || {})
     .map(([key, draft]) => `${key}:${draft?.payment || ""}:${draft?.status || ""}`)
     .sort()
     .join("|");
+  const paymentsMixed = useMemo(
+    () => consolidatedPaymentsDiffer(detailWorkbook?.orderDetails, lineDrafts),
+    [detailWorkbook, draftSig, lineDrafts],
+  );
+  const workbook = useMemo(
+    () => (set ? buildLiveMergeWorkbook(set.orders, paymentsMixed ? {} : { includeKeys: selectedKeys }) : null),
+    [set, selectedKeys, paymentsMixed],
+  );
   const allocationGrid = useMemo(() => {
     if (!allocationEditing || !set) return null;
     const statusByRow = {};
@@ -1781,9 +1789,28 @@ export function ConsolidatedOrderView({
       newQtyByProduct,
       statusByRow,
       paymentByRow,
+      ...(paymentsMixed ? {} : { includeKeys: selectedKeys }),
+    });
+  }, [allocationEditing, set, percentByProduct, newQtyByProduct, draftSig, selectedKeys, lineDrafts, paymentsMixed]);
+  const emailWorkbook = useMemo(() => {
+    if (!set || !paymentsMixed) return null;
+    if (!allocationEditing) {
+      return buildLiveMergeWorkbook(set.orders, { includeKeys: selectedKeys });
+    }
+    const statusByRow = {};
+    const paymentByRow = {};
+    for (const [key, draft] of Object.entries(lineDrafts || {})) {
+      if (draft?.status) statusByRow[key] = draft.status;
+      if (draft?.payment) paymentByRow[key] = draft.payment;
+    }
+    return buildMergeWorkbook(set.orders, {
+      percentByProduct,
+      newQtyByProduct,
+      statusByRow,
+      paymentByRow,
       includeKeys: selectedKeys,
     });
-  }, [allocationEditing, set, percentByProduct, newQtyByProduct, draftSig, selectedKeys, lineDrafts]);
+  }, [allocationEditing, paymentsMixed, set, percentByProduct, newQtyByProduct, draftSig, selectedKeys, lineDrafts]);
 
   const selectedSig = [...selectedKeys].sort().join("|");
   const allocationDirty = useMemo(() => {
@@ -1798,13 +1825,17 @@ export function ConsolidatedOrderView({
   }, [allocationGrid, detailWorkbook]);
   useEffect(() => {
     onPayloadChange?.({
-      workbook: allocationGrid || workbook,
+      workbook: emailWorkbook || allocationGrid || workbook,
+      saveWorkbook: allocationGrid || workbook,
       allocationTouched,
       allocationDirty,
       selectedCount: selectedKeys.size,
-      removedOrderIds: orderIdsPendingRemoval(detailWorkbook?.orderDetails, selectedKeys),
+      paymentsMixed,
+      removedOrderIds: paymentsMixed
+        ? []
+        : orderIdsPendingRemoval(detailWorkbook?.orderDetails, selectedKeys),
     });
-  }, [workbook, allocationGrid, allocationTouched, allocationDirty, selectedSig, selectedKeys, detailWorkbook, onPayloadChange]);
+  }, [workbook, emailWorkbook, allocationGrid, allocationTouched, allocationDirty, selectedSig, selectedKeys, detailWorkbook, onPayloadChange, paymentsMixed]);
 
   if (!set || !detailWorkbook || !workbook) return null;
 
@@ -1849,6 +1880,7 @@ export function ConsolidatedOrderView({
         detailsMaxHeight={detailsMaxHeight}
         layout={layout}
         lineDrafts={lineDrafts}
+        paymentsMixed={paymentsMixed}
       />
       {showSend ? (
         <Stack direction="row" justifyContent="flex-end">

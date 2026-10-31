@@ -711,9 +711,13 @@ export function OrdersProvider({ children }) {
       if (!list.length) throw new Error("No orders to save.");
       const note = String(extras.note ?? "").trim();
       const attachment = await resolveConsolidatedAttachment(list[0].id, extras.attachment || null);
+      const persisted = persistableMergedAttachment(attachment);
+      if (extras.attachment && !persisted) {
+        throw new Error("Could not save the attachment. Try the file again.");
+      }
       const at = new Date().toISOString();
       applyMergedEmailExtras(list, note, attachment, at);
-      return { note, attachment, savedAt: at };
+      return { note, attachment: persisted, savedAt: at };
     };
 
     const sendConsolidatedAllocationEmail = async (orders, extras = {}) => {
@@ -746,7 +750,7 @@ export function OrdersProvider({ children }) {
         },
       });
       let payload;
-      if (list.length === 1) {
+      if (list.length === 1 && !extras.keepConsolidated) {
         const only = list[0];
         const items = getOrderLineItems(only);
         const types = items.map((item) => resolveOrderStatusEmailTypeForCurrentState(item));
@@ -839,13 +843,16 @@ export function OrdersProvider({ children }) {
             ok,
             to: primary.email,
             emailType: sentType,
+            statusEmailType: payload.order.statusEmailType || "",
+            includedAttachment: Boolean(includeAttachment && persistAttachment),
+            attachmentName: includeAttachment ? (persistAttachment?.label || "") : "",
             messageId: result?.messageId ?? null,
             skipped: Boolean(result?.skipped),
             skipReason: result?.skipReason || null,
             error: ok ? null : error,
           });
           if (!ok) reject(new Error(error || "Email failed."));
-          else resolve(result);
+          else resolve({ ...(result || {}), persistedAttachment: includeAttachment ? persistAttachment : null });
         });
       });
     };

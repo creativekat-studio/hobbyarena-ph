@@ -11,7 +11,12 @@ import {
   upsertCustomerDocument,
 } from "./firebase/repositories/customers.js";
 import { isValidEmail } from "./email/emailUtils.js";
-import { normalizePayoutMethods, resolvePrimaryPayoutMethodId } from "./customerPayoutMethods.js";
+import {
+  mergePayoutMethodLists,
+  normalizePayoutMethods,
+  resolvePrimaryPayoutMethodId,
+  restorePayoutQrUrls,
+} from "./customerPayoutMethods.js";
 
 const STORAGE_KEY = "hobbyarena:customers";
 
@@ -19,6 +24,9 @@ const CustomersContext = createContext(null);
 
 let profileCache = {};
 const cacheListeners = new Set();
+const profileWrites = new Map();
+/** Methods saved in this session, so a stale snapshot cannot drop them. */
+const payoutMemory = new Map();
 
 let syncingRemote = false;
 
@@ -108,14 +116,74 @@ function writeLocalProfiles(profiles) {
   }
 }
 
+function profileTime(profile) {
+  const value = profile?.updatedAt || profile?.joined || "";
+  if (value && typeof value.toMillis === "function") return value.toMillis();
+  if (value && typeof value.toDate === "function") {
+    const time = value.toDate().getTime();
+    return Number.isFinite(time) ? time : 0;
+  }
+  const parsed = Date.parse(typeof value === "string" ? value : "");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/** One profile per email. Payout methods saved on any duplicate doc stay visible. */
+function mergeProfilesByEmail(profiles) {
+  const byEmail = new Map();
+  for (const profile of profiles || []) {
+    const key = normalizeEmail(profile?.email);
+    if (!key) continue;
+    const prev = byEmail.get(key);
+    if (!prev) {
+      byEmail.set(key, profile);
+      continue;
+    }
+    const newer = profileTime(profile) >= profileTime(prev) ? profile : prev;
+    const older = newer === profile ? prev : profile;
+    byEmail.set(key, {
+      ...older,
+      ...newer,
+      payoutMethods: mergePayoutMethodLists(newer.payoutMethods, older.payoutMethods),
+      primaryPayoutMethodId: newer.primaryPayoutMethodId || older.primaryPayoutMethodId || "",
+    });
+  }
+  return [...byEmail.values()];
+}
+
+function rememberPayouts(email, profile) {
+  const key = normalizeEmail(email);
+  if (!key) return;
+  payoutMemory.set(key, {
+    at: Date.now(),
+    methods: normalizePayoutMethods(profile?.payoutMethods),
+    primaryId: profile?.primaryPayoutMethodId || "",
+  });
+}
+
+function overlayRememberedPayouts(profile) {
+  const key = normalizeEmail(profile?.email);
+  const remembered = key ? payoutMemory.get(key) : null;
+  if (!remembered) return profile;
+  if (profileTime(profile) >= remembered.at) {
+    payoutMemory.delete(key);
+    return profile;
+  }
+  return {
+    ...profile,
+    payoutMethods: remembered.methods,
+    primaryPayoutMethodId: remembered.primaryId,
+  };
+}
+
 function setCacheFromProfiles(profiles) {
   profileCache = {};
-  profiles.forEach((profile) => {
+  mergeProfilesByEmail(profiles).forEach((profile) => {
     const key = normalizeEmail(profile.email);
     if (!key) return;
+    const next = overlayRememberedPayouts(profile);
     profileCache[key] = {
-      ...profile,
-      marketingOptIn: Boolean(profile.marketingOptIn),
+      ...next,
+      marketingOptIn: Boolean(next.marketingOptIn),
     };
   });
   notifyCacheListeners();
@@ -240,7 +308,10 @@ export async function patchCustomerProfileIfEmpty(email, patch) {
   const fillKeys = Object.keys(fill).filter((k) => k !== "email" && k !== "uid");
   if (!fillKeys.length) return existing;
 
-  return upsertCustomerProfile({ ...existing, ...fill, email: key });
+  const base = existing ? { ...existing } : {};
+  delete base.payoutMethods;
+  delete base.primaryPayoutMethodId;
+  return upsertCustomerProfile({ ...base, ...fill, email: key });
 }
 function mergeProfile(existing, input) {
   const email = input.email?.trim() || existing?.email || "";
@@ -259,9 +330,11 @@ function mergeProfile(existing, input) {
     joined: existing?.joined || input.joined || new Date().toISOString().slice(0, 10),
     updatedAt: new Date().toISOString(),
   };
-  const payoutMethods = Array.isArray(input.payoutMethods)
-    ? normalizePayoutMethods(input.payoutMethods)
-    : normalizePayoutMethods(existing?.payoutMethods);
+  const explicitPayouts = Array.isArray(input.payoutMethods);
+  const payoutSource = explicitPayouts
+    ? restorePayoutQrUrls(input.payoutMethods, existing?.payoutMethods)
+    : existing?.payoutMethods;
+  const payoutMethods = normalizePayoutMethods(payoutSource);
   if (payoutMethods.length) {
     merged.payoutMethods = payoutMethods;
     merged.primaryPayoutMethodId = resolvePrimaryPayoutMethodId(
@@ -270,7 +343,7 @@ function mergeProfile(existing, input) {
         ? input.primaryPayoutMethodId
         : existing?.primaryPayoutMethodId,
     );
-  } else if (Object.prototype.hasOwnProperty.call(input, "payoutMethods")) {
+  } else if (explicitPayouts) {
     merged.payoutMethods = [];
     merged.primaryPayoutMethodId = "";
   } else if (existing?.primaryPayoutMethodId) {
@@ -287,11 +360,23 @@ export function getCustomerProfile(email) {
   return profileCache[normalizeEmail(email)] ?? null;
 }
 
-export async function upsertCustomerProfile(input) {
+export function upsertCustomerProfile(input) {
+  const key = normalizeEmail(input.email);
+  if (!key) return Promise.resolve(null);
+  const previous = profileWrites.get(key) || Promise.resolve();
+  const run = previous
+    .catch(() => {})
+    .then(() => writeCustomerProfile(input));
+  profileWrites.set(key, run);
+  return run;
+}
+
+async function writeCustomerProfile(input) {
   const key = normalizeEmail(input.email);
   if (!key) return null;
 
-  const existing = profileCache[key] ?? readLocalProfiles()[key] ?? null;
+  const existing = profileCache[key] ?? null;
+  const explicitPayouts = Array.isArray(input.payoutMethods);
   const existingProvider = normalizeAuthProvider(existing?.authProvider);
   const incomingProvider = normalizeAuthProvider(input.authProvider);
   const existingUid = String(existing?.uid || "").trim();
@@ -317,7 +402,19 @@ export async function upsertCustomerProfile(input) {
     return existing;
   }
 
-  const next = mergeProfile(existing, input);
+  let next = mergeProfile(existing, input);
+  if (explicitPayouts) {
+    rememberPayouts(key, next);
+  } else {
+    const remembered = payoutMemory.get(key);
+    if (!normalizePayoutMethods(next.payoutMethods).length && remembered?.methods?.length) {
+      next = {
+        ...next,
+        payoutMethods: remembered.methods,
+        primaryPayoutMethodId: remembered.primaryId || next.primaryPayoutMethodId || "",
+      };
+    }
+  }
 
   profileCache[key] = next;
   notifyCacheListeners();
@@ -336,7 +433,12 @@ export async function upsertCustomerProfile(input) {
 export async function saveCustomerPayoutMethods(email, { methods, primaryPayoutMethodId, name, uid } = {}) {
   const key = normalizeEmail(email);
   if (!key) throw new Error("A customer email is required to save payout details.");
-  const payoutMethods = normalizePayoutMethods(methods);
+  const existing = getCustomerProfile(key);
+  const remembered = payoutMemory.get(key);
+  const payoutMethods = normalizePayoutMethods(restorePayoutQrUrls(methods, [
+    ...(existing?.payoutMethods || []),
+    ...(remembered?.methods || []),
+  ]));
   return updateCustomerProfile(key, {
     payoutMethods,
     primaryPayoutMethodId: resolvePrimaryPayoutMethodId(payoutMethods, primaryPayoutMethodId),
@@ -347,6 +449,7 @@ export async function saveCustomerPayoutMethods(email, { methods, primaryPayoutM
 
 export async function updateCustomerProfile(email, patch) {
   const existing = getCustomerProfile(email);
+  const patchHasPayouts = Object.prototype.hasOwnProperty.call(patch || {}, "payoutMethods");
   if (!existing) {
     return upsertCustomerProfile({
       email,
@@ -355,7 +458,12 @@ export async function updateCustomerProfile(email, patch) {
       ...patch,
     });
   }
-  return upsertCustomerProfile({ ...existing, email, ...patch });
+  const base = { ...existing, email };
+  if (!patchHasPayouts) {
+    delete base.payoutMethods;
+    delete base.primaryPayoutMethodId;
+  }
+  return upsertCustomerProfile({ ...base, ...patch });
 }
 
 function looksLikeEmail(value) {
@@ -506,20 +614,29 @@ export function CustomersProvider({ children }) {
   const [customers, setCustomers] = useState(() =>
     firebaseEnabled ? [] : localProfilesToRows(readLocalProfiles()),
   );
+  const [cacheRevision, setCacheRevision] = useState(0);
   const seeded = useRef(false);
 
   useEffect(() => {
+    const bump = () => setCacheRevision((value) => value + 1);
+    cacheListeners.add(bump);
+    return () => cacheListeners.delete(bump);
+  }, []);
+
+  useEffect(() => {
+    // Firebase is the source of truth. The local copy strips QR data URLs, and
+    // loading it over the live cache made a saved payout method disappear.
+    if (firebaseEnabled) return undefined;
     const local = readLocalProfiles();
     writeLocalProfiles(local);
     setCacheFromMap(local);
-  }, []);
+    return undefined;
+  }, [firebaseEnabled]);
 
   useEffect(() => {
     if (!firebaseEnabled) {
       const refreshLocal = () => {
-        const local = readLocalProfiles();
-        setCacheFromMap(local);
-        setCustomers(localProfilesToRows(local));
+        setCustomers(localProfilesToRows(profileCache));
       };
       refreshLocal();
       cacheListeners.add(refreshLocal);
@@ -599,11 +716,12 @@ export function CustomersProvider({ children }) {
   const value = useMemo(
     () => ({
       customers,
+      cacheRevision,
       getCustomerProfile,
       listCustomerProfiles: () => customers,
       saveCustomerPayoutMethods,
     }),
-    [customers],
+    [cacheRevision, customers],
   );
 
   return <CustomersContext.Provider value={value}>{children}</CustomersContext.Provider>;

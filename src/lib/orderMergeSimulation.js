@@ -194,6 +194,16 @@ export function defaultMergeSelectionKeys(lines) {
   return (lines || []).filter((line) => !isCompletedMergeLine(line)).map((line) => line.key);
 }
 
+/** True when the lines in a consolidated set are not all on one payment status. */
+export function consolidatedPaymentsDiffer(rows, drafts = {}) {
+  const payments = [];
+  for (const row of rows || []) {
+    const payment = String(drafts?.[row.key]?.payment || row.payment || "").trim();
+    if (payment) payments.push(payment);
+  }
+  return new Set(payments).size > 1;
+}
+
 function trailShowsPastAllocation(order, item) {
   const lineId = item?.id;
   return (order?.trail || []).some((entry) => {
