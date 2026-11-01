@@ -156,17 +156,17 @@ export function compactOrderForFirestore(order) {
       ? {
         mergedSetId: String(slim.mergedSetId),
         mergedAt: slim.mergedAt || null,
-        mergedEmailNote: String(slim.mergedEmailNote || ""),
-        ...(slim.mergedEmailSavedAt ? { mergedEmailSavedAt: String(slim.mergedEmailSavedAt) } : {}),
-        ...(slim.mergedEmailAttachment && typeof slim.mergedEmailAttachment === "object"
-          ? { mergedEmailAttachment: slim.mergedEmailAttachment }
-          : {}),
       }
       : {}),
-    // A single order has no consolidated id. The typed percent still has to be stored,
-    // or a reload rebuilds it from the whole quantity (33.33% of 5 becomes 20%).
+    // A single order has no consolidated id. The percent and the email file still
+    // have to be stored, or a reload drops the file and Send email stays off.
     ...(slim.mergedAllocation && typeof slim.mergedAllocation === "object"
       ? { mergedAllocation: slim.mergedAllocation }
+      : {}),
+    ...(slim.mergedEmailNote ? { mergedEmailNote: String(slim.mergedEmailNote) } : {}),
+    ...(slim.mergedEmailSavedAt ? { mergedEmailSavedAt: String(slim.mergedEmailSavedAt) } : {}),
+    ...(slim.mergedEmailAttachment && typeof slim.mergedEmailAttachment === "object"
+      ? { mergedEmailAttachment: slim.mergedEmailAttachment }
       : {}),
     trail,
     ...(slim.refundDetails && typeof slim.refundDetails === "object"

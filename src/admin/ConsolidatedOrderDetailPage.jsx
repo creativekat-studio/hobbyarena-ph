@@ -330,7 +330,7 @@ export default function ConsolidatedOrderDetailPage() {
   }
 
   function attachmentRemoteUrl(value) {
-    const url = String(value?.url || "");
+    const url = String(value?.url || value?.storageUrl || "");
     return url.startsWith("http") ? url : "";
   }
 
