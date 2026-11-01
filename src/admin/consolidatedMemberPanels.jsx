@@ -361,7 +361,7 @@ function MemberOrderDialog({ order, surfaceBorderColor, onClose }) {
               </TableRow>
               <TableRow>
                 <TableCell colSpan={5} align="right" sx={{ fontWeight: 700, color: "text.secondary" }}>
-                  {allPending ? "Settlement" : netLabel}
+                  {allPending ? "Pending" : netLabel}
                 </TableCell>
                 <TableCell align="right" sx={{ fontFamily: MONO_FONT, fontWeight: 800, whiteSpace: "nowrap" }}>
                   {allPending ? <PendingDash /> : PESO.format(Math.abs(net))}
