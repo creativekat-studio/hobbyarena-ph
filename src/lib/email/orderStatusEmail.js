@@ -376,6 +376,11 @@ function isFullRefundEmail(order) {
   return type === "full_refund_pending" || type === "full_refund_sent";
 }
 
+/** Payment is verified and allocation has not started. The email stops at the downpayment. */
+function paymentVerifiedEmail(order) {
+  return consolidatedStatusEmailType(order) === "deposit_received";
+}
+
 function consolidatedEmailTables(order, { includeSummary = true } = {}) {
   const details = Array.isArray(order?.consolidated?.orderDetails) ? order.consolidated.orderDetails : [];
   const items = Array.isArray(order?.consolidated?.items) ? order.consolidated.items : [];
@@ -384,13 +389,16 @@ function consolidatedEmailTables(order, { includeSummary = true } = {}) {
   const refundDue = includeSummary ? null : individualRefundSettlement(order);
   const individualFullRefund = !includeSummary && isFullRefundEmail(order);
   const settlement = refundDue || consolidatedSettlement(order);
-  const summary = includeSummary ? summaryItemsTable(items) : "";
+  const waitingForAllocation = paymentVerifiedEmail(order);
+  const summary = includeSummary && !waitingForAllocation ? summaryItemsTable(items) : "";
   const lineMode = includeSummary ? null : individualLineTableMode(order);
   const paidRows = (!includeSummary && individualPartialRefundRows(order)) || individualFullAllocationPaidRows(order);
   const detailsHtml = lineMode && items.length
     ? summaryItemsTable(items, { showNewQty: lineMode === "partial", heading: "Order details" })
     : orderDetailsTable(details, totals.totalDp, { showTotal: includeSummary && !paidRows });
-  const totalsHtml = individualFullRefund
+  const totalsHtml = waitingForAllocation
+    ? ""
+    : individualFullRefund
     ? `${totalsBlock([
       { label: downpaymentLabel, value: formatPeso(Number(totals.totalDp) || 0) },
       { label: "Refund:", value: formatPeso(Math.abs(Number(totals.net)) || Number(totals.totalDp) || 0), strong: true },
@@ -1650,7 +1658,8 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
       }
     }
     const refundDue = individualLabels ? individualRefundSettlement(order) : null;
-    if (!individualLabels) {
+    const waitingForAllocation = paymentVerifiedEmail(order);
+    if (!individualLabels && !waitingForAllocation) {
       text.push("", "Summary");
       const summaryItems = order.consolidated?.items || [];
       for (const row of summaryItems) {
@@ -1666,7 +1675,9 @@ export function buildOrderStatusEmail(rawOrder, emailType, options = {}) {
     const settlement = refundDue || consolidatedSettlement(order);
     const paidRows = (individualLabels ? individualPartialRefundRows(order) : null)
       || individualFullAllocationPaidRows(order);
-    if (paidRows) {
+    if (waitingForAllocation) {
+      // Downpayment is already listed with the order details.
+    } else if (paidRows) {
       text.push("");
       for (const row of paidRows) text.push(`${row.label}: ${row.value}`);
     } else {
