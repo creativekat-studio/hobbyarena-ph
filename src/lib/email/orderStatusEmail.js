@@ -529,19 +529,20 @@ function statementSettlementLabel(order, settlement) {
 
 /**
  * Balance due gets Submit Proof. A refund that is still due gets Submit Bank Details.
- * Mixed lines have no single status, so the shown total decides.
- * A refund already sent does not ask for bank details again.
+ * The amount on the email decides. A balance status must not ask for proof when the
+ * total is a refund. A refund already sent does not ask for bank details again.
  */
 function statementActionKind(order, emailType) {
   const statement = emailType === "consolidated_allocation" || emailType === "individual_order";
   const type = statement ? consolidatedStatusEmailType(order) : emailType;
+  if (statement && NO_ACTION_EMAIL_TYPES.has(type)) return null;
+  if (statement) {
+    const settlement = consolidatedSettlement(order);
+    if (!settlement.totalsPending && Number(settlement.net) < 0) return "refund";
+    if (!settlement.totalsPending && Number(settlement.net) > 0) return "balance";
+  }
   if (REFUND_ACTION_EMAIL_TYPES.has(type)) return "refund";
   if (BALANCE_ACTION_EMAIL_TYPES.has(type)) return "balance";
-  if (!statement || NO_ACTION_EMAIL_TYPES.has(type)) return null;
-  const settlement = consolidatedSettlement(order);
-  if (settlement.totalsPending) return null;
-  if (Number(settlement.net) > 0) return "balance";
-  if (Number(settlement.net) < 0) return "refund";
   return null;
 }
 
@@ -1255,25 +1256,37 @@ function statementMessage(order, { plural = false } = {}) {
       body: `We have not received payment for ${noun}, so the stock has been released.`,
     },
   };
-  const message = messages[type];
-  if (message) return { milestone: type, ...message };
-
   const settlement = consolidatedSettlement(order);
   const amount = formatPeso(Math.abs(Number(settlement.net) || 0));
+  const refundInstead = !settlement.totalsPending
+    && Number(settlement.net) < 0
+    && (type === "balance_due_full" || type === "balance_due_partial");
+  const message = messages[type];
+  if (message && !refundInstead) return { milestone: type, ...message };
+
+  if (!settlement.totalsPending && Number(settlement.net) < 0) {
+    const allocated = Number(order?.consolidated?.totals?.newTotal) || 0;
+    if (allocated <= 0) {
+      return {
+        milestone: "full_refund_pending",
+        subject: `Refund due — ${id}`,
+        title: "Refund due",
+        body: `Refund due: ${amount}. We will refund the full deposit for ${noun}. None of it was allocated.`,
+      };
+    }
+    return {
+      milestone: "partial_refund_pending",
+      subject: `Refund due — ${id}`,
+      title: "Refund due",
+      body: `Refund due: ${amount}. Part of ${noun} was allocated.`,
+    };
+  }
   if (!settlement.totalsPending && Number(settlement.net) > 0) {
     return {
       milestone: null,
       subject: `Balance due — ${id}`,
       title: "Balance due",
       body: `Balance due: ${amount}. Please pay the remaining balance for ${noun}.`,
-    };
-  }
-  if (!settlement.totalsPending && Number(settlement.net) < 0) {
-    return {
-      milestone: null,
-      subject: `Refund due — ${id}`,
-      title: "Refund due",
-      body: `Refund due: ${amount} for ${noun}.`,
     };
   }
   return {

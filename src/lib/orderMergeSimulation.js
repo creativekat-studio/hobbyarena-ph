@@ -76,7 +76,8 @@ export function suggestedFinalAllocation(quantity, allocationPercent) {
   const qty = Math.max(0, Number(quantity) || 0);
   const pct = Math.max(0, Number(allocationPercent) || 0);
   const raw = qty * (pct / 100);
-  return Math.max(0, Math.min(qty, Math.floor(raw + 1e-9)));
+  // Whole units. Floor made 10% of 5 (0.5) into 0, so only 0% and 100% appeared to save.
+  return Math.max(0, Math.min(qty, Math.round(raw)));
 }
 
 export function rawAllocation(quantity, allocationPercent) {
