@@ -540,6 +540,12 @@ function statementSettlementLabel(order, settlement) {
 function statementActionKind(order, emailType) {
   const statement = emailType === "consolidated_allocation" || emailType === "individual_order";
   const type = statement ? consolidatedStatusEmailType(order) : emailType;
+  if (type === "payment_rejected") {
+    if (!statement) return null;
+    const settlement = consolidatedSettlement(order);
+    if (!settlement.totalsPending && Number(settlement.net) < 0) return "refund";
+    return null;
+  }
   if (statement && NO_ACTION_EMAIL_TYPES.has(type)) return null;
   if (statement) {
     const settlement = consolidatedSettlement(order);
@@ -1260,6 +1266,11 @@ function statementMessage(order, { plural = false } = {}) {
       title: "We haven't received your payment",
       body: `We have not received payment for ${noun}, so the stock has been released.`,
     },
+    payment_rejected: {
+      subject: `Payment rejected — ${id}`,
+      title: "Payment rejected",
+      body: `We could not accept the payment for ${noun}, so the stock has been released.`,
+    },
   };
   const settlement = consolidatedSettlement(order);
   const amount = formatPeso(Math.abs(Number(settlement.net) || 0));
@@ -1267,7 +1278,16 @@ function statementMessage(order, { plural = false } = {}) {
     && Number(settlement.net) < 0
     && (type === "balance_due_full" || type === "balance_due_partial");
   const message = messages[type];
-  if (message && !refundInstead) return { milestone: type, ...message };
+  if (message && !refundInstead) {
+    if (type === "payment_rejected" && !settlement.totalsPending && Number(settlement.net) < 0) {
+      return {
+        milestone: type,
+        ...message,
+        body: `${message.body} Refund due: ${amount}.`,
+      };
+    }
+    return { milestone: type, ...message };
+  }
 
   if (!settlement.totalsPending && Number(settlement.net) < 0) {
     const allocated = Number(order?.consolidated?.totals?.newTotal) || 0;
@@ -1546,6 +1566,21 @@ const TEMPLATES = {
       return `We have <strong>not received your payment</strong> for this order, so we can <strong>no longer hold the stock</strong> for you — it has been released and may be purchased by other customers. If you still want the item, please place a new order while stock lasts. If you've already paid, upload proof via your account or Hobby Arena PH and we'll sort it out.`;
     },
     footer: "Stock is not reserved until payment is confirmed.",
+  },
+  payment_rejected: {
+    subject: (order) => {
+      const item = getUpdatedItem(order);
+      return item
+        ? `Payment rejected — ${itemLabel(item)} — ${order.id}`
+        : `Payment rejected — ${order.id}`;
+    },
+    preheader: "We could not accept the payment — the stock was released.",
+    title: "Payment rejected",
+    lead: (order) => `Hello <strong>${escapeHtml(order.customer)}</strong>,`,
+    body: () => {
+      return `We could <strong>not accept the payment</strong> for this order, so we can <strong>no longer hold the stock</strong> for you — it has been released. If money left your account, we will refund it. If you still want the item, please place a new order.`;
+    },
+    footer: "Stock is not reserved once a payment is rejected.",
   },
   consolidated_allocation: {
     subject: (order) => consolidatedMessage(order).subject,

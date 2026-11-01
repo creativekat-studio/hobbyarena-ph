@@ -50,6 +50,10 @@ export function resolveOrderStatusEmailType(prev, next) {
     return "payment_not_received";
   }
 
+  if (nextPayment === "Rejected" && prevPayment !== "Rejected" && paymentChanged(prev, next)) {
+    return "payment_rejected";
+  }
+
   if (!isPreorder) {
     if (
       nextPayment === "Fully Paid"
@@ -142,6 +146,7 @@ export function resolveOrderStatusEmailTypeForCurrentState(item) {
   const isPreorder = resolveOrderKindForItem(item) === "Pre-order";
 
   if (payment === "Unpaid") return "payment_not_received";
+  if (payment === "Rejected") return "payment_rejected";
 
   if (!isPreorder) {
     if (payment === "Fully Paid" && status === "Awaiting Stock") return "deposit_received";
@@ -186,6 +191,7 @@ export const ORDER_STATUS_EMAIL_LABELS = {
   order_fulfilled: "Order fulfilled",
   full_refund_sent: "Full refund sent",
   payment_not_received: "Payment not received (stock released)",
+  payment_rejected: "Payment rejected",
   consolidated_allocation: "Consolidated Order",
   individual_order: "Individual order",
 };
