@@ -361,7 +361,11 @@ function consolidatedSettlement(order) {
   const type = consolidatedStatusEmailType(order);
   const items = Array.isArray(order?.consolidated?.items) ? order.consolidated.items : [];
   const totalsPending = items.length > 0 && items.every((item) => itemAllocationPending(item));
-  if (type === "ready_for_pickup" || type === "order_fulfilled" || type === "partial_refund_sent") {
+  if (type === "partial_refund_sent") {
+    const refund = individualAmounts(order).refund || Math.abs(consolidatedNet(order));
+    return { totalsPending: false, net: -Math.abs(refund), netLabel: "Refunded" };
+  }
+  if (type === "ready_for_pickup" || type === "order_fulfilled") {
     return { totalsPending: false, net: 0, netLabel: "Settled" };
   }
   return {
@@ -521,6 +525,7 @@ const NO_ACTION_EMAIL_TYPES = new Set([
 function statementSettlementLabel(order, settlement) {
   const type = consolidatedStatusEmailType(order);
   if (type === "full_refund_sent") return "Refund";
+  if (type === "partial_refund_sent") return "Refunded";
   if (settlement?.totalsPending) return "Pending";
   if (Number(settlement?.net) > 0) return "Balance due";
   if (Number(settlement?.net) < 0) return "Refund due";
