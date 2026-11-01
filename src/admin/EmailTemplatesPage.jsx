@@ -79,6 +79,7 @@ const SAMPLE_STATES = {
   order_fulfilled: { payment: "Fully Paid", status: "Fulfilled", balanceDue: 0, refundAmount: 0, allocatedQty: 5 },
   full_refund_sent: { payment: "Refunded", status: "Refunded", balanceDue: 0, refundAmount: 450, allocatedQty: 0 },
   payment_not_received: { payment: "Unpaid", status: "Awaiting Stock", balanceDue: 0, refundAmount: 0, allocatedQty: 0 },
+  payment_rejected: { payment: "Rejected", status: "For Full Refund", balanceDue: 0, refundAmount: 450, allocatedQty: 0 },
   consolidated_allocation: { payment: "For Partial Refund", status: "Partially Fulfilled & For Refund", balanceDue: 0, refundAmount: 30360, allocatedQty: 2 },
   individual_order: { payment: "Mixed", status: "Mixed", balanceDue: 0, refundAmount: 2760, allocatedQty: 5 },
 };
@@ -97,6 +98,8 @@ const STATEMENT_SCENARIOS = {
     { id: "full_refund", label: "Full refund due" },
     { id: "ready", label: "Ready for pickup" },
     { id: "verified", label: "Payment verified" },
+    { id: "rejected", label: "Payment rejected" },
+    { id: "unpaid", label: "Payment not received" },
   ],
   consolidated_allocation: [
     { id: "same_balance", label: "Same status — balance due" },
@@ -106,8 +109,13 @@ const STATEMENT_SCENARIOS = {
     { id: "full_refund", label: "Full refund due" },
     { id: "ready", label: "Ready for pickup" },
     { id: "verified", label: "Payment verified" },
+    { id: "rejected", label: "Payment rejected" },
+    { id: "unpaid", label: "Payment not received" },
   ],
 };
+
+/** Templates still edited here. Older per-status templates stay in the send path. */
+const VISIBLE_EMAIL_TYPES = ["individual_order", "consolidated_allocation"];
 
 function statementSample(recipientEmail, { id, statusEmailType = "", details, items, totals }) {
   const orderIds = [...new Set(details.map((row) => row.orderId))];
@@ -231,6 +239,24 @@ function scenarioOrder(recipientEmail, emailType, scenario) {
       details: one ? [boxDetail(orderA), tinDetail(orderA)] : [boxDetail(orderA), tinDetail(orderB)],
       items: [fullBox, fullTin],
       totals: { newTotal: 101200, totalDp: 30360, net: 0, netLabel: "Settled" },
+    });
+  }
+  if (scenario === "rejected") {
+    return statementSample(recipientEmail, {
+      id: setId,
+      statusEmailType: "payment_rejected",
+      details: one ? [boxDetail(orderA)] : [boxDetail(orderA), tinDetail(orderB)],
+      items: one ? [zeroBox] : [zeroBox, zeroTin],
+      totals: { newTotal: 0, totalDp: one ? 13800 : 30360, net: one ? -13800 : -30360, netLabel: "Refund due" },
+    });
+  }
+  if (scenario === "unpaid") {
+    return statementSample(recipientEmail, {
+      id: setId,
+      statusEmailType: "payment_not_received",
+      details: one ? [boxDetail(orderA)] : [boxDetail(orderA), tinDetail(orderB)],
+      items: one ? [pendingBox] : [pendingBox, product(SAMPLE_TIN, 6, 16560, 0, 0, 0, { allocationPending: true })],
+      totals: { newTotal: 0, totalDp: one ? 13800 : 30360, net: 0, netLabel: "Settled" },
     });
   }
   return statementSample(recipientEmail, {
@@ -1382,7 +1408,7 @@ export default function EmailTemplatesPage() {
   const { admin } = useAuth();
   const [testEmail, setTestEmail] = useState(admin?.email || "");
   const [feedback, setFeedback] = useState(null);
-  const [activeType, setActiveType] = useState(EMAIL_TYPES[0]);
+  const [activeType, setActiveType] = useState(VISIBLE_EMAIL_TYPES[0]);
   const [scenarioByType, setScenarioByType] = useState({
     individual_order: "several_balance",
     consolidated_allocation: "mixed_balance",
@@ -1414,7 +1440,10 @@ export default function EmailTemplatesPage() {
 
   const draft = drafts[activeType] ?? "";
 
-  const emailTypes = useMemo(() => EMAIL_TYPES, []);
+  const emailTypes = useMemo(() => VISIBLE_EMAIL_TYPES, []);
+  useEffect(() => {
+    if (!emailTypes.includes(activeType)) setActiveType(emailTypes[0]);
+  }, [activeType, emailTypes]);
 
   function setDraftForActive(value) {
     setDrafts((prev) => ({ ...prev, [activeType]: value }));
