@@ -1854,6 +1854,11 @@ export function ConsolidatedOrderView({
           if (value !== "" && !/^\d*\.?\d*$/.test(value)) return;
           setAllocationTouched(true);
           setPercentByProduct((prev) => ({ ...prev, [productKey]: value }));
+          setNewQtyByProduct((prev) => {
+            const next = { ...prev };
+            delete next[productKey];
+            return next;
+          });
         }}
         onNewQtyChange={(productKey, value) => {
           setAllocationTouched(true);
