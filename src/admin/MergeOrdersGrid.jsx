@@ -1184,7 +1184,7 @@ export function MergeWorkbookView({
               },
               {
                 key: "net",
-                label: allPending ? "Settlement:" : `${netLabel}:`,
+                label: allPending ? "Pending:" : `${netLabel}:`,
                 value: allPending ? "—" : PESO.format(Math.abs(net)),
                 color: allPending ? "text.secondary" : moneyColor(net),
                 emphasis: true,
@@ -2013,7 +2013,7 @@ export function MergedOrdersPanel({
           <AdminGridHeaderLabel>Customer</AdminGridHeaderLabel>
           <AdminGridHeaderLabel>Orders</AdminGridHeaderLabel>
           <AdminGridHeaderLabel>New Total</AdminGridHeaderLabel>
-          <AdminGridHeaderLabel>Settlement</AdminGridHeaderLabel>
+          <AdminGridHeaderLabel>Balance</AdminGridHeaderLabel>
           <AdminGridHeaderLabel>Email sent</AdminGridHeaderLabel>
           <Box />
         </Box>

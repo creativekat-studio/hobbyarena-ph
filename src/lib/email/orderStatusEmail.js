@@ -349,7 +349,7 @@ function presentationTotalsBlock({ newTotal, totalDp, net, netLabel, totalsPendi
     { label: totalLabel, value: totalsPending ? dashMarkup() : formatPeso(newTotal) },
     { label: downpaymentLabel, value: formatPeso(totalDp) },
     {
-      label: `${totalsPending ? "Settlement" : netLabel}:`,
+      label: `${totalsPending ? "Pending" : netLabel}:`,
       value: totalsPending ? dashMarkup() : formatPeso(Math.abs(net)),
       strong: true,
     },
@@ -513,7 +513,7 @@ const NO_ACTION_EMAIL_TYPES = new Set([
 function statementSettlementLabel(order, settlement) {
   const type = consolidatedStatusEmailType(order);
   if (type === "full_refund_sent") return "Refund";
-  if (settlement?.totalsPending) return "Settlement";
+  if (settlement?.totalsPending) return "Pending";
   if (Number(settlement?.net) > 0) return "Balance due";
   if (Number(settlement?.net) < 0) return "Refund due";
   return settlement?.netLabel || "Settled";
