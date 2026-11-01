@@ -150,11 +150,6 @@ export default function NewConsolidatedOrderPage() {
   function setProductPercent(productKey, value) {
     if (value !== "" && !/^\d*\.?\d*$/.test(value)) return;
     setPercentByProduct((prev) => ({ ...prev, [productKey]: value }));
-    setNewQtyByProduct((prev) => {
-      const next = { ...prev };
-      delete next[productKey];
-      return next;
-    });
   }
 
   function writeSimulation() {

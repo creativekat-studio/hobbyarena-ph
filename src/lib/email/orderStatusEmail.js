@@ -180,9 +180,9 @@ function itemAllocationPending(item) {
 }
 
 function formatAllocationPercent(pct) {
-  const rounded = Math.round(Number(pct) * 100) / 100;
-  if (!Number.isFinite(rounded)) return "0%";
-  return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(2)}%`;
+  const value = Number(pct);
+  if (!Number.isFinite(value)) return "0%";
+  return `${String(value)}%`;
 }
 
 function allocationCell(item) {

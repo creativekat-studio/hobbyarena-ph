@@ -336,7 +336,7 @@ function MemberOrderDialog({ order, surfaceBorderColor, onClose }) {
                     <TableCell align="center" sx={{ fontFamily: MONO_FONT }}>{row.totalQty}</TableCell>
                     <TableCell align="right" sx={{ fontFamily: MONO_FONT, whiteSpace: "nowrap" }}>{PESO.format(row.totalDp)}</TableCell>
                     <TableCell align="center" sx={{ fontFamily: MONO_FONT }}>
-                      {pending ? <PendingAllocLabel /> : `${Number(row.allocationPercent || 0).toFixed(2)}%`}
+                      {pending ? <PendingAllocLabel /> : `${String(Number(row.allocationPercent) || 0)}%`}
                     </TableCell>
                     <TableCell align="center" sx={{ fontFamily: MONO_FONT }}>
                       {pending ? <PendingDash /> : row.newQty}
