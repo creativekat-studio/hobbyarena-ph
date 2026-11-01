@@ -76,8 +76,7 @@ export function suggestedFinalAllocation(quantity, allocationPercent) {
   const qty = Math.max(0, Number(quantity) || 0);
   const pct = Math.max(0, Number(allocationPercent) || 0);
   const raw = qty * (pct / 100);
-  // Whole units. Floor made 10% of 5 (0.5) into 0, so only 0% and 100% appeared to save.
-  return Math.max(0, Math.min(qty, Math.round(raw)));
+  return Math.max(0, Math.min(qty, Math.floor(raw + 1e-9)));
 }
 
 export function rawAllocation(quantity, allocationPercent) {
@@ -428,7 +427,7 @@ export function carriedAllocationFromOrders(orders) {
     const percent = Number(row.allocationPercent) || 0;
     const newQty = Number(row.newQty) || 0;
     if (!(percent > 0) && !(newQty > 0)) continue;
-    percentByProduct[row.productKey] = String(Math.round(percent * 100) / 100);
+    percentByProduct[row.productKey] = String(percent);
     newQtyByProduct[row.productKey] = String(newQty);
   }
   return { percentByProduct, newQtyByProduct };

@@ -1121,11 +1121,11 @@ export function MergeWorkbookView({
                     inputProps={{ "aria-label": `Allocation percent for ${row.name}` }}
                     placeholder="0"
                     InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
-                    sx={{ maxWidth: 96, mx: "auto" }}
+                    sx={{ maxWidth: 128, mx: "auto" }}
                   />
                 ) : (
                   <Typography sx={{ fontFamily: MONO_FONT, fontSize: "0.8rem", textAlign: "center" }}>
-                    {Number(row.allocationPercent || 0).toFixed(2)}%
+                    {String(Number(row.allocationPercent) || 0)}%
                   </Typography>
                 ),
                 newQty: showPending ? pendingValue("center") : showInputs ? (
@@ -1854,11 +1854,6 @@ export function ConsolidatedOrderView({
           if (value !== "" && !/^\d*\.?\d*$/.test(value)) return;
           setAllocationTouched(true);
           setPercentByProduct((prev) => ({ ...prev, [productKey]: value }));
-          setNewQtyByProduct((prev) => {
-            const next = { ...prev };
-            delete next[productKey];
-            return next;
-          });
         }}
         onNewQtyChange={(productKey, value) => {
           setAllocationTouched(true);
