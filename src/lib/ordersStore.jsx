@@ -752,8 +752,14 @@ export function OrdersProvider({ children }) {
       let payload;
       if (list.length === 1 && !extras.keepConsolidated) {
         const only = list[0];
-        const items = getOrderLineItems(only);
-        const types = items.map((item) => resolveOrderStatusEmailTypeForCurrentState(item));
+        const emailedLines = Array.isArray(workbook?.orderDetails) ? workbook.orderDetails : [];
+        const types = emailedLines.length
+          ? emailedLines.map((line) => resolveOrderStatusEmailTypeForCurrentState({
+            payment: line.payment,
+            status: line.status,
+            tag: line.tag || line.kind,
+          }))
+          : getOrderLineItems(only).map((item) => resolveOrderStatusEmailTypeForCurrentState(item));
         if (!types.some(Boolean)) {
           throw new Error("No status email matches this order's payment and status.");
         }
