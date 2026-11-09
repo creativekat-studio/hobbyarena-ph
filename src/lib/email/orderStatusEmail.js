@@ -95,14 +95,20 @@ function individualPartialRefundRows(order) {
 function individualFullAllocationPaidRows(order) {
   const type = consolidatedStatusEmailType(order);
   if (type !== "ready_for_pickup" && type !== "order_fulfilled") return null;
-  if (!orderIsFullyAllocated(order)) return null;
   const totals = order?.consolidated?.totals || {};
   const allocated = Number(totals.newTotal) || 0;
   const deposit = Number(totals.totalDp) || 0;
+  // A partial allocation can still have a balance that was paid. The 70% label
+  // is only true when the whole order was allocated.
+  if (!(allocated > deposit + 0.5)) return null;
   const balancePaid = Math.max(0, allocated - deposit);
+  const full = orderIsFullyAllocated(order);
   return [
     { label: `Deposit paid (${shownPercent(depositPercentOf(order))}%)`, value: formatPeso(deposit) },
-    { label: `Balance paid (${shownPercent(balancePercentOf(order))}%)`, value: formatPeso(balancePaid) },
+    {
+      label: full ? `Balance paid (${shownPercent(balancePercentOf(order))}%)` : "Balance paid",
+      value: formatPeso(balancePaid),
+    },
     { label: "Total (allocated)", value: formatPeso(allocated), strong: true },
   ];
 }
@@ -360,12 +366,18 @@ function presentationTotalsBlock({ newTotal, totalDp, net, netLabel, totalsPendi
 function consolidatedSettlement(order) {
   const type = consolidatedStatusEmailType(order);
   const items = Array.isArray(order?.consolidated?.items) ? order.consolidated.items : [];
-  const totalsPending = items.length > 0 && items.every((item) => itemAllocationPending(item));
+  // One line still awaiting stock must not turn the rest of the email into a balance or a refund.
+  const totalsPending = items.length > 0 && items.some((item) => itemAllocationPending(item));
   if (type === "partial_refund_sent") {
     const refund = individualAmounts(order).refund || Math.abs(consolidatedNet(order));
     return { totalsPending: false, net: -Math.abs(refund), netLabel: "Refunded" };
   }
   if (type === "ready_for_pickup" || type === "order_fulfilled") {
+    const totals = order?.consolidated?.totals || {};
+    const allocated = Number(totals.newTotal) || 0;
+    const deposit = Number(totals.totalDp) || 0;
+    const gap = allocated - deposit;
+    if (gap < -0.5) return { totalsPending: false, net: gap, netLabel: "Refunded" };
     return { totalsPending: false, net: 0, netLabel: "Settled" };
   }
   return {
@@ -526,6 +538,9 @@ function statementSettlementLabel(order, settlement) {
   const type = consolidatedStatusEmailType(order);
   if (type === "full_refund_sent") return "Refund";
   if (type === "partial_refund_sent") return "Refunded";
+  if ((type === "ready_for_pickup" || type === "order_fulfilled") && Number(settlement?.net) < 0) {
+    return "Refunded";
+  }
   if (settlement?.totalsPending) return "Pending";
   if (Number(settlement?.net) > 0) return "Balance due";
   if (Number(settlement?.net) < 0) return "Refund due";
@@ -1289,28 +1304,30 @@ function statementMessage(order, { plural = false } = {}) {
     return { milestone: type, ...message };
   }
 
+  // The ticked lines do not share one status, so the title stays an update.
+  // The totals row and the button still follow the money. What's next stays off.
   if (!settlement.totalsPending && Number(settlement.net) < 0) {
     const allocated = Number(order?.consolidated?.totals?.newTotal) || 0;
     if (allocated <= 0) {
       return {
-        milestone: "full_refund_pending",
-        subject: `Refund due — ${id}`,
-        title: "Refund due",
+        milestone: null,
+        subject: `Order update — ${id}`,
+        title: "Order update",
         body: `Refund due: ${amount}. We will refund the full deposit for ${noun}. None of it was allocated.`,
       };
     }
     return {
-      milestone: "partial_refund_pending",
-      subject: `Refund due — ${id}`,
-      title: "Refund due",
+      milestone: null,
+      subject: `Order update — ${id}`,
+      title: "Order update",
       body: `Refund due: ${amount}. Part of ${noun} was allocated.`,
     };
   }
   if (!settlement.totalsPending && Number(settlement.net) > 0) {
     return {
       milestone: null,
-      subject: `Balance due — ${id}`,
-      title: "Balance due",
+      subject: `Order update — ${id}`,
+      title: "Order update",
       body: `Balance due: ${amount}. Please pay the remaining balance for ${noun}.`,
     };
   }

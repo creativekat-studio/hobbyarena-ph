@@ -206,6 +206,7 @@ export function consolidatedPaymentsDiffer(rows, drafts = {}) {
 
 function trailShowsPastAllocation(order, item) {
   const lineId = item?.id;
+  const lineCount = getOrderLineItems(order).length;
   return (order?.trail || []).some((entry) => {
     if (!entry) return false;
     if (entry.lineItemId && lineId && entry.lineItemId !== lineId) {
@@ -213,6 +214,9 @@ function trailShowsPastAllocation(order, item) {
       if (!emailed) return false;
       return !isPendingAllocationState(emailed.payment, emailed.status);
     }
+    // A status saved without a line id belongs to one line. On a multi-item
+    // order it must not lock the other lines that are still awaiting stock.
+    if (!entry.lineItemId && lineCount > 1) return false;
     if (!entry.status && !entry.payment) return false;
     return !isPendingAllocationState(entry.payment, entry.status);
   });
@@ -451,6 +455,17 @@ export function allocationMetaFromOrders(orders) {
   return meta;
 }
 
+/** Rejected, refunded, and full-refund lines keep no allocation, so a saved percent must not sit next to qty 0. */
+function lineForcesZeroAllocation(line) {
+  const payment = migratePaymentStatus(line?.payment);
+  const status = migrateOrderStatus(line?.status);
+  return payment === "Rejected"
+    || payment === "Refunded"
+    || payment === "For Full Refund"
+    || status === "Refunded"
+    || status === "For Full Refund";
+}
+
 export function buildLiveMergeWorkbook(orders, { includeKeys } = {}) {
   const liveRows = [];
   for (const order of orders || []) {
@@ -492,8 +507,12 @@ export function buildLiveMergeWorkbook(orders, { includeKeys } = {}) {
     const newQty = productLines.reduce((sum, line) => sum + line.finalAllocation, 0);
     const newAmount = roundMoney(productLines.reduce((sum, line) => sum + line.newAmount, 0));
     const totalDp = roundMoney(productLines.reduce((sum, line) => sum + line.dpAmount, 0));
+    const cleared = newQty <= 0
+      && productLines.length > 0
+      && productLines.every(lineForcesZeroAllocation);
     return {
       ...product,
+      allocationPercent: cleared ? 0 : product.allocationPercent,
       newQty,
       newAmount,
       totalDp,
