@@ -26,6 +26,10 @@ import {
   ORDER_STATUS_EMAIL_LABELS,
   resolveOrderStatusEmailTypeForCurrentState,
 } from "../lib/orderEmailTriggers.js";
+import { buildOrderStatusEmail } from "../lib/email/orderStatusEmail.js";
+import { freezeAdminEmailPreview } from "../lib/email/emailTemplate.js";
+import { buildConsolidatedEmailOrder, buildLiveMergeWorkbook } from "../lib/orderMergeSimulation.js";
+import { getActionNotes, getEmailBodyOverride, getEmailSubjectOverride, getPreorderReminderConfig, getShowMessengerButton } from "../lib/emailTemplatesStore.js";
 import { MONO_FONT } from "../theme.js";
 import { ExpandCornersIcon, TrashIcon } from "../components/icons.jsx";
 import { PESO } from "../components/ProductCard.jsx";
@@ -442,38 +446,6 @@ function emailTrailStatusLine(entry, emailLineItems, order) {
   return [payment, status, setId].filter(Boolean).join(" · ");
 }
 
-function emailTrailLineItemText(row) {
-  const baseName = shortLineItemName(row.lineItemName || "");
-  if (!baseName) return "";
-
-  const legacyQtyMatch = String(row.lineItemName || "").match(/ ×(\d+)$/);
-  const qty = Math.max(1, Number(row.quantity) || (legacyQtyMatch ? Number(legacyQtyMatch[1]) : 1));
-  const allocated = Math.max(0, Number(row.allocatedQty) || 0);
-  const status = migrateOrderStatus(row.status);
-  const showAllocatedOfOrdered = [
-    "Fulfilled",
-    "Ready for Pickup",
-    ALLOCATION_FULFILLED_PAY_BALANCE,
-    "Partially Fulfilled & Pay Balance",
-    "Partially Fulfilled & For Refund",
-  ].includes(status);
-
-  // Before allocation: just ordered qty — never a confusing bare "/ 0".
-  if (allocated <= 0) {
-    if (status === "For Full Refund" || status === "Refunded") {
-      return `- ${baseName} · 0 of ${qty}`;
-    }
-    return `- ${baseName} ×${qty}`;
-  }
-
-  // Fulfilled / ready / partial — always show allocated of ordered (e.g. 8 of 10, 10 of 10).
-  if (showAllocatedOfOrdered || allocated < qty) {
-    return `- ${baseName} · ${allocated} of ${qty}`;
-  }
-
-  return `- ${baseName} ×${qty}`;
-}
-
 function orderTrailSuffix(selectedItemId, activeLineItem, lineItems) {
   if (lineItems.length <= 1 && lineItems[0]) {
     return shortLineItemLabel(lineItems[0]);
@@ -504,7 +476,114 @@ function trailMetaLine(entry) {
 
 const MOBILE_TRAIL_PREVIEW_COUNT = 3;
 
-function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment, onUploadProof, order, lineItemLabel, lineItems = [], trail = [], uploading, dense = false }) {
+function patchOrderFromEmailSnapshot(order, entry) {
+  const snap = new Map(
+    (entry?.emailLineItems || [])
+      .filter((row) => row?.lineItemId)
+      .map((row) => [row.lineItemId, row]),
+  );
+  const live = getOrderLineItems(order);
+  const lineItems = (snap.size ? live.filter((item) => snap.has(item.id)) : live).map((item) => {
+    const row = snap.get(item.id);
+    if (!row) return item;
+    return {
+      ...item,
+      payment: row.payment || item.payment,
+      status: row.status || item.status,
+      allocatedQty: Number(row.allocatedQty) || 0,
+      quantity: Number(row.quantity) || item.quantity,
+    };
+  });
+  return lineItems.length ? { ...order, lineItems } : null;
+}
+
+function consolidatedSendOrders(order, entry, relatedOrders) {
+  const sentAt = new Date(entry?.at).getTime();
+  const pool = relatedOrders?.length ? relatedOrders : [order];
+  const matched = pool.map((member) => {
+    if (member.id === order.id) return patchOrderFromEmailSnapshot(member, entry);
+    const sibling = (member.trail || []).find((row) => {
+      if (row.emailType !== entry.emailType) return false;
+      const delta = Math.abs(new Date(row.at).getTime() - sentAt);
+      return Number.isFinite(delta) && delta < 8000;
+    });
+    return sibling ? patchOrderFromEmailSnapshot(member, sibling) : null;
+  }).filter(Boolean);
+  return matched.length ? matched : [patchOrderFromEmailSnapshot(order, entry)].filter(Boolean);
+}
+
+function rebuiltEmailPreview(order, entry, relatedOrders = []) {
+  const emailType = entry?.emailType;
+  if (!emailType || !order) return null;
+  const options = {
+    bodyOverride: getEmailBodyOverride(emailType),
+    subjectOverride: getEmailSubjectOverride(emailType),
+    reminder: getPreorderReminderConfig(),
+    showMessengerButton: getShowMessengerButton(emailType),
+    actionNotes: getActionNotes(emailType),
+  };
+  if (emailType === "individual_order" || emailType === "consolidated_allocation") {
+    const patchedOrders = emailType === "consolidated_allocation"
+      ? consolidatedSendOrders(order, entry, relatedOrders)
+      : [patchOrderFromEmailSnapshot(order, entry)].filter(Boolean);
+    if (!patchedOrders.length) return null;
+    const built = buildConsolidatedEmailOrder(patchedOrders, buildLiveMergeWorkbook(patchedOrders));
+    const orderId = emailType === "individual_order" ? String(order.id || "") : built.id;
+    const emailOrder = emailType === "individual_order"
+      ? {
+          ...built,
+          id: orderId,
+          consolidated: {
+            ...built.consolidated,
+            id: orderId,
+            statusEmailType: built.statusEmailType,
+          },
+        }
+      : built;
+    return buildOrderStatusEmail(emailOrder, emailType, options);
+  }
+  const patched = patchOrderFromEmailSnapshot(order, entry);
+  if (!patched) return null;
+  return buildOrderStatusEmail(patched, emailType, options);
+}
+
+function EmailPreviewDialog({ open, preview, onClose }) {
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2, pr: 1 }}>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography component="span" sx={{ fontWeight: 800, fontSize: "1rem" }}>
+            {preview?.subject || "Email preview"}
+          </Typography>
+          {preview?.rebuilt ? (
+            <Typography sx={{ color: "text.secondary", fontSize: "0.75rem", mt: 0.35 }}>
+              Rebuilt from the items recorded on this send.
+            </Typography>
+          ) : null}
+        </Box>
+        <IconButton onClick={onClose} size="small" aria-label="Close email preview">
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent dividers sx={{ p: 0 }}>
+        {preview?.html ? (
+          <Box
+            component="iframe"
+            title="Email the customer received"
+            srcDoc={freezeAdminEmailPreview(preview.html)}
+            sx={{ width: "100%", minHeight: { xs: 420, sm: 560 }, border: 0, bgcolor: "#fff" }}
+          />
+        ) : (
+          <Typography sx={{ p: 3, color: "text.secondary" }}>
+            This send does not have a saved preview.
+          </Typography>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment, onUploadProof, order, relatedOrders = [], lineItemLabel, lineItems = [], trail = [], uploading, dense = false }) {
   const meta = trailMetaLine(entry);
   const isEmailEntry = isEmailTrailEntry(entry);
   const emailLineItems = isEmailEntry ? resolveEmailTrailLineItems(entry, lineItems, trail) : [];
@@ -513,6 +592,19 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
   const showAttachment = trailEntryShowsAttachment(entry);
   const proofPurged = Boolean(entry.attachment?.purged);
   const canView = showAttachment && !proofPurged && Boolean(resolveProofAttachmentUrl(order, entry));
+  const [emailPreviewOpen, setEmailPreviewOpen] = useState(false);
+  const [emailPreview, setEmailPreview] = useState(null);
+
+  function openEmailPreview() {
+    const stored = entry.emailPreview?.html ? entry.emailPreview : null;
+    const rebuilt = stored ? null : rebuiltEmailPreview(order, entry, relatedOrders);
+    setEmailPreview(stored
+      ? { subject: stored.subject, html: stored.html, rebuilt: false }
+      : rebuilt?.html
+        ? { subject: rebuilt.subject, html: rebuilt.html, rebuilt: true }
+        : null);
+    setEmailPreviewOpen(true);
+  }
 
   return (
     <Stack
@@ -572,59 +664,72 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
           p: { xs: dense ? 1.1 : 1.25, sm: 1.5 },
         }}
       >
-        <Typography sx={{ fontWeight: 700, fontSize: { xs: "0.8rem", sm: "0.84rem" }, lineHeight: 1.35 }}>
-          {isEmailEntry ? emailTrailHeadline(entry) : trailEntryTitle(entry, order)}
-          {meta && !isEmailEntry ? (
-            <Typography component="span" sx={{ fontWeight: 500, color: "text.secondary", fontFamily: MONO_FONT, fontSize: "0.72rem" }}>
-              {" "}· {meta}
+        <Stack direction="row" spacing={1.5} alignItems="center" justifyContent="space-between">
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography sx={{ fontWeight: 700, fontSize: { xs: "0.8rem", sm: "0.84rem" }, lineHeight: 1.35 }}>
+              {isEmailEntry ? emailTrailHeadline(entry) : trailEntryTitle(entry, order)}
+              {meta && !isEmailEntry ? (
+                <Typography component="span" sx={{ fontWeight: 500, color: "text.secondary", fontFamily: MONO_FONT, fontSize: "0.72rem" }}>
+                  {" "}· {meta}
+                </Typography>
+              ) : null}
             </Typography>
-          ) : null}
-        </Typography>
 
-        {isEmailEntry ? (
-          <Stack spacing={0.35} sx={{ mt: 0.5 }}>
-            {emailStatusLine ? (
-              <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontFamily: MONO_FONT, lineHeight: 1.35 }}>
+            {isEmailEntry && emailStatusLine ? (
+              <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontFamily: MONO_FONT, mt: 0.35, lineHeight: 1.35 }}>
                 {emailStatusLine}
               </Typography>
             ) : null}
-            {emailLineItems.map((row) => (
-              <Typography
-                key={row.lineItemId}
-                sx={{ fontSize: "0.72rem", color: "text.secondary", fontFamily: MONO_FONT, lineHeight: 1.35 }}
-              >
-                {emailTrailLineItemText(row)}
+            {!isEmailEntry && lineItemLabel ? (
+              <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontFamily: MONO_FONT, mt: 0.35, lineHeight: 1.35 }}>
+                {lineItemLabel}
               </Typography>
-            ))}
-          </Stack>
-        ) : lineItemLabel ? (
-          <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontFamily: MONO_FONT, mt: 0.35, lineHeight: 1.35 }}>
-            {lineItemLabel}
-          </Typography>
-        ) : null}
+            ) : null}
 
-        {entry.note && !isEmailEntry && !(canView && entry.note.trim() === String(entry.attachment?.label || "").trim()) ? (
-          <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", mt: 0.5, lineHeight: 1.45 }}>
-            {entry.note}
-          </Typography>
-        ) : null}
+            {entry.note && !isEmailEntry && !(canView && entry.note.trim() === String(entry.attachment?.label || "").trim()) ? (
+              <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", mt: 0.5, lineHeight: 1.45 }}>
+                {entry.note}
+              </Typography>
+            ) : null}
 
-        {isEmailEntry && entry.emailStatus !== "sent" ? (() => {
-          const detail = entry.note?.trim();
-          if (!detail) return null;
-          return (
-            <Typography
+            {isEmailEntry && entry.emailStatus !== "sent" ? (() => {
+              const detail = entry.note?.trim();
+              if (!detail) return null;
+              return (
+                <Typography
+                  sx={{
+                    fontSize: "0.82rem",
+                    color: entry.emailStatus === "failed" ? "error.main" : "text.secondary",
+                    mt: 0.5,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  {detail}
+                </Typography>
+              );
+            })() : null}
+          </Box>
+
+          {isEmailEntry ? (
+            <Button
+              size="small"
+              variant="text"
+              onClick={openEmailPreview}
               sx={{
-                fontSize: "0.82rem",
-                color: entry.emailStatus === "failed" ? "error.main" : "text.secondary",
-                mt: 0.5,
-                lineHeight: 1.45,
+                flexShrink: 0,
+                px: 0.5,
+                minWidth: 0,
+                fontFamily: MONO_FONT,
+                fontSize: "0.68rem",
+                letterSpacing: 0.3,
+                textTransform: "uppercase",
+                whiteSpace: "nowrap",
               }}
             >
-              {detail}
-            </Typography>
-          );
-        })() : null}
+              Preview email
+            </Button>
+          ) : null}
+        </Stack>
 
         {canView ? (
           <Button
@@ -652,6 +757,11 @@ function TrailTimelineItem({ entry, isLast, surfaceBorderColor, onViewAttachment
             Proof file removed after retention period.
           </Typography>
         ) : null}
+        <EmailPreviewDialog
+          open={emailPreviewOpen}
+          preview={emailPreview}
+          onClose={() => setEmailPreviewOpen(false)}
+        />
       </Box>
     </Stack>
   );
@@ -1735,6 +1845,7 @@ export function OrderTrailPanel({
   activeLineItem: activeLineItemProp,
   compact = false,
   scrollable = false,
+  relatedOrders = [],
 }) {
   const [trailNote, setTrailNote] = useState("");
   const [previewAttachment, setPreviewAttachment] = useState(null);
@@ -1825,6 +1936,7 @@ export function OrderTrailPanel({
             entry={entry}
             trail={trail}
             order={order}
+            relatedOrders={relatedOrders}
             isLast={index === entries.length - 1}
             surfaceBorderColor={surfaceBorderColor}
             onViewAttachment={handleViewAttachment}

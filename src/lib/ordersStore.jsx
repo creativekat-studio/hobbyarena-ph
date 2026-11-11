@@ -57,9 +57,10 @@ import {
   isEmailInlineImageUrl,
 } from "./orderProofStorage.js";
 import { queueOrderAcknowledgement, queueOrderStatusEmail } from "./emailService.js";
-import { resolveOrderStatusEmailTypeForCurrentState, ORDER_STATUS_EMAIL_LABELS } from "./orderEmailTriggers.js";
+import { resolveOrderStatusEmailTypeForCurrentState, resolveSharedStatusEmailType, ORDER_STATUS_EMAIL_LABELS } from "./orderEmailTriggers.js";
 import { buildConsolidatedEmailOrder, buildLiveMergeWorkbook } from "./orderMergeSimulation.js";
 import { getActionNotes, getEmailBodyOverride, getEmailSubjectOverride, getPreorderReminderConfig, getShowMessengerButton } from "./emailTemplatesStore.js";
+import { buildOrderStatusEmail } from "./email/orderStatusEmail.js";
 import { normalizeProofDataUrl } from "./imageCompression.js";
 import { useInventory } from "./inventoryStore.jsx";
 
@@ -276,6 +277,24 @@ function mockOrderEmail(order, kind) {
     ? `Hi ${order.customer}, we received your pre-order ${order.id}. We'll confirm once payment is verified. Balance due: ${formatPeso(order.balanceDue ?? 0)}.`
     : `Hi ${order.customer}, thank you for your order ${order.id}. We'll confirm once we receive and verify your payment.`;
   return { id: `email-${Date.now()}`, at: new Date().toISOString(), subject, body, kind, status: "pending", provider: "resend" };
+}
+
+function emailPreviewFromPayload(payload) {
+  if (!payload?.order || !payload?.emailType) return null;
+  try {
+    const content = buildOrderStatusEmail(payload.order, payload.emailType, {
+      bodyOverride: payload.bodyOverride,
+      subjectOverride: payload.subjectOverride,
+      reminder: payload.reminder,
+      showMessengerButton: payload.showMessengerButton,
+      actionNotes: payload.actionNotes,
+    });
+    if (!content?.html) return null;
+    return { subject: content.subject || "", html: content.html };
+  } catch (error) {
+    console.warn("[orders] Could not save the email preview:", error);
+    return null;
+  }
 }
 
 function buildStatusEmailRecord(emailType, orderEmail, { ok, result, error }) {
@@ -561,9 +580,12 @@ export function OrdersProvider({ children }) {
       };
     };
 
-    const recordStatusEmailResult = (order, emailType, lineItems, { ok, result, error }) => {
+    const recordStatusEmailResult = (order, emailType, lineItems, { ok, result, error }, emailPreview = null) => {
       const record = buildStatusEmailRecord(emailType, order.email, { ok, result, error });
-      const trailEntry = buildStatusEmailTrailEntry(emailType, order.email, lineItems, { ok, result, error });
+      const trailEntry = {
+        ...buildStatusEmailTrailEntry(emailType, order.email, lineItems, { ok, result, error }),
+        ...(emailPreview?.html ? { emailPreview } : {}),
+      };
       setOrders((current) => {
         let updated = null;
         const next = current.map((row) => {
@@ -607,6 +629,7 @@ export function OrdersProvider({ children }) {
           payload.emailType,
           payload.order?.lineItems ?? [],
           { ok, result, error },
+          emailPreviewFromPayload(payload),
         );
         if (!ok) reject(new Error(error || "Email failed."));
         else resolve(result);
@@ -763,8 +786,7 @@ export function OrdersProvider({ children }) {
         if (!types.some(Boolean)) {
           throw new Error("No status email matches this order's payment and status.");
         }
-        const agreed = types.every((type) => type && type === types[0]);
-        const statusEmailType = agreed ? types[0] : "";
+        const statusEmailType = resolveSharedStatusEmailType(types) || "";
         const built = buildConsolidatedEmailOrder(list, workbook);
         const orderId = String(only.id || "").trim();
         payload = {
@@ -791,6 +813,7 @@ export function OrdersProvider({ children }) {
       } else {
         payload = consolidatedPayload();
       }
+      const sentPreview = emailPreviewFromPayload(payload);
       const sentType = payload.emailType;
       const sentLabel = sentType === "consolidated_allocation"
         ? "Consolidated email"
@@ -826,6 +849,7 @@ export function OrdersProvider({ children }) {
                   note,
                 ].filter(Boolean).join(" "),
                 ...(setId ? { mergedSetId: setId } : {}),
+                ...(sentPreview?.html ? { emailPreview: sentPreview } : {}),
                 ...(persistAttachment
                   ? { attachment: buildTrailAttachment(persistAttachment.url, persistAttachment.label, "consolidated") }
                   : {}),

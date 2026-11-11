@@ -892,7 +892,7 @@ export function MergeWorkbookView({
     ? (workbook.orderDetails || []).filter((row) => selectedKeys.has(row.key)).length
     : totalItems;
   const selectedHint = paymentsMixed
-    ? `${selectedItems} of ${totalItems} ticked for the email`
+    ? `${selectedItems} of ${totalItems} selected`
     : `${selectedItems} of ${totalItems} item${totalItems === 1 ? "" : "s"} selected`;
   const split = layout === "split";
   const [detailsQuery, setDetailsQuery] = useState("");

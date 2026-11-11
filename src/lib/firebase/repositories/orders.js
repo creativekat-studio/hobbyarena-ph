@@ -82,6 +82,14 @@ export function compactOrderForFirestore(order) {
         ...(entry.emailType ? { emailType: entry.emailType } : {}),
         ...(entry.emailTo ? { emailTo: entry.emailTo } : {}),
         ...(entry.emailStatus ? { emailStatus: entry.emailStatus } : {}),
+        ...(entry.emailPreview?.html
+          ? {
+              emailPreview: {
+                subject: String(entry.emailPreview.subject || ""),
+                html: String(entry.emailPreview.html),
+              },
+            }
+          : {}),
         ...(entry.mergedSetId ? { mergedSetId: String(entry.mergedSetId) } : {}),
         ...(Array.isArray(entry.emailLineItems) && entry.emailLineItems.length
           ? {

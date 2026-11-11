@@ -31,7 +31,7 @@ import {
   syncOrderRollup,
 } from "../data/orderWorkflow.js";
 import { compareOrdersByOrderNo, displayConsolidatedOrderId, makeConsolidatedOrderId } from "./orderIds.js";
-import { resolveOrderStatusEmailTypeForCurrentState } from "./orderEmailTriggers.js";
+import { resolveOrderStatusEmailTypeForCurrentState, resolveSharedStatusEmailType } from "./orderEmailTriggers.js";
 import { lineItemAmount, lineItemDepositPaid, lineItemEffectiveUnitPrice } from "./orderRevenue.js";
 import { roundMoney } from "./money.js";
 
@@ -805,12 +805,10 @@ function lineEmailContext(line) {
   };
 }
 
-/** The original status email, when every line in the set is on that same step. */
+/** Status email for the ticked lines, including a finished line beside pickup or fulfillment. */
 export function consolidatedStatusEmailType(lines) {
   const types = (lines || []).map((line) => resolveOrderStatusEmailTypeForCurrentState(lineEmailContext(line)));
-  if (!types.length || types.some((type) => !type)) return null;
-  const unique = [...new Set(types)];
-  return unique.length === 1 ? unique[0] : null;
+  return resolveSharedStatusEmailType(types);
 }
 
 export function buildConsolidatedEmailOrder(orders, workbook) {

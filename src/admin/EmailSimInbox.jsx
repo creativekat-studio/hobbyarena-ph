@@ -16,6 +16,7 @@ import {
   fetchEmailOutboxEntry,
   fetchEmailOutboxStatus,
 } from "../lib/emailService.js";
+import { freezeAdminEmailPreview } from "../lib/email/emailTemplate.js";
 
 function formatWhen(iso) {
   try {
@@ -200,7 +201,7 @@ export default function EmailSimInbox({ panelSx, surfaceBorderColor }) {
                   <Box
                     component="iframe"
                     title="Email preview"
-                    srcDoc={preview.html}
+                    srcDoc={freezeAdminEmailPreview(preview.html)}
                     sx={{ flex: 1, width: "100%", minHeight: 320, border: 0, bgcolor: "#fff" }}
                   />
                 </Box>

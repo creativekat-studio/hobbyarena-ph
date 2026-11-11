@@ -1036,6 +1036,36 @@ export function pendingRefundAmountForOrder(order) {
   return sumLineRefunds(order, pendingRefundAmountForLineItem);
 }
 
+/**
+ * Money cards on a single customer order.
+ * One line keeps its own pay or refund card.
+ * Several lines that both owe a balance and a refund collapse to the difference.
+ */
+export function customerMoneyCardsForOrder(order) {
+  const items = getOrderLineItems(order);
+  const dueItems = items.filter((item) => itemNeedsBalanceProof(item));
+  const refundItems = items.filter((item) => itemNeedsRefundDetails(item));
+  const balance = dueItems.reduce((sum, item) => sum + itemOutstandingBalance(item), 0);
+  const refund = pendingRefundAmountForOrder(order);
+  const nettable = items.length > 1 && balance > 0 && refund > 0;
+  if (!nettable) {
+    return {
+      showBalance: dueItems.length > 0,
+      showRefund: refundItems.length > 0,
+      balanceAmount: null,
+      refundAmount: refund,
+    };
+  }
+  const net = roundMoney(balance - refund);
+  if (net > 0) {
+    return { showBalance: true, showRefund: false, balanceAmount: net, refundAmount: 0 };
+  }
+  if (net < 0) {
+    return { showBalance: false, showRefund: true, balanceAmount: 0, refundAmount: roundMoney(Math.abs(net)) };
+  }
+  return { showBalance: false, showRefund: false, balanceAmount: 0, refundAmount: 0 };
+}
+
 /** Money already returned — excludes lines still For Full / Partial Refund. */
 export function completedRefundAmountForOrder(order) {
   return sumLineRefunds(order, completedRefundAmountForLineItem);
