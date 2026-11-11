@@ -236,6 +236,29 @@ function resolveReminderLines(lines, placeholders = {}) {
  * Account CTA, with an optional Message Hobby Arena button beside it.
  * @param {{ caption?: string; accountLabel: string; accountHref: string; messengerLabel?: string; messengerHref?: string; showMessenger?: boolean }} options
  */
+const PREVIEW_FROZEN_BUTTONS = new Set([
+  "Submit Proof",
+  "Submit Bank Details",
+  "Send Bank Details",
+]);
+
+/** Admin previews keep the button look, but those customer actions do not open. */
+export function freezeAdminEmailPreview(html) {
+  if (!html) return "";
+  return String(html).replace(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi, (match, attrs, inner) => {
+    const label = inner.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+    if (!PREVIEW_FROZEN_BUTTONS.has(label)) return match;
+    const styleMatch = attrs.match(/style="([^"]*)"/i);
+    const style = `${styleMatch ? styleMatch[1] : ""};pointer-events:none;cursor:default`;
+    const rest = attrs
+      .replace(/\s*href="[^"]*"/i, "")
+      .replace(/\s*target="[^"]*"/i, "")
+      .replace(/\s*rel="[^"]*"/i, "")
+      .replace(/\s*style="[^"]*"/i, "");
+    return `<span${rest} style="${style}">${inner}</span>`;
+  });
+}
+
 export function customerResponseButtons({
   caption = "",
   accountLabel,

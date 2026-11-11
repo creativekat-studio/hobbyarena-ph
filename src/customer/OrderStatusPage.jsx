@@ -15,9 +15,8 @@ import {
   STATUS_COLOR,
   migrateOrderStatus,
   getOrderLineItems,
+  customerMoneyCardsForOrder,
   itemNeedsBalanceProof,
-  itemNeedsRefundDetails,
-  pendingRefundAmountForOrder,
   orderStatusLabel,
 } from "../data/orderWorkflow.js";
 import { orderCustomerDisplayTotal } from "../lib/orderRevenue.js";
@@ -57,13 +56,15 @@ export default function OrderStatusPage() {
     [customerOrders, orderId],
   );
   const lineItems = order?.lineItems ?? [];
-  const dueLines = useMemo(
-    () => (order ? getOrderLineItems(order).filter((item) => itemNeedsBalanceProof(item)).map((item) => ({ order, item })) : []),
+  const moneyCards = useMemo(
+    () => (order ? customerMoneyCardsForOrder(order) : null),
     [order],
   );
-  const refundLines = useMemo(
-    () => (order ? getOrderLineItems(order).filter((item) => itemNeedsRefundDetails(item)) : []),
-    [order],
+  const dueLines = useMemo(
+    () => (order && moneyCards?.showBalance
+      ? getOrderLineItems(order).filter((item) => itemNeedsBalanceProof(item)).map((item) => ({ order, item }))
+      : []),
+    [order, moneyCards],
   );
 
   useEffect(() => {
@@ -141,19 +142,20 @@ export default function OrderStatusPage() {
                 <Typography sx={{ fontSize: "0.88rem" }}>{formatDeliverTo(order)}</Typography>
               </Stack>
             </SummaryRow>
-            {dueLines.length ? (
+            {moneyCards?.showBalance && dueLines.length ? (
               <Box sx={{ mt: 1.5 }}>
                 <CustomerBalanceProofUpload
                   lines={dueLines}
+                  amount={moneyCards.balanceAmount ?? undefined}
                   surfaceBorderColor={surfaceBorderColor}
                 />
               </Box>
             ) : null}
-            {refundLines.length ? (
+            {moneyCards?.showRefund ? (
               <Box sx={{ mt: 1.5 }}>
                 <CustomerRefundDetails
                   order={order}
-                  amount={pendingRefundAmountForOrder(order)}
+                  amount={moneyCards.refundAmount}
                   active
                   embedded
                 />
@@ -174,7 +176,14 @@ export default function OrderStatusPage() {
             </Typography>
             <Stack spacing={2}>
               {lineItems.length ? lineItems.map((item) => (
-                <OrderLineItem key={item.id} order={order} item={item} surfaceBorderColor={surfaceBorderColor} hidePaymentActions />
+                <OrderLineItem
+                  key={item.id}
+                  order={order}
+                  item={item}
+                  surfaceBorderColor={surfaceBorderColor}
+                  hidePaymentActions
+                  hideBalance={moneyCards?.balanceAmount != null}
+                />
               )) : (
                 <Typography sx={{ fontSize: "0.9rem" }}>{order.items}</Typography>
               )}

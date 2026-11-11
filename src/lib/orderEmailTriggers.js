@@ -168,6 +168,33 @@ export function resolveOrderStatusEmailTypeForCurrentState(item) {
   return null;
 }
 
+const FINISHED_BESIDE_PICKUP = new Set(["full_refund_sent", "payment_rejected"]);
+
+/**
+ * Title for a multi-line send.
+ * Refunded and Rejected lines do not block Ready for pickup or Order fulfilled.
+ * A set that is entirely Ready for pickup stays that email even when one line
+ * was partially refunded.
+ */
+export function resolveSharedStatusEmailType(types) {
+  const list = Array.isArray(types) ? types : [];
+  if (!list.length || list.some((type) => !type)) return null;
+  const unique = [...new Set(list)];
+  if (unique.length === 1) return unique[0];
+
+  const ready = new Set(["ready_for_pickup", "partial_refund_sent", ...FINISHED_BESIDE_PICKUP]);
+  if (list.every((type) => ready.has(type)) && list.some((type) => type === "ready_for_pickup" || type === "partial_refund_sent")) {
+    return "ready_for_pickup";
+  }
+
+  const fulfilled = new Set(["order_fulfilled", ...FINISHED_BESIDE_PICKUP]);
+  if (list.every((type) => fulfilled.has(type)) && list.some((type) => type === "order_fulfilled")) {
+    return "order_fulfilled";
+  }
+
+  return null;
+}
+
 export function buildLineItemEmailContext(item) {
   if (!item) return null;
   return {

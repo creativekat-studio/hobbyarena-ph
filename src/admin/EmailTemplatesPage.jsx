@@ -41,6 +41,7 @@ import { useAuth } from "../auth/AuthProvider.jsx";
 import { ORDER_STATUS_EMAIL_LABELS } from "../lib/orderEmailTriggers.js";
 import { sendOrderStatusEmail, previewPasswordResetEmail, requestPasswordReset } from "../lib/emailService.js";
 import { buildOrderStatusEmail } from "../lib/email/orderStatusEmail.js";
+import { freezeAdminEmailPreview } from "../lib/email/emailTemplate.js";
 import {
   DEFAULT_EMAIL_BODIES,
   EMAIL_PLACEHOLDERS,
@@ -379,7 +380,7 @@ function EmailPreview({ emailType, body, subject, reminder, showMessengerButton,
         <Box
           component="iframe"
           title="Email preview"
-          srcDoc={state.html}
+          srcDoc={freezeAdminEmailPreview(state.html)}
           sx={{
             width: "100%",
             flex: 1,
@@ -1136,7 +1137,7 @@ function PasswordResetPreview({ body, surfaceBorderColor }) {
         <Box
           component="iframe"
           title="Password reset preview"
-          srcDoc={state.html}
+          srcDoc={freezeAdminEmailPreview(state.html)}
           sx={{ width: "100%", height: "100%", minHeight: 360, border: 0 }}
         />
       </Box>

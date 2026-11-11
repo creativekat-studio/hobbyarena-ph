@@ -218,6 +218,7 @@ export function ConsolidatedTrailTab({
         <Box key={order.id} sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <OrderTrailPanel
             order={order}
+            relatedOrders={memberOrders}
             scrollable
             panelSx={{ border: "1px solid", borderColor: surfaceBorderColor, borderRadius: 1 }}
             surfaceBorderColor={surfaceBorderColor}
